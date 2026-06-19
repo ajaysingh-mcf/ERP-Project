@@ -271,7 +271,37 @@ Process:
 
 **File:** `app/api/masters/packing-materials/route.ts`
 
-#### action: `"create"`
+#### action: `"check-PM"` — Duplicate check before wizard
+
+```json
+{ "action": "check-PM", "name": "200ml Bottle", "type": "Primary" }
+```
+
+```json
+// Response 200
+{ "exists": false }
+// or
+{ "exists": true }
+```
+
+#### action: `"check-vendor"` — Check if a vendor rate already exists
+
+```json
+{ "action": "check-vendor", "name": "200ml Bottle", "type": "Primary", "vendor_id": 5 }
+```
+
+```json
+// Response 200 — no existing rate
+{ "exists": false }
+
+// Response 200 — existing rate found
+{
+  "exists": true,
+  "existing": { "curr_rate": 3.50, "moq": 500, "uom": "pcs" }
+}
+```
+
+#### action: `"create"` — Simple insert (no rate rows)
 
 ```json
 {
@@ -290,12 +320,106 @@ Process:
 { "id": 8 }
 ```
 
+#### action: `"create-full"` — Full wizard: PM + vendor rates + manufacturer approvals
+
+Runs in a **single transaction**. Vendor rate upsert archives the old `pm_vrm` row to `vrm_history` (`mtrl_type = 'pm'`) before updating.
+
+```json
+{
+  "action": "create-full",
+  "pm": {
+    "name": "200ml Bottle",
+    "type": "Primary",
+    "hsn_code": "392390",
+    "uom": "pcs",
+    "status": "active"
+  },
+  "vendors": [
+    { "vendor_id": 5, "vendor_code": "VEN005", "curr_rate": 3.50, "moq": 500, "rate_uom": "pcs" }
+  ],
+  "manufacturers": [
+    { "mfg_id": 2, "mfg_code": "MFG002" }
+  ]
+}
+```
+
+```json
+// Response 200
+{ "id": 8 }
+```
+
 #### action: `"bulk"`
 
 ```json
 { "action": "bulk", "rows": [...] }
 // Response 200
 { "inserted": 5, "skipped": 0 }
+```
+
+---
+
+### `POST /api/masters/material-master`
+
+**File:** `app/api/masters/material-master/route.ts`
+
+Unified endpoint for the Material Master page. Inserts a base material record only — no vendor or manufacturer rate rows. The `material` field determines which table is written to.
+
+#### action: `"create"` — Insert a Raw Material base record
+
+```json
+{
+  "action": "create",
+  "material": "rm",
+  "name": "Aloe Vera Extract",
+  "make": "Natural",
+  "inci_name": "Aloe Barbadensis",
+  "type": "Botanical",
+  "uom": "kg",
+  "hsn_code": "330129",
+  "status": "active"
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `material` | Yes | `"rm"` |
+| `name` | Yes | |
+| `make` | Yes | Used in duplicate detection |
+| `inci_name` | Yes | Used in duplicate detection |
+| `type`, `uom`, `hsn_code`, `status` | No | |
+
+```json
+// Response 200
+{ "id": 23 }
+
+// Response 409 — duplicate check failed
+{ "error": "A raw material with this code already exists." }
+```
+
+#### action: `"create"` — Insert a Packing Material base record
+
+```json
+{
+  "action": "create",
+  "material": "pm",
+  "name": "200ml Bottle",
+  "type": "Primary",
+  "uom": "pcs",
+  "hsn_code": "392390",
+  "status": "active"
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `material` | Yes | `"pm"` |
+| `name` | Yes | |
+| `type` | Yes | Used in duplicate detection |
+| `uom`, `hsn_code`, `status` | No | |
+
+```json
+// Response 200
+{ "id": 8 }
 ```
 
 ---

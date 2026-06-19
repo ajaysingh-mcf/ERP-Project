@@ -16,7 +16,8 @@ Master data records are created once and referenced repeatedly by transactional 
 | Vendors | `/masters/vendors` | `POST /api/masters/vendors` | `vendors`, `vendor_details` |
 | Manufacturers | `/masters/manufacturers` | `POST /api/masters/manufacturers` | `mfgs`, `mfg_details` |
 | Raw Materials | `/masters/raw-materials` | `POST /api/masters/raw-materials` | `rm`, `rm_vrm`, `rm_mrm`, `vrm_history` |
-| Packing Materials | `/masters/packing-materials` | `POST /api/masters/packing-materials` | `pm`, `pm_vrm`, `pm_mrm` |
+| Packing Materials | `/masters/packing-materials` | `POST /api/masters/packing-materials` | `pm`, `pm_vrm`, `pm_mrm`, `vrm_history` |
+| Material Master | `/masters/material-master` | `POST /api/masters/material-master` | `rm`, `pm` |
 | BOM Master | `/masters/bom-master` | `POST /api/masters/bom-master` | `bom`, `bom_details` |
 
 ## Server + Client Component Pattern
@@ -148,6 +149,64 @@ A multi-step modal wizard instead of the standard `AddRecordDialog`. Steps:
 ### Rate Archive Pattern
 
 When updating a vendor rate, the existing `rm_vrm` row is **archived to `vrm_history`** before the update, preserving the audit trail. This is handled server-side in `app/api/masters/raw-materials/route.ts`.
+
+## Packing Materials — Special Case
+
+Packing Materials mirrors the Raw Materials pattern with the same dual-view and wizard structure.
+
+### Dual View
+
+The `/masters/packing-materials` page supports two views:
+- `?view=vendor` (default) — shows `pm_vrm` rows joined with `pm`
+- `?view=manufacturer` — shows `pm_mrm` rows joined with `pm`
+
+### Add Packing Material Wizard (`AddPackingMaterialWizard.tsx`)
+
+Same 3-step pattern as RM:
+
+1. **Step 1 — Material details:** Name, type, HSN code, UOM, status — calls `action: "check-PM"` for duplicate check (name + type)
+2. **Step 2 — Vendor rates:** Add one or more vendor rates; calls `action: "check-vendor"` per vendor; shows amber warning if rate already exists
+3. **Step 3 — Manufacturer approvals:** Select manufacturing sites
+4. **Final submit:** `action: "create-full"` — transaction insert of PM + vendor rates + manufacturer approvals
+
+### Rate Archive Pattern
+
+Same as RM: existing `pm_vrm` rows are archived to `vrm_history` (with `mtrl_type = 'pm'`) before updating. The `vrm_history` table covers both RM and PM via this `mtrl_type` enum.
+
+---
+
+## Material Master — Flat View
+
+The `/masters/material-master` page provides a unified, simplified view of all materials without the rate data columns.
+
+### What it is
+
+- **Single toggle** between Raw Material and Packing Material (no vendor/manufacturer sub-toggle)
+- Shows base material fields only: code, name, make (RM only), type, UOM, HSN code, status
+- URL: `?material=rm` (default) or `?material=pm`
+- Queries the `rm` / `pm` base tables directly — no JOINs
+
+### Add Material Dialog (`AddMaterialDialog.tsx`)
+
+A simple single-step dialog (no wizard). Fields shown depend on the active material toggle:
+
+**Raw Material fields:** Name\*, Make\*, INCI Name\*, Type, UOM, HSN Code, Status
+
+**Packing Material fields:** Name\*, Type\*, UOM, HSN Code, Status
+
+Posts to the dedicated `POST /api/masters/material-master` route with `{ action: "create", material: "rm" | "pm" }`. No vendor or manufacturer data is collected — those are managed from the individual Raw/Packing Materials pages.
+
+### File Structure
+
+```
+app/masters/material-master/
+├── page.tsx               ← Server Component (fetches base rows, no joins)
+├── MaterialToggle.tsx     ← RM / PM pill toggle (client, uses Link)
+├── MaterialMasterClient.tsx  ← Table + search + status filter (client)
+└── AddMaterialDialog.tsx  ← Simple create dialog (client)
+```
+
+---
 
 ## BOM Master
 
