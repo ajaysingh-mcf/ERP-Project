@@ -89,18 +89,14 @@ export async function POST(req: NextRequest) {
       // Validate required PM fields.
       if (!name?.trim())  return NextResponse.json({ error: "Name is required." }, { status: 400 })
       if (!type?.trim())  return NextResponse.json({ error: "Type is required." }, { status: 400 })
-      
         try {
           const check = await execute(PMMaterials.checkDuplicate , [name, type])
           if(check) {
             return NextResponse.json({ error: "A Packing material with this code already exists.", check }, { status: 409 })
           }
-
         }catch(e) {
           return NextResponse.json({error: "Error Occured while ckecking dublicate: " , e} , {status: 409})
         }
-
-
       try {
         const result = await execute(PMMaterials.insert, toPmParams(body))
         return NextResponse.json({ id: result.insertId })

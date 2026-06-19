@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation"
 import Sidebar from "@/components/Sidebar"
 import TopBar from "@/components/TopBar"
+import { ToastProvider } from "@/components/ui/toast"
 
 interface Props {
   children: React.ReactNode
@@ -18,14 +19,16 @@ export default function ClientLayout({ children, user }: Props) {
   if (isAuthPage) return <>{children}</>
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar user={user} />
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <TopBar />
-        <main className="flex-1 overflow-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
-          {children}
-        </main>
+    <ToastProvider>
+      <div className="flex h-screen overflow-hidden bg-background">
+        <Sidebar user={user} />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <TopBar />
+          <main className="flex-1 overflow-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </ToastProvider>
   )
 }

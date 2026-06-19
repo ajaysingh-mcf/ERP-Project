@@ -22,4 +22,8 @@ export const manufacturers = {
   insert: `
     INSERT INTO mfgs (code, name) VALUES (?, ?)
   `,
+
+  insertDetails: `
+    INSERT INTO mfg_details (mfg_id, location, gst_number, status) VALUES (?, ?, ?, ?)
+  `,
 }

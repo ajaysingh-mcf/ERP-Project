@@ -46,7 +46,7 @@ export const PMMaterials = {
 
   /** Check if a PM already exists by name + type. Parameters: [name, type] */
   checkDuplicate: `
-    SELECT pm_code FROM pm WHERE name = ? AND type = ? LIMIT 1
+    SELECT id, pm_code FROM pm WHERE name = ? AND type = ? LIMIT 1
   `,
 
   /** Check if a vendor rate exists for this pm + vendor. Parameters: [pm_id, vendor_id] */

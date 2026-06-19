@@ -17,7 +17,7 @@
 // skip-on-duplicate works via ER_DUP_ENTRY.
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { execute, pool } from "@/lib/db"
+import { pool } from "@/lib/db"
 import { manufacturers } from "@/lib/queries/manufacturers"
 
 export async function POST(req: NextRequest) {
@@ -28,17 +28,25 @@ export async function POST(req: NextRequest) {
   const { action } = body
 
   if (action === "create") {
-    const { code, name } = body
+    const { code, name, location, gst_number, status } = body
     if (!code?.trim() || !name?.trim()) {
       return NextResponse.json({ error: "code and name are required" }, { status: 400 })
     }
+    const conn = await pool.getConnection()
+    await conn.beginTransaction()
     try {
-      const result = await execute(
-        manufacturers.insert,
-        [code.trim(), name.trim()]
-      )
-      return NextResponse.json({ id: result.insertId })
+      const [result] = await conn.execute(manufacturers.insert, [code.trim(), name.trim()])
+      const mfgId = (result as any).insertId
+      await conn.execute(manufacturers.insertDetails, [
+        mfgId,
+        location?.trim() || null,
+        gst_number?.trim() || null,
+        status || "active",
+      ])
+      await conn.commit()
+      return NextResponse.json({ id: mfgId })
     } catch (err: any) {
+      await conn.rollback()
       if (err.code === "ER_DUP_ENTRY") {
         return NextResponse.json(
           { error: `Code "${code.trim()}" already exists` },
@@ -47,6 +55,8 @@ export async function POST(req: NextRequest) {
       }
       console.error("Manufacturer create error:", err)
       return NextResponse.json({ error: "Database error" }, { status: 500 })
+    } finally {
+      conn.release()
     }
   }
 
@@ -65,10 +75,14 @@ export async function POST(req: NextRequest) {
       for (const row of rows) {
         if (!row.code?.trim() || !row.name?.trim()) continue
         try {
-          await conn.execute(
-            manufacturers.insert,
-            [row.code.trim(), row.name.trim()]
-          )
+          const [result] = await conn.execute(manufacturers.insert, [row.code.trim(), row.name.trim()])
+          const mfgId = (result as any).insertId
+          await conn.execute(manufacturers.insertDetails, [
+            mfgId,
+            row.location?.trim() || null,
+            row.gst_number?.trim() || null,
+            row.status || "active",
+          ])
           inserted++
         } catch (err: any) {
           if (err.code === "ER_DUP_ENTRY") {

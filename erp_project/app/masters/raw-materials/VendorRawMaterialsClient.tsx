@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Eye } from "lucide-react"
+import { GitCompare } from "lucide-react"
 import type { RM, Vendor, Mfg } from "@/types/masters"
 import {
   RmRateTable,
@@ -53,7 +53,7 @@ export default function VendorRawMaterialsClient({
             className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
             title="View vendor comparison"
           >
-            <Eye className="h-4 w-4" />
+            <GitCompare className="h-4 w-4" />
           </button>
         )}
       />
