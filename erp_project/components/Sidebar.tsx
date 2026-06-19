@@ -31,7 +31,8 @@ const NAV: NavItem[] = [
       { label: "Vendors",           href: "/masters/vendors" },
       { label: "Raw Materials",     href: "/masters/raw-materials" },
       { label: "Packing Materials", href: "/masters/packing-materials" },
-      {label: "Bom Master" , href: "/masters/bom-master"}
+      {label: "Bom Master" , href: "/masters/bom-master"},
+      {label: "Material Master",     href:"/masters/material-master"}
     ],
   },
   { label: "MFG Management",      icon: Factory,      children: [] },

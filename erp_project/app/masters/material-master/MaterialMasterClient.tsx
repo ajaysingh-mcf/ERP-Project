@@ -18,25 +18,19 @@ import {
   MasterToolbar,
   MasterToolbarActions,
 } from "@/components/masters/MasterToolbar"
-import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
-import type { MasterField } from "@/components/masters/field-config"
 import { cn } from "@/lib/utils"
-import { AddPackingMaterialWizard } from "./AddPackingMaterialWizard"
-import type { Vendor, Mfg } from "@/types/masters"
+import AddMaterialDialog from "./AddMaterialDialog"
 
-export type AnyRow = Record<string, unknown>
-export type ColumnDef = {
+type AnyRow = Record<string, unknown>
+type ColumnDef = {
   key: string
   label: string
-  sortAs: "text" | "num" | "date"
+  sortAs: "text" | "num"
   className?: string
   render?: (row: AnyRow) => ReactNode
 }
 
-export const fmtDate = (v: unknown) =>
-  v ? new Date(v as string).toLocaleDateString("en-CA") : "—"
-
-export const statusBadge = (row: AnyRow) => (
+const statusBadge = (row: AnyRow) => (
   <Badge
     variant={row.status === "active" ? "success" : "secondary"}
     className="capitalize"
@@ -45,39 +39,41 @@ export const statusBadge = (row: AnyRow) => (
   </Badge>
 )
 
-const PM_FIELDS: MasterField[] = [
-  { key: "pm_code", label: "PM Code", aliases: ["code"], placeholder: "e.g. PM-001", sample: "PM-001" },
-  { key: "name", label: "Name", required: true, placeholder: "Material name", sample: "Label 100ml" },
-  { key: "type", label: "Type", placeholder: "e.g. Label / Carton", sample: "Label" },
-  { key: "hsn_code", label: "HSN Code", placeholder: "e.g. 48191000", sample: "48191000" },
-  { key: "uom", label: "UOM", placeholder: "e.g. pcs", sample: "pcs" },
-  {
-    key: "status", label: "Status", type: "select", default: "active", colSpan: 2, sample: "active",
-    options: [
-      { value: "active", label: "Active" },
-      { value: "discontinued", label: "Discontinued" },
-    ],
-  },
+const RM_COLUMNS: ColumnDef[] = [
+  { key: "rm_code",   label: "RM Code",   sortAs: "text", className: "font-mono text-xs font-medium" },
+  { key: "name",      label: "Name",      sortAs: "text", className: "font-medium" },
+  { key: "make",      label: "Make",      sortAs: "text" },
+  { key: "type",      label: "Type",      sortAs: "text" },
+  { key: "uom",       label: "UOM",       sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
+  { key: "hsn_code",  label: "HSN Code",  sortAs: "text" },
+  { key: "inci_name", label: "INCI Name", sortAs: "text" },
+  { key: "status",    label: "Status",    sortAs: "text", render: statusBadge },
 ]
 
-export function PmRateTable({
+const PM_COLUMNS: ColumnDef[] = [
+  { key: "pm_code",  label: "PM Code",  sortAs: "text", className: "font-mono text-xs font-medium" },
+  { key: "name",     label: "Name",     sortAs: "text", className: "font-medium" },
+  { key: "type",     label: "Type",     sortAs: "text" },
+  { key: "uom",      label: "UOM",      sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
+  { key: "hsn_code", label: "HSN Code", sortAs: "text" },
+  { key: "status",   label: "Status",   sortAs: "text", render: statusBadge },
+]
+
+export default function MaterialMasterClient({
+  material,
   rows,
-  columns,
-  actionColumn,
-  vendors,
-  manufacturers,
 }: {
+  material: "rm" | "pm"
   rows: AnyRow[]
-  columns: ColumnDef[]
-  actionColumn?: (row: AnyRow) => ReactNode
-  vendors: Vendor[]
-  manufacturers: Mfg[]
 }) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  const columns = material === "rm" ? RM_COLUMNS : PM_COLUMNS
+  const codeKey = material === "rm" ? "rm_code" : "pm_code"
 
   const toggleSort = (key: string) => {
     if (sortKey === key) {
@@ -92,9 +88,10 @@ export function PmRateTable({
     const q = search.toLowerCase()
     const matchSearch =
       !q ||
-      String(r.pm_code ?? "").toLowerCase().includes(q) ||
+      String(r[codeKey] ?? "").toLowerCase().includes(q) ||
       String(r.name ?? "").toLowerCase().includes(q) ||
-      String(r.type ?? "").toLowerCase().includes(q)
+      String(r.type ?? "").toLowerCase().includes(q) ||
+      (material === "rm" ? String(r.make ?? "").toLowerCase().includes(q) : false)
     const matchStatus = statusFilter === "all" || r.status === statusFilter
     return matchSearch && matchStatus
   })
@@ -111,14 +108,10 @@ export function PmRateTable({
       if (aEmpty && bEmpty) return 0
       if (aEmpty) return 1
       if (bEmpty) return -1
-      let cmp = 0
-      if (col?.sortAs === "num") {
-        cmp = Number(av) - Number(bv)
-      } else if (col?.sortAs === "date") {
-        cmp = new Date(av as string).getTime() - new Date(bv as string).getTime()
-      } else {
-        cmp = String(av).localeCompare(String(bv), undefined, { numeric: true })
-      }
+      const cmp =
+        col?.sortAs === "num"
+          ? Number(av) - Number(bv)
+          : String(av).localeCompare(String(bv), undefined, { numeric: true })
       return cmp * dir
     })
   }, [filtered, columns, sortKey, sortDir])
@@ -132,7 +125,11 @@ export function PmRateTable({
         <SearchInput
           value={search}
           onChange={setSearch}
-          placeholder="Search by code, name, type…"
+          placeholder={
+            material === "rm"
+              ? "Search by code, name, make, type…"
+              : "Search by code, name, type…"
+          }
         />
 
         <select
@@ -146,19 +143,8 @@ export function PmRateTable({
         </select>
 
         <MasterToolbarActions>
-          <CsvImportDialog
-            entityLabel="Packing Material"
-            entityLabelPlural="Packing Materials"
-            endpoint="/api/masters/packing-materials"
-            templateFilename="packing_material_template.csv"
-            fields={PM_FIELDS}
-            onSuccess={refresh}
-          />
-          <AddPackingMaterialWizard
-            vendors={vendors}
-            manufacturers={manufacturers}
-            onSuccess={refresh}
-          />
+          {/* Simple dialog — adds base material only, no vendor/mfg rate steps */}
+          <AddMaterialDialog material={material} onSuccess={refresh} />
         </MasterToolbarActions>
       </MasterToolbar>
 
@@ -186,7 +172,10 @@ export function PmRateTable({
                 {columns.map((col) => {
                   const active = sortKey === col.key
                   return (
-                    <TableHead key={col.key} className="bg-gray-200 font-medium text-muted-foreground">
+                    <TableHead
+                      key={col.key}
+                      className="bg-gray-200 font-medium text-muted-foreground"
+                    >
                       <button
                         onClick={() => toggleSort(col.key)}
                         className="inline-flex items-center gap-1 font-medium hover:text-foreground transition-colors"
@@ -205,7 +194,6 @@ export function PmRateTable({
                     </TableHead>
                   )
                 })}
-                {actionColumn && <TableHead className="bg-gray-200 w-10" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -216,7 +204,7 @@ export function PmRateTable({
                     className="text-center text-muted-foreground py-10"
                   >
                     {hasFilters
-                      ? "No packing materials match your filters."
+                      ? "No materials match your filters."
                       : "No records found."}
                   </TableCell>
                 </TableRow>
@@ -224,7 +212,9 @@ export function PmRateTable({
                 sorted.map((row, index) => (
                   <TableRow
                     key={index}
-                    className={index % 2 === 0 ? "bg-white" : "bg-gray-200"}
+                    className={cn(
+                      index % 2 === 0 ? "bg-white" : "bg-gray-200"
+                    )}
                   >
                     {columns.map((col) => (
                       <TableCell
@@ -236,9 +226,6 @@ export function PmRateTable({
                           : ((row[col.key] as ReactNode) ?? "—")}
                       </TableCell>
                     ))}
-                    {actionColumn && (
-                      <TableCell>{actionColumn(row)}</TableCell>
-                    )}
                   </TableRow>
                 ))
               )}

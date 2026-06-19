@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { execute, pool } from "@/lib/db"
+import { execute, query, pool } from "@/lib/db"
 import { PMMaterials } from "@/lib/queries/product-materials"
 
 function toPmParams(r: any) {
@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { action } = body
 
+  // ── Existing flat create (CSV / legacy dialog) ──────────────────────────
   if (action === "create") {
     if (!body.name?.trim()) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
@@ -79,7 +80,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // No rate data — insert pm only.
     try {
       const result = await execute(PMMaterials.insert, toPmParams(body))
       return NextResponse.json({ id: result.insertId })
@@ -95,6 +95,153 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Wizard step 1: duplicate PM check ───────────────────────────────────
+  // Body: { name, type }
+  if (action === "check-PM") {
+    const { name, type } = body
+    if (!name?.trim() || !type?.trim()) {
+      return NextResponse.json({ error: "name and type are required" }, { status: 400 })
+    }
+    try {
+      const rows = await query<{ id: number }>(PMMaterials.checkDuplicate, [
+        name.trim(),
+        type.trim(),
+      ])
+      return NextResponse.json({ exists: rows.length > 0 })
+    } catch (err: any) {
+      console.error("Packing material check error:", err)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
+  }
+
+  // ── Wizard step 2: check if vendor already has a rate for this material ─
+  // Body: { name, type, vendor_id }
+  // Returns: { exists: false } | { exists: true, existing: { curr_rate, moq, uom } }
+  if (action === "check-vendor") {
+    const { name, type, vendor_id } = body
+    if (!name?.trim() || !vendor_id) {
+      return NextResponse.json({ error: "name and vendor_id are required" }, { status: 400 })
+    }
+    try {
+      const pms = await query<{ id: number }>(PMMaterials.checkDuplicate, [
+        name.trim(),
+        type?.trim() || "",
+      ])
+      if (pms.length === 0) return NextResponse.json({ exists: false })
+
+      const rates = await query<any>(PMMaterials.checkVendorRate, [pms[0].id, Number(vendor_id)])
+      if (rates.length === 0) return NextResponse.json({ exists: false })
+
+      const r = rates[0]
+      return NextResponse.json({
+        exists: true,
+        existing: { curr_rate: r.curr_rate, moq: r.moq, uom: r.uom },
+      })
+    } catch (err: any) {
+      console.error("PM vendor rate check error:", err)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
+  }
+
+  // ── Wizard final submit: create PM + upsert vendor rates + mfg approvals ─
+  if (action === "create-full") {
+    const { pm, vendors: vendorList, manufacturers: mfgList } = body
+    if (!pm?.name?.trim()) {
+      return NextResponse.json({ error: "name is required" }, { status: 400 })
+    }
+    if (!Array.isArray(vendorList) || vendorList.length === 0) {
+      return NextResponse.json({ error: "At least one vendor is required" }, { status: 400 })
+    }
+    if (!Array.isArray(mfgList) || mfgList.length === 0) {
+      return NextResponse.json({ error: "At least one manufacturer is required" }, { status: 400 })
+    }
+
+    const today = new Date().toISOString().slice(0, 10)
+    const conn = await pool.getConnection()
+    await conn.beginTransaction()
+    try {
+      const [pmResult] = await conn.execute(PMMaterials.insert, [
+        null,
+        pm.name.trim(),
+        pm.type?.trim() || null,
+        pm.hsn_code?.trim() || null,
+        pm.uom?.trim() || null,
+        pm.status || "active",
+      ])
+      const pmId = (pmResult as any).insertId
+
+      // Vendor rates: upsert — archive old rate to vrm_history then update, else insert.
+      for (const v of vendorList) {
+        const vendorId = v.vendor_id ? Number(v.vendor_id) : null
+
+        const [existingRows] = await conn.execute(PMMaterials.checkVendorRate, [pmId, vendorId])
+        const existing = (existingRows as any[])[0]
+
+        if (existing) {
+          await conn.execute(PMMaterials.archiveVendorRate, [
+            pmId,
+            existing.vendor_id,
+            existing.curr_rate,
+            existing.moq,
+            existing.uom,
+            existing.effective_from,
+            existing.effective_to,
+            existing.status,
+          ])
+          await conn.execute(PMMaterials.updateVendorRate, [
+            v.curr_rate ? Number(v.curr_rate) : null,
+            v.moq ? Number(v.moq) : null,
+            v.rate_uom?.trim() || null,
+            "active",
+            today,
+            existing.id,
+          ])
+        } else {
+          await conn.execute(PMMaterials.insertVendorRate, [
+            pmId,
+            vendorId,
+            v.vendor_code?.trim() || null,
+            v.curr_rate ? Number(v.curr_rate) : null,
+            v.moq ? Number(v.moq) : null,
+            v.rate_uom?.trim() || null,
+            "active",
+            today,
+            null,
+          ])
+        }
+      }
+
+      // Manufacturer approvals: upsert — update if exists, else insert.
+      for (const m of mfgList) {
+        const mfgId = m.mfg_id ? Number(m.mfg_id) : null
+
+        const [existingRows] = await conn.execute(PMMaterials.checkMfgRate, [pmId, mfgId])
+        const existing = (existingRows as any[])[0]
+
+        if (existing) {
+          await conn.execute(PMMaterials.updateMfgRate, [0, null, today, existing.id])
+        } else {
+          await conn.execute(PMMaterials.insertMfgApproval, [
+            pmId,
+            mfgId,
+            m.mfg_code?.trim() || null,
+            today,
+          ])
+        }
+      }
+
+      await conn.commit()
+      return NextResponse.json({ id: pmId })
+    } catch (err: any) {
+      await conn.rollback()
+      console.error("Packing material create-full error:", err)
+      return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+    } finally {
+      conn.release()
+    }
+  }
+
+  // ── CSV bulk import ──────────────────────────────────────────────────────
   if (action === "bulk") {
     const { rows } = body
     if (!Array.isArray(rows) || rows.length === 0) {

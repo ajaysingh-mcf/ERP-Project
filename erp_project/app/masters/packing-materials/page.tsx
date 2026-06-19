@@ -3,7 +3,9 @@ import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
 import { query } from "@/lib/db"
 import { PMMaterials } from "@/lib/queries/product-materials"
-import type { PMVendor, PMByMfg } from "@/types/masters"
+import { vendors as vendorSql } from "@/lib/queries/vendors"
+import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
+import type { PMVendor, PMByMfg, Vendor, Mfg } from "@/types/masters"
 import { ViewToggle } from "./ViewToggle"
 import VendorPackingMaterialsClient from "./VendorPackingMaterialsClient"
 import ManufacturerPackingMaterialsClient from "./ManufacturerPackingMaterialsClient"
@@ -19,18 +21,21 @@ export default async function PackingMaterialsPage({
   const access = await resolveAccess(userId, session.user.roles, "/masters")
   if (access === "none") redirect("/auth/unauthorized")
 
-    
-
   const { view } = await searchParams
   const isMfg = view === "manufacturer"
+
+  const [vendorList, mfgList] = await Promise.all([
+    query<Vendor>(vendorSql.selectAll),
+    query<Mfg>(mfgSql.selectAll),
+  ])
 
   let body: React.ReactNode
   if (isMfg) {
     const rows = await query<PMByMfg>(PMMaterials.selectAllByManufacturer)
-    body = <ManufacturerPackingMaterialsClient rows={rows} />
+    body = <ManufacturerPackingMaterialsClient rows={rows} vendors={vendorList} manufacturers={mfgList} />
   } else {
     const rows = await query<PMVendor>(PMMaterials.selectAllByVendor)
-    body = <VendorPackingMaterialsClient rows={rows} />
+    body = <VendorPackingMaterialsClient rows={rows} vendors={vendorList} manufacturers={mfgList} />
   }
 
   return (

@@ -6,6 +6,12 @@
 export const rawMaterials = {
   // ============ SELECT QUERIES ============
 
+  /** Get all raw materials (base data only, no rate joins) */
+  selectAll: `
+    SELECT id, rm_code, name, make, type, uom, status, hsn_code, inci_name
+    FROM rm ORDER BY name
+  `,
+
   /**
    * Get all raw materials grouped by manufacturer
    * Used in RawMaterialsPage manufacturer view
