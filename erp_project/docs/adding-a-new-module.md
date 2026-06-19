@@ -1,0 +1,346 @@
+# Adding a New Module
+
+> **Related docs:** [Architecture](./architecture.md) · [Masters Module](./masters-module.md) · [Frontend Patterns](./frontend-patterns.md) · [Authentication & Permissions](./authentication-and-permissions.md) · [Architecture Evolution](./architecture-evolution.md)
+
+This is the step-by-step recipe for building a new ERP module. It uses the **Masters module as the reference implementation** — copy from there rather than inventing new patterns.
+
+Before starting, also read [Architecture Evolution](./architecture-evolution.md) — new modules should eventually adopt the `withGateway()` wrapper and event-driven service pattern described there.
+
+---
+
+## Step 0 — Define the Scope
+
+Answer these before writing code:
+1. What tables does this module own? Are they already in `prisma/schema.prisma`?
+2. What page slug will it use? (e.g. `/inventory`)
+3. Which roles need access, and at what level?
+
+---
+
+## Step 1 — Add Database Tables
+
+If the tables don't exist yet:
+
+**1.1 Add model(s) to `prisma/schema.prisma`**
+
+Follow the existing naming conventions (see [Database Schema — Naming Conventions](./database-schema.md#naming-conventions)):
+
+```prisma
+model inventory_items {
+  id          Int      @id @default(autoincrement())
+  item_code   String   @unique
+  name        String
+  quantity    Decimal
+  location    String?
+  status      inventory_items_status @default(active)
+  created_at  DateTime @default(now())
+  created_by  Int?
+  users       users?   @relation(fields: [created_by], references: [id])
+}
+
+enum inventory_items_status {
+  active
+  inactive
+}
+```
+
+**1.2 Create and apply the migration**
+
+```bash
+npx prisma migrate dev --name add-inventory-items
+```
+
+**1.3 Add SQL query strings to `lib/queries/<module>.ts`**
+
+Use `lib/queries/vendors.ts` as a template:
+
+```ts
+// lib/queries/inventory.ts
+export const inventory = {
+  selectAll: `
+    SELECT id, item_code, name, quantity, location, status, created_at
+    FROM inventory_items
+    ORDER BY item_code ASC
+  `,
+  insert: `
+    INSERT INTO inventory_items (item_code, name, quantity, location, status, created_by)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `,
+};
+```
+
+**1.4 Add TypeScript row types to `types/`**
+
+Mirror the SELECT columns exactly:
+
+```ts
+// types/inventory.ts
+export type InventoryItem = {
+  id: number;
+  item_code: string;
+  name: string;
+  quantity: number;
+  location: string | null;
+  status: string;
+  created_at: string;
+};
+```
+
+---
+
+## Step 2 — Build the API Route
+
+**2.1 Create `app/api/<module>/route.ts`**
+
+Copy `app/api/masters/skus/route.ts` as a template. Required pattern:
+
+```ts
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { execute, query } from "@/lib/db";
+import { inventory } from "@/lib/queries/inventory";
+
+export async function POST(req: Request) {
+  // 1. Auth check — always first
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  const { action } = body;
+
+  // 2. Action dispatch
+  if (action === "create") {
+    const { item_code, name, quantity } = body;
+    if (!item_code?.trim() || !name?.trim()) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+    try {
+      const res = await execute(inventory.insert, [item_code, name, quantity, body.location ?? null, body.status ?? "active", Number(session.user.id)]);
+      return NextResponse.json({ id: res.insertId });
+    } catch (e: any) {
+      if (e?.code === "ER_DUP_ENTRY") {
+        return NextResponse.json({ error: "Item code already exists" }, { status: 409 });
+      }
+      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    }
+  }
+
+  if (action === "bulk") {
+    // ... bulk insert pattern (see app/api/masters/skus/route.ts)
+  }
+
+  return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+}
+```
+
+For **multi-table writes** (like vendors which also insert into `vendor_details`), use a transaction:
+
+```ts
+const conn = await pool.getConnection();
+try {
+  await conn.beginTransaction();
+  const [result] = await conn.execute("INSERT INTO ...", [...]);
+  await conn.execute("INSERT INTO ...", [result.insertId, ...]);
+  await conn.commit();
+  return NextResponse.json({ id: (result as any).insertId });
+} catch (e) {
+  await conn.rollback();
+  throw e;
+} finally {
+  conn.release();
+}
+```
+
+**2.2 Seed permissions for the new page slug**
+
+Add entries to the `matrix` array in `scripts/seed-permissions.ts`:
+
+```ts
+{ role: "developer", page_slug: "/inventory", access_level: "editor" },
+{ role: "production_operations", page_slug: "/inventory", access_level: "viewer" },
+// ... other roles
+```
+
+Then run:
+```bash
+npm run db:seed
+```
+
+---
+
+## Step 3 — Build the Server Page
+
+**3.1 Create `app/<module>/page.tsx`**
+
+Copy `app/masters/skus/page.tsx` as a template:
+
+```ts
+import { auth } from "@/lib/auth";
+import { resolveAccess } from "@/lib/permissions";
+import { query } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { InventoryClient } from "./InventoryClient";
+import type { InventoryItem } from "@/types/inventory";
+
+export default async function InventoryPage() {
+  const session = await auth();
+  if (!session) redirect("/auth/signin");
+
+  const userId = Number(session.user.id);
+  const access = await resolveAccess(userId, session.user.roles, "/inventory");
+  if (access === "none") redirect("/auth/unauthorized");
+
+  const items = await query<InventoryItem>(
+    "SELECT id, item_code, name, quantity, location, status, created_at FROM inventory_items ORDER BY item_code ASC"
+  );
+
+  return <InventoryClient initialItems={items} access={access} />;
+}
+```
+
+Pass `access` to the Client Component so it can conditionally show/hide edit controls for `"viewer"` vs `"editor"`.
+
+---
+
+## Step 4 — Build the Client Component
+
+**4.1 Create `app/<module>/InventoryClient.tsx`**
+
+Use `app/masters/skus/SkusClient.tsx` as a template:
+
+```ts
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { MasterToolbar } from "@/components/masters/MasterToolbar";
+import { AddRecordDialog } from "@/components/masters/AddRecordDialog";
+import { SearchInput } from "@/components/masters/SearchInput";
+import type { InventoryItem } from "@/types/inventory";
+
+export function InventoryClient({
+  initialItems,
+  access,
+}: {
+  initialItems: InventoryItem[];
+  access: "viewer" | "editor";
+}) {
+  const router = useRouter();
+  const [search, setSearch] = useState("");
+
+  const filtered = initialItems.filter((item) =>
+    [item.item_code, item.name].some((v) => v?.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  return (
+    <div>
+      <MasterToolbar
+        onSearch={setSearch}
+        addButton={
+          access === "editor" ? (
+            <AddRecordDialog
+              entityLabel="Inventory Item"
+              endpoint="/api/inventory"
+              fields={[
+                { key: "item_code", label: "Item Code", type: "text", required: true },
+                { key: "name", label: "Name", type: "text", required: true },
+                { key: "quantity", label: "Quantity", type: "number" },
+              ]}
+              onSuccess={() => router.refresh()}
+            />
+          ) : null
+        }
+      />
+      <table>
+        {/* render filtered rows */}
+      </table>
+    </div>
+  );
+}
+```
+
+---
+
+## Step 5 — Add TypeScript Types
+
+Already done in Step 1.4. Make sure the type mirrors the **exact SELECT column list** in `page.tsx`. Mismatches cause runtime shape errors that are hard to debug.
+
+---
+
+## Step 6 — Wire Up Navigation
+
+Add an entry to the `NAV` array in `components/Sidebar.tsx`:
+
+```ts
+{ label: "Inventory", href: "/inventory", icon: Package }
+```
+
+For a module with sub-pages:
+```ts
+{
+  label: "Inventory",
+  href: "/inventory",
+  icon: Package,
+  children: [
+    { label: "Items", href: "/inventory/items" },
+    { label: "Warehouses", href: "/inventory/warehouses" },
+  ],
+}
+```
+
+---
+
+## Step 7 — Verify
+
+```bash
+# 1. No TypeScript errors
+npm run build
+
+# 2. No lint errors
+npm run lint
+
+# 3. Manual browser testing
+npm run dev
+```
+
+Test the following scenarios in the browser:
+
+| Scenario | Expected result |
+|----------|----------------|
+| Visit page as `developer` | Page loads, editor controls visible |
+| Visit page as a viewer role | Page loads, no add/edit buttons |
+| Visit page as a role without access | Redirect to `/auth/unauthorized` |
+| Create a single record | New row appears after `router.refresh()` |
+| Bulk import valid CSV | `inserted` count shown, rows appear |
+| Bulk import with duplicates | `skipped` count shown, no crash |
+| Create with missing required field | API returns 400, error shown in dialog |
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Forgot `router.refresh()` | New record created but doesn't appear in table | Add `router.refresh()` to `onSuccess` callback |
+| Importing `lib/db.ts` in a Client Component | Runtime error: `mysql2` is not available in the browser | Move all DB calls to API routes or Server Components |
+| TypeScript type doesn't match SELECT columns | `undefined` fields at runtime, silent rendering bugs | Mirror `page.tsx` SELECT columns exactly in the type |
+| Page slug not seeded in `page_permissions` | All non-developer roles see `/auth/unauthorized` | Add the slug to `scripts/seed-permissions.ts` and run `npm run db:seed` |
+| Using `router.push()` instead of `router.refresh()` | Page navigates away or shows stale data | Use `router.refresh()` after mutations |
+| Multi-table insert without a transaction | Partial data on error (e.g. vendor inserted but no `vendor_details`) | Use `pool.getConnection()` + `beginTransaction()` |
+| Bulk insert blows up on first duplicate | All subsequent rows skipped | Use `ON DUPLICATE KEY UPDATE` or catch `ER_DUP_ENTRY` per-row |
+| Passing `access` prop but not using it | Viewers see edit buttons that fail with 401 | Check `access === "editor"` before rendering mutation UI |
+
+---
+
+## Reference Files
+
+| What | Path |
+|------|------|
+| Simple API route pattern | `app/api/masters/skus/route.ts` |
+| Transactional multi-table route | `app/api/masters/vendors/route.ts` |
+| Complex multi-action route | `app/api/masters/raw-materials/route.ts` |
+| Server page pattern | `app/masters/skus/page.tsx` |
+| Client component pattern | `app/masters/skus/SkusClient.tsx` |
+| SQL query file | `lib/queries/vendors.ts` |
+| Type definitions | `types/masters.ts` |
+| Sidebar NAV array | `components/Sidebar.tsx` |
+| Permission seeding | `scripts/seed-permissions.ts` |

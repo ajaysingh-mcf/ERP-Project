@@ -1,0 +1,140 @@
+# System Architecture
+
+> **Related docs:** [Database Schema](./database-schema.md) · [Authentication & Permissions](./authentication-and-permissions.md) · [Frontend Patterns](./frontend-patterns.md)
+
+## Technology Stack
+
+| Technology | Version | Role | Notable constraint |
+|------------|---------|------|--------------------|
+| Next.js | 16 | Full-stack framework (App Router) | `serverExternalPackages: ["mysql2"]` required |
+| React | 19 | UI rendering | Server Components for data, Client Components for interactivity |
+| TypeScript | 6 | Type safety across the entire codebase | Strict mode enabled |
+| Tailwind CSS | v4 | Utility-first styling | CSS-first config — no `tailwind.config.js` needed for most customisation |
+| shadcn/ui + Radix UI | — | Component library | Components live in `components/ui/`; use the shadcn CLI to regenerate |
+| mysql2 | 3 | Runtime database access | Connection pool in `lib/db.ts`; NOT Prisma Client |
+| Prisma | 7 | Schema definition and migrations **only** | Client generated to `app/generated/prisma/` — not imported at runtime |
+| NextAuth | v5 beta | Authentication | Google OAuth only, JWT strategy |
+| MariaDB | — | Primary database (AWS RDS) | Accessed via `mysql2` connection pool |
+
+## High-Level Component Map
+
+```mermaid
+flowchart LR
+    Browser["Browser"] --> MW["middleware.ts\n(auth gate)"]
+    MW --> SC["Server Component\n(app/**/page.tsx)"]
+    MW --> AR["API Route\n(app/api/**/route.ts)"]
+    SC --> LDB["lib/db.ts\n(mysql2 pool)"]
+    SC --> LP["lib/permissions.ts\n(resolveAccess)"]
+    AR --> LDB
+    AR --> LA["lib/auth.ts\n(NextAuth)"]
+    LDB --> DB[("MariaDB\n(AWS RDS)")]
+    SC --> CC["Client Component\n(*Client.tsx)"]
+    CC --> AR
+```
+
+## Authenticated Page Load Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant M as middleware.ts
+    participant P as page.tsx (Server)
+    participant DB as lib/db.ts → MariaDB
+
+    B->>M: GET /masters/skus
+    M->>M: Validate JWT cookie (NextAuth)
+    alt No valid session
+        M-->>B: Redirect → /auth/signin
+    end
+    M->>P: Forward request
+    P->>P: auth() — get session + userId + roles
+    P->>DB: resolveAccess(userId, roles, "/masters")
+    DB-->>P: "editor" | "viewer" | "none"
+    alt access === "none"
+        P-->>B: Redirect → /auth/unauthorized
+    end
+    P->>DB: query<Sku[]>(SELECT sql)
+    DB-->>P: rows[]
+    P-->>B: Server-rendered HTML + hydrated <SkusClient initialSkus={rows} />
+```
+
+## API Mutation Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant C as Client Component
+    participant R as route.ts (API)
+    participant DB as lib/db.ts → MariaDB
+
+    C->>R: POST /api/masters/skus\n{ action: "create", sku_code: "SKU001", name: "..." }
+    R->>R: auth() — verify session (401 if missing)
+    R->>R: Parse body, validate required fields (400 if missing)
+    R->>DB: execute(INSERT INTO skus ...)
+    DB-->>R: ResultSetHeader { insertId: 42 }
+    R-->>C: 200 { id: 42 }
+    C->>C: router.refresh()
+    note over C: Triggers Server Component re-fetch;\nnew row appears in table
+```
+
+## Directory Map
+
+| Path | Purpose |
+|------|---------|
+| `app/` | Next.js App Router — all pages, layouts, and API routes |
+| `app/api/` | REST API route handlers (mutations only; reads happen in server components) |
+| `app/masters/` | The fully-implemented Masters module (SKUs, Vendors, Manufacturers, RM, PM, BOM) |
+| `app/auth/` | Sign-in, error, and unauthorised pages |
+| `app/generated/prisma/` | **Auto-generated** Prisma Client — do not edit; do not import in application code |
+| `components/` | Shared React components |
+| `components/ui/` | shadcn/ui component primitives (Button, Input, Dialog, Table, Badge, etc.) |
+| `components/masters/` | Reusable masters UI: AddRecordDialog, CsvImportDialog, MasterToolbar, SearchInput |
+| `lib/` | Core server-side utilities |
+| `lib/db.ts` | mysql2 connection pool singleton with `query()` and `execute()` helpers |
+| `lib/auth.ts` | NextAuth configuration, callbacks, and session management |
+| `lib/permissions.ts` | `resolveAccess()` — the RBAC decision function |
+| `lib/utils.ts` | `cn()` — Tailwind class name utility |
+| `lib/queries/` | SQL statement strings grouped by domain |
+| `types/` | TypeScript types for database row shapes and NextAuth session augmentation |
+| `prisma/` | `schema.prisma` (source of truth for DB models) + migration history |
+| `scripts/` | One-off utility scripts (seed, test-connection) |
+| `public/` | Static assets served directly by Next.js |
+
+## The Prisma / mysql2 Split
+
+This is the most common point of confusion in this codebase.
+
+**`prisma/schema.prisma`** is the single source of truth for the database structure. It is used to:
+- Generate SQL migration files (`npx prisma migrate dev`)
+- Apply migrations in production (`npx prisma migrate deploy`)
+- Browse the schema visually (`npx prisma studio`)
+
+**At runtime, nothing uses Prisma Client.** All database calls go through `lib/db.ts`:
+
+```ts
+// lib/db.ts — the only database interface in application code
+export async function query<T>(sql: string, params?: any[]): Promise<T[]>
+export async function execute(sql: string, params?: any[]): Promise<mysql.ResultSetHeader>
+```
+
+SQL strings live in `lib/queries/<domain>.ts` and are called from API routes and server components.
+
+```ts
+// DO: import from lib/db.ts
+import { query, execute } from "@/lib/db";
+
+// DO NOT: import from generated Prisma client at runtime
+import { PrismaClient } from "@/app/generated/prisma"; // ← wrong
+```
+
+## Stub Modules
+
+The following modules have an `app/<module>/page.tsx` file showing a "Coming soon" placeholder. No API routes or database logic exist for them yet.
+
+- `app/finance/`
+- `app/hr-payroll/`
+- `app/inventory/`
+- `app/manufacturing/`
+- `app/sales-crm/`
+- `app/reports/`
+
+See [Adding a New Module](./adding-a-new-module.md) for how to implement one from scratch, and [docs/architecture-evolution.md](./architecture-evolution.md) for the planned gateway + events pattern to adopt when building them.

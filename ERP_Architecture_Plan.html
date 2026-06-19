@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ERP System — Complete Architecture Plan (TypeScript)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 14px;
+      color: #1a1a2e;
+      background: #f5f6fa;
+      padding: 40px 20px;
+    }
+
+    .page {
+      max-width: 960px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 2px 20px rgba(0,0,0,0.08);
+      padding: 60px 70px;
+    }
+
+    /* Cover */
+    .cover {
+      text-align: center;
+      padding: 40px 0 50px;
+      border-bottom: 3px solid #e63946;
+      margin-bottom: 50px;
+    }
+    .cover .logo-text {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #e63946;
+      margin-bottom: 20px;
+    }
+    .cover h1 {
+      font-size: 36px;
+      font-weight: 800;
+      color: #1a1a2e;
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+    .cover .subtitle {
+      font-size: 16px;
+      color: #555;
+      margin-bottom: 30px;
+    }
+    .cover .meta {
+      display: inline-flex;
+      gap: 30px;
+      background: #f5f6fa;
+      padding: 14px 30px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #444;
+    }
+    .cover .meta span { font-weight: 600; color: #1a1a2e; }
+
+    /* Sections */
+    h2 {
+      font-size: 22px;
+      font-weight: 800;
+      color: #1a1a2e;
+      margin: 50px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #e63946;
+    }
+    h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin: 28px 0 10px;
+    }
+    h4 {
+      font-size: 13px;
+      font-weight: 700;
+      color: #e63946;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin: 20px 0 8px;
+    }
+    p {
+      line-height: 1.7;
+      color: #333;
+      margin-bottom: 12px;
+    }
+
+    /* Callout box */
+    .callout {
+      background: #fff5f5;
+      border-left: 4px solid #e63946;
+      padding: 14px 20px;
+      border-radius: 0 6px 6px 0;
+      margin: 20px 0;
+      font-size: 13.5px;
+      color: #333;
+      line-height: 1.6;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 24px;
+      font-size: 13px;
+    }
+    thead tr {
+      background: #1a1a2e;
+      color: #fff;
+    }
+    thead th {
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    tbody tr:nth-child(even) { background: #f9f9fb; }
+    tbody tr:hover { background: #fff0f0; }
+    tbody td {
+      padding: 9px 14px;
+      border-bottom: 1px solid #eee;
+      color: #333;
+      vertical-align: top;
+    }
+    tbody td:first-child { font-weight: 600; color: #1a1a2e; }
+    td code, th code {
+      background: #f0f0f5;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* Code / diagram blocks */
+    pre {
+      background: #1a1a2e;
+      color: #e8e8f0;
+      padding: 20px 24px;
+      border-radius: 8px;
+      font-family: 'Courier New', Consolas, monospace;
+      font-size: 12.5px;
+      line-height: 1.7;
+      overflow-x: auto;
+      margin: 16px 0 24px;
+    }
+
+    /* Service cards */
+    .service-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 16px 0 28px;
+    }
+    .service-card {
+      border: 1px solid #e8e8f0;
+      border-radius: 8px;
+      padding: 16px 18px;
+      background: #fafafa;
+    }
+    .service-card .svc-name {
+      font-weight: 800;
+      font-size: 14px;
+      color: #1a1a2e;
+      margin-bottom: 4px;
+    }
+    .service-card .svc-owns {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #e63946;
+      margin-bottom: 8px;
+    }
+    .service-card ul {
+      padding-left: 16px;
+      margin: 0;
+    }
+    .service-card ul li {
+      font-size: 12.5px;
+      color: #444;
+      line-height: 1.6;
+      margin-bottom: 2px;
+    }
+    .service-card .svc-db {
+      margin-top: 8px;
+      font-size: 11.5px;
+      color: #888;
+    }
+    .service-card .svc-db code {
+      background: #eef;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+
+    /* Phase cards */
+    .phase-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 16px 0;
+    }
+    .phase-card {
+      border-radius: 8px;
+      padding: 18px 20px;
+      border: 1px solid #e0e0ec;
+    }
+    .phase-card .phase-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #e63946;
+      margin-bottom: 4px;
+    }
+    .phase-card .phase-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: #1a1a2e;
+      margin-bottom: 10px;
+    }
+    .phase-card ul {
+      padding-left: 16px;
+    }
+    .phase-card ul li {
+      font-size: 12.5px;
+      color: #444;
+      line-height: 1.7;
+    }
+    .phase-card.p1 { background: #fff5f5; border-color: #fcc; }
+    .phase-card.p2 { background: #fff8f0; border-color: #fde; }
+    .phase-card.p3 { background: #f0f8ff; border-color: #cde; }
+    .phase-card.p4 { background: #f0fff4; border-color: #cec; }
+    .phase-card.p5 { background: #faf0ff; border-color: #dce; }
+
+    /* Scale table highlight */
+    .scale-row-highlight td { background: #fff0f0 !important; font-weight: 600; }
+
+    /* Flow steps */
+    .flow {
+      counter-reset: step;
+      margin: 16px 0 24px;
+      padding: 0;
+      list-style: none;
+    }
+    .flow li {
+      counter-increment: step;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: #333;
+      line-height: 1.5;
+    }
+    .flow li::before {
+      content: counter(step);
+      background: #e63946;
+      color: white;
+      font-weight: 800;
+      font-size: 11px;
+      min-width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .flow li .svc-tag {
+      display: inline-block;
+      background: #1a1a2e;
+      color: #e8e8f0;
+      font-size: 10.5px;
+      padding: 1px 7px;
+      border-radius: 3px;
+      font-family: monospace;
+      margin-left: 6px;
+    }
+
+    /* Tag badges */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-red { background: #ffe0e0; color: #c0392b; }
+    .badge-blue { background: #e0eeff; color: #1a5db8; }
+    .badge-green { background: #e0ffe8; color: #1a8040; }
+    .badge-gray { background: #ebebeb; color: #555; }
+
+    /* Footer */
+    .footer {
+      margin-top: 60px;
+      padding-top: 20px;
+      border-top: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: #aaa;
+    }
+
+    /* Print */
+    @media print {
+      body { background: white; padding: 0; }
+      .page { box-shadow: none; padding: 40px 50px; }
+      h2 { page-break-before: auto; }
+      .service-grid { grid-template-columns: 1fr 1fr; }
+      pre { font-size: 11px; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- COVER -->
+  <div class="cover">
+    <div class="logo-text">mcaffeine ERP Platform</div>
+    <h1>Complete System Architecture<br>& Technology Plan</h1>
+    <div class="subtitle">Microservices · API Gateway · Redis · TypeScript Full-Stack · Built for 1,000+ Users</div>
+    <div class="meta">
+      <div>Version <span>1.0</span></div>
+      <div>Date <span>June 2026</span></div>
+      <div>Stack <span>TypeScript End-to-End</span></div>
+      <div>Target Users <span>1,000 → ∞</span></div>
+    </div>
+  </div>
+
+
+  <!-- OVERVIEW -->
+  <h2>1. System Overview</h2>
+  <p>
+    This document defines the complete architecture for mcaffeine's internal ERP platform — covering production planning, supply chain, procurement, manufacturing, QC, finance, vendor & manufacturer portals, and reporting. The system is designed as a <strong>domain-driven microservices platform</strong> running on Kubernetes, with a Kong API Gateway, Redis cluster, and PostgreSQL per service.
+  </p>
+  <div class="callout">
+    <strong>Design goal:</strong> Support 1,000 concurrent internal users at launch with a clear, low-friction path to 50,000+ users without rewriting any service — only adding infrastructure.
+  </div>
+
+  <h3>High-Level Architecture Diagram</h3>
+  <pre>
+  [ Browser / Mobile App ]
+           │
+  [ CDN / AWS ALB Load Balancer ]
+           │
+  ┌────────────────────────────────────────┐
+  │           API GATEWAY (Kong)           │
+  │   • JWT validation  • Rate limiting    │
+  │   • Request routing • ELK logging      │
+  └────────────────────────────────────────┘
+           │
+  ┌────────┴────────────────────────────────────────────────────┐
+  │                   MICROSERVICES LAYER                        │
+  │                                                              │
+  │  [auth]   [master-data]  [production]   [procurement]        │
+  │  [inventory]  [manufacturing]  [qc]     [finance]            │
+  │  [logistics]  [workflow]  [analytics]   [notifications]      │
+  │  [vendor-portal]  [mfg-portal]  [documents]                  │
+  └──────────────────────────────────────────────────────────────┘
+           │                    │                    │
+  [ Redis Cluster ]   [ PostgreSQL × 15 ]   [ S3 / MinIO ]
+  Sessions, Cache,    One DB per service     Files, PDFs,
+  Pub/Sub, Queues     ACID + Read Replicas   COAs, Docs
+           │
+  [ Elasticsearch ]   ← Full-text search, Analytics indexing
+  </pre>
+
+
+  <!-- TECH STACK -->
+  <h2>2. Technology Stack</h2>
+  <table>
+    <thead>
+      <tr><th>Layer</th><th>Technology</th><th>Reason</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Frontend</td><td>Next.js 14 (TypeScript, App Router)</td><td>SSR for fast load; role-based routing; great DX</td></tr>
+      <tr><td>UI Library</td><td>Tailwind CSS + shadcn/ui</td><td>Consistent design system, no custom CSS overhead</td></tr>
+      <tr><td>Backend Services</td><td><strong>TypeScript + NestJS</strong></td><td>Decorators, dependency injection, built-in module system — ideal for microservices; fully type-safe end-to-end with the Next.js frontend</td></tr>
+      <tr><td>API Gateway</td><td>Kong (Open Source)</td><td>Plugin ecosystem; JWT, rate-limiting, logging built-in</td></tr>
+      <tr><td>Primary Database</td><td>PostgreSQL 16 (one per service) + <strong>Prisma ORM</strong></td><td>ACID transactions; Prisma gives fully type-safe DB queries in TypeScript — no raw SQL errors</td></tr>
+      <tr><td>Cache / Session / Queue</td><td>Redis 7 (Cluster mode)</td><td>Sessions, hot data, real-time COGS, pub/sub</td></tr>
+      <tr><td>Job Queue / Message Bus</td><td><strong>BullMQ</strong> (TypeScript-native, runs on Redis)</td><td>Replaces Kafka entirely — uses your existing Redis; supports queues, workers, delayed jobs, retries, priorities, cron jobs. No extra infra needed at any scale.</td></tr>
+      <tr><td>File Storage</td><td>AWS S3 or MinIO (self-hosted)</td><td>PDFs, COAs, tech transfer docs</td></tr>
+      <tr><td>Search / Analytics</td><td>Elasticsearch</td><td>Full-text SKU/vendor search; analytics aggregations</td></tr>
+      <tr><td>Containers</td><td>Docker + Kubernetes (K8s)</td><td>Horizontal pod autoscaling per service</td></tr>
+      <tr><td>CI/CD</td><td>GitHub Actions</td><td>Build → test → deploy pipeline per service</td></tr>
+      <tr><td>Monitoring</td><td>Prometheus + Grafana</td><td>Service health, DB latency, Redis hit rate dashboards</td></tr>
+      <tr><td>Logging</td><td>ELK Stack (Elasticsearch + Logstash + Kibana)</td><td>Structured logs across all 15 services</td></tr>
+      <tr><td>Secrets</td><td>HashiCorp Vault or AWS Secrets Manager</td><td>DB credentials, API keys, tokens</td></tr>
+    </tbody>
+  </table>
+
+
+  <!-- MICROSERVICES -->
+  <h2>3. Microservices — All 15 Services</h2>
+  <p>Each service owns its domain, has its own database, and communicates with others via the API Gateway (sync) or <strong>BullMQ on Redis</strong> (async events and job queues). No service directly queries another service's database.</p>
+
+  <div class="service-grid">
+
+    <div class="service-card">
+      <div class="svc-name">1. Auth Service</div>
+      <div class="svc-owns">Authentication & Authorization</div>
+      <ul>
+        <li>JWT tokens: 15-min access, 7-day refresh (stored in Redis)</li>
+        <li>RBAC roles: admin, planner, procurement_manager, finance, qc_lead, vendor, manufacturer</li>
+        <li>Token blacklist in Redis on logout</li>
+        <li>SSO-ready (SAML / OAuth2 extensible)</li>
+      </ul>
+      <div class="svc-db">DB: <code>auth_db</code> &nbsp;|&nbsp; Redis: session store, blacklist</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">2. Master Data Service</div>
+      <div class="svc-owns">Single Source of Truth</div>
+      <ul>
+        <li>SKUs, BOMs (Bill of Materials), UOMs</li>
+        <li>Raw materials (RM) and packaging materials (PM)</li>
+        <li>Vendors, manufacturers, warehouses, cost centers</li>
+        <li>All other services call this for reference lookups</li>
+      </ul>
+      <div class="svc-db">DB: <code>master_db</code> — tables: products, bom_headers, bom_lines, vendors, manufacturers, warehouses</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">3. Production Planning Service</div>
+      <div class="svc-owns">Plans, MRP, Capacity</div>
+      <ul>
+        <li>Create and approve production plans linked to SKUs + BOMs</li>
+        <li>MRP engine: explode BOM → auto-generate procurement demands</li>
+        <li>Capacity checks against manufacturing lines</li>
+        <li>Status flow: Draft → Approved → In Progress → Completed</li>
+      </ul>
+      <div class="svc-db">DB: <code>production_db</code> — tables: production_plans, plan_lines, mrp_runs, capacity_slots</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">4. Procurement Service</div>
+      <div class="svc-owns">FG PO, RM/PM PO, Reconciliation</div>
+      <ul>
+        <li><strong>FG PO Creation:</strong> Purchase orders to contract manufacturers for finished goods</li>
+        <li><strong>RM/PM Procurement:</strong> POs for raw materials and packaging materials</li>
+        <li><strong>Open PO Reconciliation:</strong> Match dispatched vs received qty, flag variances</li>
+        <li>PO lifecycle: Draft → Sent → Acknowledged → Partial GRN → Closed</li>
+      </ul>
+      <div class="svc-db">DB: <code>procurement_db</code> — tables: purchase_orders, po_lines, vendor_acks, po_reconciliation</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">5. Inventory Service</div>
+      <div class="svc-owns">Stock, GRN, Transfers, Reconciliation</div>
+      <ul>
+        <li><strong>Inwarding of FG:</strong> Goods Receipt Note when finished goods arrive at warehouse</li>
+        <li><strong>RM/PM Stock Reconciliation:</strong> Match physical vs system stock at MFG site</li>
+        <li><strong>Internal Transfer:</strong> Move stock between warehouses with approval</li>
+        <li>Double-entry inventory ledger (every movement has debit + credit location)</li>
+      </ul>
+      <div class="svc-db">DB: <code>inventory_db</code> — tables: stock_ledger, grn_headers, grn_lines, internal_transfers, reconciliation_reports</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">6. Manufacturing Service</div>
+      <div class="svc-owns">Tech Transfer, Revamp, New Launches</div>
+      <ul>
+        <li><strong>Tech Transfer:</strong> Formulation transfer from R&D to manufacturer — versioned, approval-gated, document-driven</li>
+        <li><strong>Product Revamp:</strong> Track formulation changes, BOM updates, cost impact assessment</li>
+        <li><strong>New Launches:</strong> Project tracker from ideation → sampling → approval → launch</li>
+      </ul>
+      <div class="svc-db">DB: <code>manufacturing_db</code> — tables: manufacturing_orders, tech_transfers, product_revamps, launch_projects</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">7. QC Service</div>
+      <div class="svc-owns">Quality Control & Compliance</div>
+      <ul>
+        <li>Every GRN inward triggers a QC inspection task automatically</li>
+        <li>QC for RM, PM, Finished Goods, and in-process</li>
+        <li>Upload and manage Certificates of Analysis (COAs)</li>
+        <li>Hold/release workflow with approval trail</li>
+      </ul>
+      <div class="svc-db">DB: <code>qc_db</code> — tables: qc_inspections, qc_parameters, coa_records, hold_orders</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">8. Finance Service</div>
+      <div class="svc-owns">Costs, COGS, Invoices</div>
+      <ul>
+        <li><strong>Cost Creation & Approval:</strong> Build cost sheets per SKU (RM + PM + conversion + overhead)</li>
+        <li><strong>Real-time COGS:</strong> Computed from production actuals; streamed via Redis pub/sub</li>
+        <li><strong>Invoice Management:</strong> AP/AR invoices; 3-way match (PO + GRN + Invoice)</li>
+        <li>Finance overview dashboard with live numbers</li>
+      </ul>
+      <div class="svc-db">DB: <code>finance_db</code> — tables: cost_sheets, cost_approvals, cogs_snapshots, ap_invoices, ar_invoices, invoice_matches</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">9. Logistics Service</div>
+      <div class="svc-owns">Freight & Shipment</div>
+      <ul>
+        <li><strong>Freight Approval:</strong> Raise freight request → approval by logistics head → booking confirmation</li>
+        <li>Track shipment status and freight costs per PO/GRN</li>
+        <li>Carrier management and rate comparison</li>
+      </ul>
+      <div class="svc-db">DB: <code>logistics_db</code> — tables: freight_requests, freight_approvals, shipments</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">10. Workflow & Approval Service</div>
+      <div class="svc-owns">Generic Approval Engine</div>
+      <ul>
+        <li>Configurable approval chains (sequential or parallel approvers)</li>
+        <li>Used by: POs, cost sheets, internal transfers, freight, QC holds, tech transfers</li>
+        <li>Notification triggers on every state change</li>
+        <li>Immutable audit trail for every approval action</li>
+      </ul>
+      <div class="svc-db">DB: <code>workflow_db</code> — tables: approval_workflows, approval_steps, approval_instances, approval_actions</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">11. Analytics & Reporting Service</div>
+      <div class="svc-owns">Dashboards, KPIs, Exports</div>
+      <ul>
+        <li>Pre-built reports: production efficiency, procurement spend, inventory turns, COGS by SKU, QC rejection rate</li>
+        <li>Custom report builder with drag-and-drop filters</li>
+        <li>Scheduled PDF / Excel exports (Redis job queue)</li>
+        <li>Reads from Elasticsearch (indexed by events from all services)</li>
+      </ul>
+      <div class="svc-db">DB: <code>analytics_db</code> + Elasticsearch cluster</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">12. Vendor Portal</div>
+      <div class="svc-owns">External — Vendor-Facing</div>
+      <ul>
+        <li>Vendors see only their own POs, invoices, and delivery schedules</li>
+        <li>Submit invoices, acknowledge POs, update shipment status</li>
+        <li>Completely isolated from internal APIs — separate auth scope</li>
+        <li>Hosted on separate subdomain: <code>vendors.erp.company.com</code></li>
+      </ul>
+      <div class="svc-db">Calls internal Procurement + Logistics APIs; vendor-scoped JWT</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">13. Manufacturer Portal</div>
+      <div class="svc-owns">External — Manufacturer-Facing</div>
+      <ul>
+        <li>Manufacturers view production plans assigned to them</li>
+        <li>Access tech transfer documents and QC standards</li>
+        <li>Submit dispatch details and upload COAs</li>
+        <li>Hosted on: <code>mfg.erp.company.com</code></li>
+      </ul>
+      <div class="svc-db">Calls internal Manufacturing + QC APIs; manufacturer-scoped JWT</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">14. Notification Service</div>
+      <div class="svc-owns">Email, WhatsApp, In-App</div>
+      <ul>
+        <li>Triggered by Redis pub/sub events from all other services</li>
+        <li>Channels: Email (SES), WhatsApp Business API, in-app alerts</li>
+        <li>Templated notifications: PO approved, GRN created, QC hold, freight approved</li>
+        <li>Delivery log with retry on failure</li>
+      </ul>
+      <div class="svc-db">DB: <code>notifications_db</code> — tables: notification_log, templates</div>
+    </div>
+
+    <div class="service-card">
+      <div class="svc-name">15. Document Service</div>
+      <div class="svc-owns">Files, MOM, Action Items</div>
+      <ul>
+        <li><strong>Minutes of Meeting (MOM):</strong> Create meeting records, assign action items, track resolution</li>
+        <li>Versioned file storage backed by S3/MinIO</li>
+        <li>Link documents to any entity (PO, tech transfer, QC inspection)</li>
+      </ul>
+      <div class="svc-db">DB: <code>documents_db</code> — tables: documents, mom_records, action_items</div>
+    </div>
+
+  </div>
+
+
+  <!-- REDIS -->
+  <h2>4. Redis — Usage Map</h2>
+  <p>Redis is the backbone for all stateful, real-time, and async operations across the platform.</p>
+  <table>
+    <thead>
+      <tr><th>Use Case</th><th>Redis Data Structure</th><th>Key Pattern / Channel</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>JWT Session Store</td><td>String with TTL</td><td><code>session:{userId}</code></td></tr>
+      <tr><td>Token Blacklist (logout)</td><td>Set with TTL</td><td><code>blacklist:{token_jti}</code></td></tr>
+      <tr><td>Hot Data Cache (SKUs, vendors)</td><td>Hash with TTL</td><td><code>sku:{id}</code>, <code>vendor:{id}</code></td></tr>
+      <tr><td>Real-time COGS Streaming</td><td>Pub/Sub</td><td>channel: <code>cogs.updates</code></td></tr>
+      <tr><td>Background Jobs (reports, emails)</td><td>BullMQ Queue (TypeScript-native)</td><td>queue: <code>jobs:reports</code></td></tr>
+      <tr><td>Approval Task Queue</td><td>BullMQ Queue</td><td>queue: <code>approvals:pending</code></td></tr>
+      <tr><td>API Rate Limiting (Kong plugin)</td><td>Sorted Set with TTL</td><td><code>ratelimit:{ip}:{min}</code></td></tr>
+      <tr><td>Inventory Hold Flags</td><td>String with TTL</td><td><code>hold:inventory:{sku_id}</code></td></tr>
+      <tr><td>Notifications Queue</td><td>BullMQ Queue</td><td>queue: <code>notifications:outbox</code></td></tr>
+    </tbody>
+  </table>
+
+
+  <!-- BULLMQ -->
+  <h2>5. BullMQ — Async Job Queue Architecture</h2>
+  <p>
+    <strong>BullMQ</strong> replaces Kafka entirely. It is a TypeScript-native, Redis-backed distributed job queue — no separate message broker infrastructure needed. Every microservice can produce jobs; dedicated worker processes consume them independently.
+  </p>
+  <div class="callout">
+    <strong>Why BullMQ over Kafka?</strong> Kafka requires its own cluster (ZooKeeper or KRaft), ops overhead, and separate client libraries. BullMQ runs on the Redis you already have, has first-class TypeScript support, a built-in dashboard (Bull Board), and handles everything your ERP needs: delayed jobs, retries with backoff, priorities, cron schedules, and concurrency control — all in one npm package.
+  </div>
+  <table>
+    <thead>
+      <tr><th>Queue Name</th><th>Producer Service</th><th>Consumer (Worker)</th><th>Job Type</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>procurement:po-events</code></td><td>Procurement Service</td><td>Notification + Workflow Service</td><td>PO created, approved, acknowledged</td></tr>
+      <tr><td><code>inventory:grn-events</code></td><td>Inventory Service</td><td>QC Service, Finance Service</td><td>GRN created → trigger QC + COGS update</td></tr>
+      <tr><td><code>finance:cogs-compute</code></td><td>Finance Service</td><td>Analytics Service</td><td>Recompute COGS on stock change</td></tr>
+      <tr><td><code>approvals:pending</code></td><td>Any service</td><td>Workflow Service</td><td>Approval task routing</td></tr>
+      <tr><td><code>notifications:outbox</code></td><td>Workflow + any service</td><td>Notification Service</td><td>Email, WhatsApp, in-app alerts</td></tr>
+      <tr><td><code>reports:scheduled</code></td><td>Analytics Service (cron)</td><td>Analytics Service worker</td><td>PDF/Excel report generation</td></tr>
+      <tr><td><code>qc:inspection-tasks</code></td><td>QC Service</td><td>QC Service worker</td><td>Auto-assign inspections on GRN</td></tr>
+    </tbody>
+  </table>
+  <pre>
+// Example: Inventory Service produces a job when GRN is created
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+
+@Injectable()
+export class GrnService {
+  constructor(@InjectQueue('inventory:grn-events') private grnQueue: Queue) {}
+
+  async createGrn(dto: CreateGrnDto) {
+    const grn = await this.grnRepository.save(dto);
+    // Notify QC and Finance asynchronously — fire and forget
+    await this.grnQueue.add('grn-created', { grnId: grn.id, skuId: grn.skuId });
+    return grn;
+  }
+}
+
+// QC Service worker consumes the event
+@Processor('inventory:grn-events')
+export class GrnEventsConsumer {
+  @Process('grn-created')
+  async handleGrnCreated(job: Job&lt;{ grnId: string; skuId: string }&gt;) {
+    await this.qcService.createInspectionTask(job.data.grnId);
+  }
+}
+  </pre>
+
+  <!-- API GATEWAY -->
+  <h2>6. API Gateway (Kong) — Route Map</h2>
+  <pre>
+Route                   → Service (NestJS)             Port
+──────────────────────────────────────────────────────────
+/api/auth/*             → auth-service                8001
+/api/master/*           → master-data-service         8002
+/api/production/*       → production-service          8003
+/api/procurement/*      → procurement-service         8004
+/api/inventory/*        → inventory-service           8005
+/api/manufacturing/*    → manufacturing-service       8006
+/api/qc/*               → qc-service                 8007
+/api/finance/*          → finance-service             8008
+/api/logistics/*        → logistics-service           8009
+/api/workflow/*         → workflow-service            8010
+/api/analytics/*        → analytics-service          8011
+/api/vendor-portal/*    → vendor-portal-service       8012
+/api/mfg-portal/*       → mfg-portal-service          8013
+/api/notifications/*    → notification-service        8014
+/api/documents/*        → document-service            8015
+
+Global Kong Plugins (applied to all routes):
+  ✓ JWT validation       (skip: /api/auth/login, /api/auth/refresh)
+  ✓ Rate limiting        200 req/min per user · 2,000 req/min per IP
+  ✓ Request logging      → Kibana (ELK)
+  ✓ CORS headers
+  ✓ IP allowlist         vendor + mfg portals only from approved networks
+  ✓ Request ID           Inject X-Request-ID for trace correlation
+  </pre>
+
+
+  <!-- DATA FLOW -->
+  <h2>7. End-to-End Data Flow — FG PO → Inwarding → COGS</h2>
+  <p>Illustrates how modules connect in a real business transaction:</p>
+  <ol class="flow">
+    <li>Planner creates a Production Plan linked to a SKU and BOM <span class="svc-tag">production-service</span></li>
+    <li>MRP engine explodes the BOM → auto-generates Procurement Demands as Redis Stream events <span class="svc-tag">production-service → redis</span></li>
+    <li>Procurement team creates a FG Purchase Order against the demand <span class="svc-tag">procurement-service</span></li>
+    <li>Approval engine routes the PO through the configured approval chain <span class="svc-tag">workflow-service</span></li>
+    <li>Approved PO appears in the Manufacturer Portal for acknowledgment <span class="svc-tag">mfg-portal-service</span></li>
+    <li>Manufacturer acknowledges, raises dispatch; Freight Request created <span class="svc-tag">logistics-service</span></li>
+    <li>Freight approved by Logistics Head → carrier booked <span class="svc-tag">logistics-service + workflow-service</span></li>
+    <li>FG arrives at warehouse → GRN created (Inwarding) <span class="svc-tag">inventory-service</span></li>
+    <li>GRN event triggers QC inspection task automatically <span class="svc-tag">qc-service via redis event</span></li>
+    <li>QC releases the batch → stock posted to inventory ledger <span class="svc-tag">inventory-service</span></li>
+    <li>Finance performs 3-way match: PO + GRN + Manufacturer Invoice <span class="svc-tag">finance-service</span></li>
+    <li>COGS snapshot updated and pushed live to dashboard via Redis pub/sub <span class="svc-tag">finance-service → analytics dashboard</span></li>
+  </ol>
+
+
+  <!-- MONOREPO -->
+  <h2>8. Project Structure (Monorepo)</h2>
+  <pre>
+erp-platform/
+├── services/
+│   ├── auth-service/             # NestJS (TypeScript)
+│   ├── master-data-service/      # NestJS (TypeScript)
+│   ├── production-service/       # NestJS (TypeScript)
+│   ├── procurement-service/      # NestJS (TypeScript)
+│   ├── inventory-service/        # NestJS (TypeScript)
+│   ├── manufacturing-service/    # NestJS (TypeScript)
+│   ├── qc-service/               # NestJS (TypeScript)
+│   ├── finance-service/          # NestJS (TypeScript)
+│   ├── logistics-service/        # NestJS (TypeScript)
+│   ├── workflow-service/         # NestJS (TypeScript)
+│   ├── analytics-service/        # NestJS (TypeScript)
+│   ├── vendor-portal-service/    # NestJS (TypeScript)
+│   ├── mfg-portal-service/       # NestJS (TypeScript)
+│   ├── notification-service/     # NestJS + BullMQ workers — email, WhatsApp
+│   └── document-service/         # NestJS (TypeScript) — MOM, file uploads
+│
+│   Each service structure:
+│   src/ ├── modules/   (NestJS feature modules)
+│        ├── entities/  (Prisma schema + generated types)
+│        ├── queues/    (BullMQ producers &amp; consumers)
+│        ├── guards/    (Auth + role guards)
+│        └── main.ts
+│
+├── frontend/
+│   └── web/                      # Next.js 14 (TypeScript, App Router)
+│
+├── gateway/
+│   └── kong/                     # Kong declarative YAML config
+│
+├── infra/
+│   ├── k8s/                      # Kubernetes manifests per service
+│   ├── terraform/                # Cloud infrastructure as code
+│   └── docker-compose.yml        # Full local dev environment
+│
+├── shared/
+│   ├── types/                    # Shared TypeScript interfaces (npm workspace)
+│   ├── bullmq-events/            # BullMQ job payload type definitions
+│   └── prisma-base/              # Shared Prisma base config
+│
+└── .github/
+    └── workflows/                # CI/CD: tsc check + jest tests + K8s deploy per service
+  </pre>
+
+
+  <!-- PHASED ROADMAP -->
+  <h2>9. Phased Build Roadmap (30 Weeks)</h2>
+
+  <div class="phase-grid">
+    <div class="phase-card p1">
+      <div class="phase-label">Phase 1 · Weeks 1–6</div>
+      <div class="phase-title">Foundation</div>
+      <ul>
+        <li>Auth Service + JWT + RBAC</li>
+        <li>Kong API Gateway setup</li>
+        <li>Redis Cluster configuration</li>
+        <li>Master Data Service (SKUs, BOMs, vendors, manufacturers)</li>
+        <li>Next.js frontend shell (login, navigation, role-based menu)</li>
+        <li>Docker Compose for full local dev</li>
+      </ul>
+    </div>
+    <div class="phase-card p2">
+      <div class="phase-label">Phase 2 · Weeks 7–14</div>
+      <div class="phase-title">Core Supply Chain</div>
+      <ul>
+        <li>Procurement Service (RM/PM PO + FG PO)</li>
+        <li>Inventory Service (inwarding, stock ledger, internal transfers)</li>
+        <li>Workflow Service (approval engine)</li>
+        <li>Notification Service (email triggers)</li>
+      </ul>
+    </div>
+    <div class="phase-card p3">
+      <div class="phase-label">Phase 3 · Weeks 15–20</div>
+      <div class="phase-title">Production & Manufacturing</div>
+      <ul>
+        <li>Production Planning Service (plans, MRP, capacity)</li>
+        <li>Manufacturing Service (tech transfer, revamp, new launches)</li>
+        <li>QC Service (inspections, COAs, hold/release)</li>
+      </ul>
+    </div>
+    <div class="phase-card p4">
+      <div class="phase-label">Phase 4 · Weeks 21–26</div>
+      <div class="phase-title">Finance & Analytics</div>
+      <ul>
+        <li>Finance Service (cost sheets, real-time COGS, 3-way invoice match)</li>
+        <li>Analytics Service (dashboards, KPI reports, exports)</li>
+        <li>Logistics Service (freight approvals, shipment tracking)</li>
+      </ul>
+    </div>
+    <div class="phase-card p5">
+      <div class="phase-label">Phase 5 · Weeks 27–30</div>
+      <div class="phase-title">External Portals</div>
+      <ul>
+        <li>Vendor Portal (external, fully scoped)</li>
+        <li>Manufacturer Portal (external, fully scoped)</li>
+        <li>Document Service (MOM, file management, action items)</li>
+      </ul>
+    </div>
+  </div>
+
+
+  <!-- KUBERNETES -->
+  <h2>10. Kubernetes Deployment — 1,000 Users</h2>
+  <table>
+    <thead>
+      <tr><th>Component</th><th>Configuration</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Each microservice</td><td>2–3 pods, HPA on CPU > 70%</td><td>Auto-scales on load spikes</td></tr>
+      <tr><td>Pod resources</td><td>0.25 CPU / 256Mi (req) · 1 CPU / 1Gi (limit)</td><td>Right-sized for ERP workload</td></tr>
+      <tr><td>Redis Cluster</td><td>3 master + 3 replica nodes</td><td>High availability, no single point of failure</td></tr>
+      <tr><td>PostgreSQL</td><td>1 primary + 1 read replica per service</td><td>RDS Multi-AZ or Patroni self-hosted</td></tr>
+      <tr><td>Kong API Gateway</td><td>2 replicas behind AWS ALB</td><td>Handles all inbound traffic</td></tr>
+      <tr><td>Elasticsearch</td><td>3-node cluster</td><td>Analytics + full-text search</td></tr>
+      <tr><td>Estimated AWS cost</td><td><strong>$2,000–3,500 / month</strong></td><td>At 1,000 users; scales linearly</td></tr>
+    </tbody>
+  </table>
+
+
+  <!-- SCALING -->
+  <h2>11. Scaling Path Beyond 1,000 Users</h2>
+  <table>
+    <thead>
+      <tr><th>User Threshold</th><th>Action Required</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>2,000 users</td><td>Kubernetes HPA auto-scales pod replicas; add 1 Redis node</td></tr>
+      <tr class="scale-row-highlight"><td>5,000 users</td><td>Add more BullMQ workers per queue (horizontal scaling); add PostgreSQL read replicas for reporting-heavy services; upgrade Redis cluster nodes</td></tr>
+      <tr><td>10,000 users</td><td>Introduce <strong>GraphQL Federation</strong> over REST; database sharding on high-write services (inventory, finance)</td></tr>
+      <tr class="scale-row-highlight"><td>50,000+ users</td><td>Multi-region Kubernetes (AWS us-east + ap-south); <strong>CQRS pattern</strong> — separate write DB from read DB per service; CDN for all static frontend assets</td></tr>
+      <tr><td>Enterprise scale</td><td>Dedicated data warehouse (<strong>Snowflake</strong> or <strong>Redshift</strong>) fed by Kafka → dbt pipeline; replace Elasticsearch with <strong>ClickHouse</strong> for OLAP queries</td></tr>
+    </tbody>
+  </table>
+
+
+  <!-- SECURITY -->
+  <h2>12. Security Architecture</h2>
+  <table>
+    <thead>
+      <tr><th>Concern</th><th>Approach</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Inter-service communication</td><td>mTLS (mutual TLS) inside the Kubernetes cluster — services authenticate each other</td></tr>
+      <tr><td>External portals isolation</td><td>Vendor + Manufacturer portals on separate subdomains; strict data scoping at service layer; only their own data visible</td></tr>
+      <tr><td>Data at rest</td><td>PostgreSQL column-level encryption for PII; S3 server-side encryption (SSE-KMS)</td></tr>
+      <tr><td>Audit trail</td><td>Immutable audit_log table in every service (who, what, when, previous value)</td></tr>
+      <tr><td>Public-facing routes</td><td>WAF (Web Application Firewall) in front of Kong for vendor/mfg portal routes</td></tr>
+      <tr><td>Secrets</td><td>No secrets in code or env files; all managed via HashiCorp Vault or AWS Secrets Manager</td></tr>
+      <tr><td>Role enforcement</td><td>Every API endpoint checks role from JWT; no client-side role decisions</td></tr>
+    </tbody>
+  </table>
+
+
+  <!-- TESTING -->
+  <h2>13. Testing & Verification Plan</h2>
+  <table>
+    <thead>
+      <tr><th>Test Type</th><th>Tool</th><th>What It Validates</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Unit tests</td><td>Jest + NestJS testing module (per service)</td><td>Business logic, DTO validation, guard logic, edge cases</td></tr>
+      <tr><td>Integration tests</td><td>Jest + Supertest + testcontainers</td><td>End-to-end flows: PO → GRN → QC → COGS against real DBs</td></tr>
+      <tr><td>Contract tests</td><td>Pact.io</td><td>Inter-service API contracts don't break across independent deploys</td></tr>
+      <tr><td>Load testing</td><td>k6 or Locust</td><td>Simulate 1,000 concurrent users; target: p99 latency &lt; 300ms, Redis cache hit &gt; 80%</td></tr>
+      <tr><td>Staging environment</td><td>K8s (mirror of prod)</td><td>Smoke tests run automatically on every GitHub Actions deploy</td></tr>
+      <tr><td>Security scan</td><td>OWASP ZAP + Dependabot</td><td>API vulnerabilities; dependency CVEs</td></tr>
+    </tbody>
+  </table>
+
+
+  <!-- ROLES -->
+  <h2>14. User Roles & Access Summary</h2>
+  <table>
+    <thead>
+      <tr><th>Role</th><th>Services They Access</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>admin</td><td>All services, all permissions</td></tr>
+      <tr><td>planner</td><td>Production Planning, Master Data (read), Inventory (read)</td></tr>
+      <tr><td>procurement_manager</td><td>Procurement, Master Data, Workflow, Logistics</td></tr>
+      <tr><td>inventory_manager</td><td>Inventory, Procurement (read), QC (read)</td></tr>
+      <tr><td>qc_lead</td><td>QC, Inventory (read), Manufacturing (read)</td></tr>
+      <tr><td>finance</td><td>Finance, Procurement (read), Inventory (read), Analytics</td></tr>
+      <tr><td>manufacturing_head</td><td>Manufacturing, Production (read), QC (read), Tech Transfer</td></tr>
+      <tr><td>logistics</td><td>Logistics, Procurement (read), Inventory (read)</td></tr>
+      <tr><td>vendor (external)</td><td>Vendor Portal only — scoped to their own POs/invoices</td></tr>
+      <tr><td>manufacturer (external)</td><td>Manufacturer Portal only — scoped to their plans/COAs</td></tr>
+    </tbody>
+  </table>
+
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div>mcaffeine ERP Platform — Architecture Plan v1.0</div>
+    <div>Confidential &amp; Internal — June 2026</div>
+  </div>
+
+</div>
+</body>
+</html>
