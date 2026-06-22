@@ -194,6 +194,10 @@ export async function POST(req: NextRequest) {
             existing.effective_to,
             existing.status,
           ])
+          await conn.execute(rawMaterials.archiveToHistoryVrm, [
+            rmId, existing.vendor_id, existing.curr_rate,
+            existing.effective_from, existing.effective_to, existing.status,
+          ])
           await conn.execute(rawMaterials.updateVendorRate, [
             v.curr_rate ? Number(v.curr_rate) : null,
             v.moq ? Number(v.moq) : null,
@@ -216,11 +220,29 @@ export async function POST(req: NextRequest) {
       }
 
       for (const m of mfgList) {
-        await conn.execute(rawMaterials.insertMfgApproval, [
-          rmId,
-          m.mfg_id ? Number(m.mfg_id) : null,
-          m.mfg_code?.trim() || null,
-        ])
+        const mfgId = m.mfg_id ? Number(m.mfg_id) : null
+        const [existingMfgRows] = await conn.execute(rawMaterials.checkMfgRate, [rmId, mfgId])
+        const existingMfg = (existingMfgRows as any[])[0]
+
+        if (existingMfg) {
+          await conn.execute(rawMaterials.archiveToHistoryMrm, [
+            existingMfg.mfg_id, rmId, existingMfg.approved_vendor_id ?? 0,
+            existingMfg.curr_rate, existingMfg.effective_from, null,
+            existingMfg.status === "active" ? 1 : 0,
+          ])
+          await conn.execute(rawMaterials.updateMfgRate, [
+            m.curr_rate ? Number(m.curr_rate) : existingMfg.curr_rate,
+            m.rate_uom?.trim() || existingMfg.uom,
+            today,
+            existingMfg.id,
+          ])
+        } else {
+          await conn.execute(rawMaterials.insertMfgApproval, [
+            rmId,
+            mfgId,
+            m.mfg_code?.trim() || null,
+          ])
+        }
       }
 
       await conn.commit()
@@ -269,6 +291,10 @@ export async function POST(req: NextRequest) {
               rmId, existing.vendor_id, existing.curr_rate, existing.moq,
               existing.uom, existing.effective_from, existing.effective_to, existing.status,
             ])
+            await conn.execute(rawMaterials.archiveToHistoryVrm, [
+              rmId, existing.vendor_id, existing.curr_rate,
+              existing.effective_from, existing.effective_to, existing.status,
+            ])
             await conn.execute(rawMaterials.updateVendorRate, [
               v.curr_rate ? Number(v.curr_rate) : null,
               v.moq ? Number(v.moq) : null,
@@ -287,14 +313,28 @@ export async function POST(req: NextRequest) {
           }
         }
         for (const m of mfgList) {
-          try {
+          const mfgId = m.mfg_id ? Number(m.mfg_id) : null
+          const [existingMfgRows] = await conn.execute(rawMaterials.checkMfgRate, [rmId, mfgId])
+          const existingMfg = (existingMfgRows as any[])[0]
+
+          if (existingMfg) {
+            await conn.execute(rawMaterials.archiveToHistoryMrm, [
+              existingMfg.mfg_id, rmId, existingMfg.approved_vendor_id ?? 0,
+              existingMfg.curr_rate, existingMfg.effective_from, null,
+              existingMfg.status === "active" ? 1 : 0,
+            ])
+            await conn.execute(rawMaterials.updateMfgRate, [
+              m.curr_rate ? Number(m.curr_rate) : existingMfg.curr_rate,
+              m.rate_uom?.trim() || existingMfg.uom,
+              today,
+              existingMfg.id,
+            ])
+          } else {
             await conn.execute(rawMaterials.insertMfgApproval, [
               rmId,
-              m.mfg_id ? Number(m.mfg_id) : null,
+              mfgId,
               m.mfg_code?.trim() || null,
             ])
-          } catch (err: any) {
-            if (err.code !== "ER_DUP_ENTRY") throw err
           }
         }
         await conn.commit()

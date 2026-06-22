@@ -12,7 +12,7 @@ export const skus = {
   /** Get all SKUs — used by CSV / Add wizards that need the full list. */
   selectAll: `
     SELECT id, sku_code, name, brand, category, status, created_at, created_by
-    FROM skus
+    FROM master_skus
     ORDER BY sku_code ASC
   `,
 
@@ -26,7 +26,7 @@ export const skus = {
    */
   selectPaginated: `
     SELECT id, sku_code, name, brand, category, status, created_at, created_by
-    FROM skus
+    FROM master_skus
     WHERE (? IS NULL OR sku_code LIKE ? OR name LIKE ? OR brand LIKE ?)
       AND (? IS NULL OR status = ?)
     ORDER BY sku_code ASC
@@ -39,7 +39,7 @@ export const skus = {
    */
   countAll: `
     SELECT COUNT(*) AS total
-    FROM skus
+    FROM master_skus
     WHERE (? IS NULL OR sku_code LIKE ? OR name LIKE ? OR brand LIKE ?)
       AND (? IS NULL OR status = ?)
   `,

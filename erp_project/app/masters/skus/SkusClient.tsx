@@ -97,7 +97,7 @@ export default function SkusClient({
           initialValue={currentSearch}
           placeholder="Search by code, name, brand…"
         />
-
+        {/* Search Based on Status. */}
         <select
           value={currentStatus || "all"}
           onChange={(e) =>
@@ -110,7 +110,7 @@ export default function SkusClient({
           <option value="inactive">Inactive</option>
           <option value="discontinued"> Discontinued</option>
         </select>
-
+          {/* Search Based on Brands. */}
         <select
           value={brandFilter}
           onChange={(e) => setBrandFilter(e.target.value)}

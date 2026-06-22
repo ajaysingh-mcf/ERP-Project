@@ -133,5 +133,34 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (action === "update") {
+    const { vendor_id, name, type, location, gst_number, status } = body
+    if (!vendor_id || !name?.trim() || !type?.trim()) {
+      return NextResponse.json({ error: "vendor_id, name and type are required" }, { status: 400 })
+    }
+
+    const conn = await pool.getConnection()
+    await conn.beginTransaction()
+    try {
+      await conn.execute(vendors.updateVendor, [name.trim(), type.trim(), vendor_id])
+      await conn.execute(vendors.updateVendorDetails, [
+        location?.trim() || null,
+        gst_number?.trim() || null,
+        status || "active",
+        vendor_id,
+      ])
+
+      // INSERT into your vendor
+
+      await conn.commit()
+      return NextResponse.json({ ok: true })
+    } catch (err: any) {
+      await conn.rollback()
+      console.error("Vendor update error:", err)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    } finally {
+      conn.release()
+    }
+  }
   return NextResponse.json({ error: "Invalid action" }, { status: 400 })
 }

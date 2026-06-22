@@ -6,7 +6,7 @@ export const bom = {
                 bd.effective_from,bd.effective_till,bd.last_updated,
                 b.created_by
             FROM bom_details AS bd
-            INNER JOIN bom AS b
+            INNER JOIN master_bom AS b
                 ON b.id = bd.bom_id;`,
     // ============ PAGINATED SELECT QUERIES ============
 
@@ -25,7 +25,7 @@ export const bom = {
         bd.effective_from, bd.effective_till, bd.last_updated,
         b.created_by
       FROM bom_details AS bd
-      INNER JOIN bom AS b ON b.id = bd.bom_id
+      INNER JOIN master_bom AS b ON b.id = bd.bom_id
       WHERE (? IS NULL OR b.bom_code LIKE ? OR b.sku_code LIKE ?)
         AND (? IS NULL OR bd.mtrl_type = ?)
         AND (? IS NULL OR b.status = ?)
@@ -40,15 +40,15 @@ export const bom = {
     countAll: `
       SELECT COUNT(*) AS total
       FROM bom_details AS bd
-      INNER JOIN bom AS b ON b.id = bd.bom_id
+      INNER JOIN master_bom AS b ON b.id = bd.bom_id
       WHERE (? IS NULL OR b.bom_code LIKE ? OR b.sku_code LIKE ?)
         AND (? IS NULL OR bd.mtrl_type = ?)
         AND (? IS NULL OR b.status = ?)
     `,
 
-    selectByIdBOMId: `Select * from bom where bom_code = ? and sku_code = ?`,
+    selectByIdBOMId: `Select * from master_bom where bom_code = ? and sku_code = ?`,
     insertBom: `
-        INSERT INTO bom (bom_code, sku_code, mfg_id, status)
+        INSERT INTO master_bom (bom_code, sku_code, mfg_id, status)
         VALUES (?, ?, ?, ?)
     `,
 

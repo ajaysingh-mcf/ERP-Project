@@ -3,7 +3,7 @@ import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
 import { query } from "@/lib/db"
 import { rawMaterials } from "@/lib/queries/raw-materials"
-import { PMMaterials } from "@/lib/queries/product-materials"
+import { PMMaterials } from "@/lib/queries/packing-materials"
 import { MaterialToggle } from "./MaterialToggle"
 import MaterialMasterClient from "./MaterialMasterClient"
 

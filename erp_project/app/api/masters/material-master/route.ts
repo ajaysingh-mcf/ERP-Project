@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { execute } from "@/lib/db"
 import { rawMaterials } from "@/lib/queries/raw-materials"
-import { PMMaterials } from "@/lib/queries/product-materials"
+import { PMMaterials } from "@/lib/queries/packing-materials"
 
 // ─── Param builders ──────────────────────────────────────────────────────────
 

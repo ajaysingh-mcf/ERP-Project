@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { execute, query, pool } from "@/lib/db"
-import { PMMaterials } from "@/lib/queries/product-materials"
+import { PMMaterials } from "@/lib/queries/packing-materials"
 
 function toPmParams(r: any) {
   return [
@@ -184,6 +184,10 @@ export async function POST(req: NextRequest) {
             existing.effective_to,
             existing.status,
           ])
+          await conn.execute(PMMaterials.archiveToHistoryVrm, [
+            pmId, existing.vendor_id, existing.curr_rate,
+            existing.effective_from, existing.effective_to, existing.status,
+          ])
           await conn.execute(PMMaterials.updateVendorRate, [
             v.curr_rate ? Number(v.curr_rate) : null,
             v.moq ? Number(v.moq) : null,
@@ -215,7 +219,16 @@ export async function POST(req: NextRequest) {
         const existing = (existingRows as any[])[0]
 
         if (existing) {
-          await conn.execute(PMMaterials.updateMfgRate, [0, null, today, existing.id])
+          await conn.execute(PMMaterials.archiveToHistoryMrm, [
+            existing.mfg_id, pmId, 0, existing.curr_rate,
+            existing.effective_from, null, existing.status === "active" ? 1 : 0,
+          ])
+          await conn.execute(PMMaterials.updateMfgRate, [
+            m.curr_rate ? Number(m.curr_rate) : existing.curr_rate,
+            m.rate_uom?.trim() || existing.uom,
+            today,
+            existing.id,
+          ])
         } else {
           await conn.execute(PMMaterials.insertMfgApproval, [
             pmId,
@@ -240,24 +253,29 @@ export async function POST(req: NextRequest) {
   // Add vendor rates and/or mfg approvals to an EXISTING PM (no new pm row inserted).
   // Body: { name, type, vendors: [...], manufacturers: [...] }
   if (action === "add-rates") {
-    const { name, type } = body
-    if (!name?.trim()) {
-      return NextResponse.json({ error: "name is required" }, { status: 400 })
-    }
+    const { name, type, pm_id } = body
     const vendorList = Array.isArray(body.vendors) ? body.vendors : []
     const mfgList = Array.isArray(body.manufacturers) ? body.manufacturers : []
     if (vendorList.length === 0 && mfgList.length === 0) {
       return NextResponse.json({ error: "Provide at least one vendor rate or manufacturer" }, { status: 400 })
     }
     try {
-      const pms = await query<{ id: number }>(PMMaterials.checkDuplicate, [
-        name.trim(),
-        type?.trim() || "",
-      ])
-      if (pms.length === 0) {
-        return NextResponse.json({ error: "Material not found" }, { status: 404 })
+      let pmId: number
+      if (pm_id) {
+        pmId = Number(pm_id)
+      } else {
+        if (!name?.trim()) {
+          return NextResponse.json({ error: "name is required" }, { status: 400 })
+        }
+        const pms = await query<{ id: number }>(PMMaterials.checkDuplicate, [
+          name.trim(),
+          type?.trim() || "",
+        ])
+        if (pms.length === 0) {
+          return NextResponse.json({ error: "Material not found" }, { status: 404 })
+        }
+        pmId = pms[0].id
       }
-      const pmId = pms[0].id
       const today = new Date().toISOString().slice(0, 10)
       const conn = await pool.getConnection()
       await conn.beginTransaction()
@@ -270,6 +288,10 @@ export async function POST(req: NextRequest) {
             await conn.execute(PMMaterials.archiveVendorRate, [
               pmId, existing.vendor_id, existing.curr_rate, existing.moq,
               existing.uom, existing.effective_from, existing.effective_to, existing.status,
+            ])
+            await conn.execute(PMMaterials.archiveToHistoryVrm, [
+              pmId, existing.vendor_id, existing.curr_rate,
+              existing.effective_from, existing.effective_to, existing.status,
             ])
             await conn.execute(PMMaterials.updateVendorRate, [
               v.curr_rate ? Number(v.curr_rate) : null,
@@ -294,7 +316,16 @@ export async function POST(req: NextRequest) {
           const [existingRows] = await conn.execute(PMMaterials.checkMfgRate, [pmId, mfgId])
           const existing = (existingRows as any[])[0]
           if (existing) {
-            await conn.execute(PMMaterials.updateMfgRate, [0, null, today, existing.id])
+            await conn.execute(PMMaterials.archiveToHistoryMrm, [
+              existing.mfg_id, pmId, 0, existing.curr_rate,
+              existing.effective_from, null, existing.status === "active" ? 1 : 0,
+            ])
+            await conn.execute(PMMaterials.updateMfgRate, [
+              m.curr_rate ? Number(m.curr_rate) : existing.curr_rate,
+              m.rate_uom?.trim() || existing.uom,
+              today,
+              existing.id,
+            ])
           } else {
             await conn.execute(PMMaterials.insertMfgApproval, [pmId, mfgId, m.mfg_code?.trim() || null, today])
           }

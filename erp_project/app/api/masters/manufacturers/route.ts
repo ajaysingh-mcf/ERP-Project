@@ -102,6 +102,35 @@ export async function POST(req: NextRequest) {
       conn.release()
     }
   }
+  if (action === "update") {
+    const { mfg_id, name, location, gst_number, status } = body
+    if (!mfg_id || !name?.trim()) {
+      return NextResponse.json({ error: "mfg_id and name are required" }, { status: 400 })
+    }
+
+    const conn = await pool.getConnection()
+    await conn.beginTransaction()
+    try {
+      await conn.execute(manufacturers.updateMfg, [name.trim(), mfg_id])
+      await conn.execute(manufacturers.updateMfgDetails, [
+        location?.trim() || null,
+        gst_number?.trim() || null,
+        status || "active",
+        mfg_id,
+      ])
+
+      // INSERT into your mfg history table here
+
+      await conn.commit()
+      return NextResponse.json({ ok: true })
+    } catch (err: any) {
+      await conn.rollback()
+      console.error("Mfg update error:", err)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    } finally {
+      conn.release()
+    }
+  }
 
   return NextResponse.json({ error: "Invalid action" }, { status: 400 })
 }

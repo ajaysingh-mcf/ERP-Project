@@ -40,7 +40,10 @@ import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
 import type { MasterField } from "@/components/masters/field-config"
 import type { Vendor } from "@/types/masters"
-
+import { useState } from "react"
+import { Pencil } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { EditVendorDialog } from "./EditVendorDialog"
 // Field definitions shared by the Add form and the CSV importer.
 const VENDOR_FIELDS: MasterField[] = [
   { key: "code",       label: "Code",       required: true,  placeholder: "e.g. VEN-001",         sample: "VEN-001" },
@@ -82,7 +85,7 @@ export default function VendorsClient({
   const router       = useRouter()
   const pathname     = usePathname()
   const searchParams = useSearchParams()
-
+  const [editVendor, setEditVendor] = useState<Vendor | null>(null)
   /**
    * Merge one or more key/value overrides into the current URL params,
    * reset page to 1, then navigate. Empty-string values delete the param.
@@ -165,6 +168,7 @@ export default function VendorsClient({
                 <TableHead>Location</TableHead>
                 <TableHead>GST Number</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="w-12" >Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -185,6 +189,11 @@ export default function VendorsClient({
                     <TableCell>{row.location ?? "—"}</TableCell>
                     <TableCell>{row.gst_number ?? "—"}</TableCell>
                     <TableCell>{row.status ?? "—"}</TableCell>
+                    <TableCell>
+                      <Button size="icon" variant="ghost" onClick={() => setEditVendor(row)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -195,6 +204,11 @@ export default function VendorsClient({
           <PaginationBar total={total} page={page} pageSize={pageSize} />
         </CardContent>
       </Card>
+      <EditVendorDialog
+        vendor={editVendor}
+        onSuccess={refresh}
+        onClose={() => setEditVendor(null)}
+      />
     </>
   )
 }

@@ -9,7 +9,7 @@ export const manufacturers = {
     selectAll: `select mfg.id, 
       mfgd.mfg_id , mfgd.status , mfgd.location,
       mfgd.gst_number, mfg.code , mfg.name 
-      from mfgs as mfg 
+      from master_mfgs as mfg 
       Inner Join mfg_details as mfgd 
       on mfgd.mfg_id = mfg.id
     order by mfgd.mfg_id ASC`,
@@ -24,7 +24,7 @@ export const manufacturers = {
     SELECT
       mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
       mfgd.gst_number, mfg.code, mfg.name
-    FROM mfgs AS mfg
+    FROM master_mfgs AS mfg
     INNER JOIN mfg_details AS mfgd ON mfgd.mfg_id = mfg.id
     WHERE (? IS NULL OR mfg.code LIKE ? OR mfg.name LIKE ?)
     ORDER BY mfg.code ASC
@@ -37,7 +37,7 @@ export const manufacturers = {
    */
   countAll: `
     SELECT COUNT(*) AS total
-    FROM mfgs AS mfg
+    FROM master_mfgs AS mfg
     INNER JOIN mfg_details AS mfgd ON mfgd.mfg_id = mfg.id
     WHERE (? IS NULL OR mfg.code LIKE ? OR mfg.name LIKE ?)
   `,
@@ -49,10 +49,18 @@ export const manufacturers = {
    * Parameters: [code, name]
    */
   insert: `
-    INSERT INTO mfgs (code, name) VALUES (?, ?)
+    INSERT INTO master_mfgs (code, name) VALUES (?, ?)
   `,
 
   insertDetails: `
     INSERT INTO mfg_details (mfg_id, location, gst_number, status) VALUES (?, ?, ?, ?)
+  `,
+  /** */
+  updateMfg: `
+    UPDATE master_mfgs SET name = ? WHERE id = ?
+  `,
+  /** */
+  updateMfgDetails: `
+    UPDATE mfg_details SET location = ?, gst_number = ?, status = ? WHERE mfg_id = ?
   `,
 }

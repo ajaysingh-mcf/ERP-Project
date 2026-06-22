@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react"
-import { GitCompare } from "lucide-react"
+import { GitCompare, Pencil } from "lucide-react"
 import type { RMByMfg, Vendor, Mfg } from "@/types/masters"
 import {
   RmRateTable,
@@ -18,6 +18,7 @@ import {
   type ColumnDef,
 } from "./RmRateTable"
 import { MfgDetailDialog } from "./MfgDetailDialog"
+import { EditRmMfgRateDialog } from "./EditRmMfgRateDialog"
 
 const MFG_COLUMNS: ColumnDef[] = [
   { key: "rm_code",              label: "RM Code",         sortAs: "text", className: "font-mono text-xs font-medium" },
@@ -54,6 +55,7 @@ export default function ManufacturerRawMaterialsClient({
   currentStatus: string
 }) {
   const [selectedRow, setSelectedRow] = useState<RMByMfg | null>(null)
+  const [editRow, setEditRow] = useState<RMByMfg | null>(null)
 
   return (
     <>
@@ -68,21 +70,34 @@ export default function ManufacturerRawMaterialsClient({
         currentSearch={currentSearch}
         currentStatus={currentStatus}
         actionColumn={(row) => (
-          <button
-            onClick={() => setSelectedRow(row as unknown as RMByMfg)}
-            className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-            title="View manufacturer comparison"
-          >
-            <GitCompare className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setEditRow(row as unknown as RMByMfg)}
+              className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+              title="Edit rate"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setSelectedRow(row as unknown as RMByMfg)}
+              className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+              title="View manufacturer comparison"
+            >
+              <GitCompare className="h-4 w-4" />
+            </button>
+          </div>
         )}
       />
 
-      {/* Compare dialog — shows all rates for the selected RM code on the current page */}
       <MfgDetailDialog
         row={selectedRow}
         allRows={rows}
         onClose={() => setSelectedRow(null)}
+      />
+      <EditRmMfgRateDialog
+        row={editRow}
+        onSuccess={() => { setEditRow(null); window.location.reload() }}
+        onClose={() => setEditRow(null)}
       />
     </>
   )

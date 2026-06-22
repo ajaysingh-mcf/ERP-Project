@@ -9,7 +9,7 @@ export const rawMaterials = {
   /** Get all raw materials (base data only, no rate joins) */
   selectAll: `
     SELECT id, rm_code, name, make, type, uom, status, hsn_code, inci_name
-    FROM rm ORDER BY name
+    FROM master_rm ORDER BY name
   `,
 
   /**
@@ -20,7 +20,7 @@ export const rawMaterials = {
     select rmm.rm_id, rmm.mfg_id, rmm.mfg_code, rmm.approved_vendor_id, rmm.approved_vendor_code,
       rmm.curr_rate, rmm.effective_from, rmm.uom, r.status,
       r.id, r.name, r.make, r.type, r.hsn_code, r.rm_code, r.inci_name
-    from rm_mrm as rmm inner join rm as r on r.id = rmm.rm_id
+    from rm_mrm_fixed as rmm inner join master_rm as r on r.id = rmm.rm_id
   `,
 
   /**
@@ -32,8 +32,8 @@ export const rawMaterials = {
       r.hsn_code, r.inci_name, r.make, r.name, r.rm_code, r.status, r.type,
       rmv.curr_rate, rmv.effective_from, rmv.effective_to,
       rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id
-    from rm_vrm as rmv
-    inner join rm as r on r.id = rmv.rm_id
+    from rm_vrm_dynamic as rmv
+    inner join master_rm as r on r.id = rmv.rm_id
   `,
 
   // ============ PAGINATED SELECT QUERIES ============
@@ -49,8 +49,8 @@ export const rawMaterials = {
       r.hsn_code, r.inci_name, r.make, r.name, r.rm_code, r.status, r.type,
       rmv.curr_rate, rmv.effective_from, rmv.effective_to,
       rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id
-    FROM rm_vrm AS rmv
-    INNER JOIN rm AS r ON r.id = rmv.rm_id
+    FROM rm_vrm_dynamic AS rmv
+    INNER JOIN master_rm AS r ON r.id = rmv.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
     ORDER BY r.rm_code ASC
@@ -60,8 +60,8 @@ export const rawMaterials = {
   /** Matching COUNT for selectVendorPaginated. Params: [like, like, like, status, status] */
   countVendor: `
     SELECT COUNT(*) AS total
-    FROM rm_vrm AS rmv
-    INNER JOIN rm AS r ON r.id = rmv.rm_id
+    FROM rm_vrm_dynamic AS rmv
+    INNER JOIN master_rm AS r ON r.id = rmv.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
   `,
@@ -75,8 +75,8 @@ export const rawMaterials = {
       rmm.rm_id, rmm.mfg_id, rmm.mfg_code, rmm.approved_vendor_id, rmm.approved_vendor_code,
       rmm.curr_rate, rmm.effective_from, rmm.uom, r.status,
       r.id, r.name, r.make, r.type, r.hsn_code, r.rm_code, r.inci_name
-    FROM rm_mrm AS rmm
-    INNER JOIN rm AS r ON r.id = rmm.rm_id
+    FROM rm_mrm_fixed AS rmm
+    INNER JOIN master_rm AS r ON r.id = rmm.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
     ORDER BY r.rm_code ASC
@@ -86,8 +86,8 @@ export const rawMaterials = {
   /** Matching COUNT for selectMfgPaginated. Params: [like, like, like, status, status] */
   countMfg: `
     SELECT COUNT(*) AS total
-    FROM rm_mrm AS rmm
-    INNER JOIN rm AS r ON r.id = rmm.rm_id
+    FROM rm_mrm_fixed AS rmm
+    INNER JOIN master_rm AS r ON r.id = rmm.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
   `,
@@ -99,7 +99,7 @@ export const rawMaterials = {
    * Parameters: [rm_code, name, make, type, uom, status, hsn_code, inci_name]
    */
   insert: `
-    INSERT INTO rm (rm_code, name, make, type, uom, status, hsn_code, inci_name)
+    INSERT INTO master_rm (rm_code, name, make, type, uom, status, hsn_code, inci_name)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
@@ -108,7 +108,7 @@ export const rawMaterials = {
    * Parameters: [rm_id, vendor_id, vendor_code, curr_rate, moq, uom, effective_from, effective_to]
    */
   insertVendorRate: `
-    INSERT INTO rm_vrm (rm_id, vendor_id, vendor_code, curr_rate, moq, uom, effective_from, effective_to)
+    INSERT INTO rm_vrm_dynamic (rm_id, vendor_id, vendor_code, curr_rate, moq, uom, effective_from, effective_to)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
@@ -117,7 +117,7 @@ export const rawMaterials = {
    * Parameters: [rm_id, mfg_id, mfg_code, curr_rate, uom, approved_vendor_id, approved_vendor_code, effective_from]
    */
   insertMfgRate: `
-    INSERT INTO rm_mrm (rm_id, mfg_id, mfg_code, curr_rate, uom, approved_vendor_id, approved_vendor_code, effective_from)
+    INSERT INTO rm_mrm_fixed (rm_id, mfg_id, mfg_code, curr_rate, uom, approved_vendor_id, approved_vendor_code, effective_from)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
@@ -126,7 +126,7 @@ export const rawMaterials = {
    * Parameters: [name, make, inci_name]
    */
   checkDuplicate: `
-    SELECT id FROM rm WHERE name = ? AND make = ? AND inci_name = ? 
+    SELECT id FROM master_rm WHERE name = ? AND make = ? AND inci_name = ? 
   `,
 
   /**
@@ -134,7 +134,7 @@ export const rawMaterials = {
    * Parameters: [rm_id, mfg_id, mfg_code]
    */
   insertMfgApproval: `
-    INSERT INTO rm_mrm (rm_id, mfg_id, mfg_code, curr_rate, status)
+    INSERT INTO rm_mrm_fixed (rm_id, mfg_id, mfg_code, curr_rate, status)
     VALUES (?, ?, ?, 0, 'active')
   `,
 
@@ -144,7 +144,7 @@ export const rawMaterials = {
    */
   checkVendorRate: `
     SELECT id, vendor_id, curr_rate, moq, uom, effective_from, effective_to, status
-    FROM rm_vrm WHERE rm_id = ? AND vendor_id = ? LIMIT 1
+    FROM rm_vrm_dynamic WHERE rm_id = ? AND vendor_id = ? LIMIT 1
   `,
 
   /**
@@ -161,8 +161,39 @@ export const rawMaterials = {
    * Parameters: [curr_rate, moq, uom, effective_from, id]
    */
   updateVendorRate: `
-    UPDATE rm_vrm
+    UPDATE rm_vrm_dynamic
     SET curr_rate = ?, moq = ?, uom = ?, effective_from = ?, effective_to = NULL, updated_on = NOW()
     WHERE id = ?
+  `,
+
+  /** Archive old RM vendor rate to history_vrm before overwriting.
+   *  Parameters: [mtrl_id, vendor_id, rate, effective_from, effective_to, status]
+   */
+  archiveToHistoryVrm: `
+    INSERT INTO history_vrm (mtrl_type, mtrl_id, vendor_id, rate, effective_from, effective_to, status)
+    VALUES ('rm', ?, ?, ?, ?, ?, ?)
+  `,
+
+  /** Check if a mfg rate already exists for this rm + mfg combination.
+   *  Parameters: [rm_id, mfg_id]
+   */
+  checkMfgRate: `
+    SELECT id, mfg_id, curr_rate, uom, approved_vendor_id, effective_from, status
+    FROM rm_mrm_fixed WHERE rm_id = ? AND mfg_id = ? LIMIT 1
+  `,
+
+  /** Update an existing rm_mrm row with new rate data.
+   *  Parameters: [curr_rate, uom, effective_from, id]
+   */
+  updateMfgRate: `
+    UPDATE rm_mrm_fixed SET curr_rate = ?, uom = ?, effective_from = ?, updated_on = NOW() WHERE id = ?
+  `,
+
+  /** Archive old RM mfg rate to history_mrm before overwriting.
+   *  Parameters: [mfg_id, mtrl_id, vendor_id, rate, effective_from, effective_to, status]
+   */
+  archiveToHistoryMrm: `
+    INSERT INTO history_mrm (mfg_id, mtrl_type, mtrl_id, vendor_id, rate, effective_from, effective_to, status)
+    VALUES (?, 'rm', ?, ?, ?, ?, ?, ?)
   `,
 }

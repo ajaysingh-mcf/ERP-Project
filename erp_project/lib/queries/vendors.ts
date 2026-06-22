@@ -16,15 +16,10 @@ export const vendors = {
    */
   selectAll: `
     SELECT
-      vd.vendor_id,
-      vd.gst_number,
-      vd.location,
-      vd.status,
-      v.code,
-      v.name,
-      v.type
+      vd.vendor_id, vd.gst_number, vd.location,
+      vd.status, v.code, v.name, v.type
     FROM vendor_details vd
-    JOIN vendors v ON vd.vendor_id = v.id
+    JOIN master_vendors v ON vd.vendor_id = v.id
   `,
 
   // ============ PAGINATED SELECT QUERIES ============
@@ -41,10 +36,10 @@ export const vendors = {
    */
   selectPaginated: `
     SELECT
-      vd.vendor_id, vd.gst_number, vd.location, vd.status,
-      v.code, v.name, v.type
+      vd.vendor_id, vd.gst_number, vd.location,
+      vd.status, v.code, v.name, v.type
     FROM vendor_details vd
-    JOIN vendors v ON vd.vendor_id = v.id
+    JOIN master_vendors v ON vd.vendor_id = v.id
     WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
       AND (? IS NULL OR v.type = ?)
     ORDER BY v.code ASC
@@ -58,7 +53,7 @@ export const vendors = {
   countAll: `
     SELECT COUNT(*) AS total
     FROM vendor_details vd
-    JOIN vendors v ON vd.vendor_id = v.id
+    JOIN master_vendors v ON vd.vendor_id = v.id
     WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
       AND (? IS NULL OR v.type = ?)
   `,
@@ -71,7 +66,7 @@ export const vendors = {
    * Returns insertId that should be used for vendor_details
    */
   insertVendor: `
-    INSERT INTO vendors (code, name, type) VALUES (?, ?, ?)
+    INSERT INTO master_vendors (code, name, type) VALUES (?, ?, ?)
   `,
 
   /**
@@ -82,4 +77,15 @@ export const vendors = {
   insertVendorDetails: `
     INSERT INTO vendor_details (vendor_id, location, gst_number, status) VALUES (?, ?, ?, ?)
   `,
+
+  /** Updating vendor details on edit */
+  updateVendor: `
+    UPDATE master_vendors SET name = ?, type = ? WHERE id = ?
+  `,
+
+  /** Updaing vendor details in the rate master table. */
+  updateVendorDetails: `
+    UPDATE vendor_details SET location = ?, gst_number = ?, status = ? WHERE vendor_id = ?
+  `,
+
 }

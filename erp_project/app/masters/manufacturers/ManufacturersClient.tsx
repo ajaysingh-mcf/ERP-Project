@@ -27,7 +27,10 @@ import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
 import type { MasterField } from "@/components/masters/field-config"
 import type { Mfg } from "@/types/masters"
-
+import { useState } from "react"
+import { Pencil } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { EditMfgDialog } from "./EditMfgDialog"
 const MFG_FIELDS: MasterField[] = [
   { key: "code",       label: "Code",       required: true,  placeholder: "e.g. MFG-001",         sample: "MFG-001" },
   { key: "name",       label: "Name",       required: true,  colSpan: 2, placeholder: "Manufacturer name", sample: "Acme Manufacturing" },
@@ -52,7 +55,7 @@ export default function ManufacturersClient({
   const router = useRouter()
   // router.refresh() re-runs the server page with current URL — keeps page + filters.
   const refresh = () => router.refresh()
-
+  const [editMfg, setEditMfg] = useState<Mfg | null>(null)
   return (
     <>
       {/* ── Toolbar ── */}
@@ -101,6 +104,7 @@ export default function ManufacturersClient({
                 <TableHead>Location</TableHead>
                 <TableHead>GST Number</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="w-12" >Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -120,6 +124,11 @@ export default function ManufacturersClient({
                     <TableCell>{row.location}</TableCell>
                     <TableCell>{row.gst_number}</TableCell>
                     <TableCell>{row.status}</TableCell>
+                    <TableCell>
+                      <Button size="icon" variant="ghost" onClick={() => setEditMfg(row)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -129,6 +138,11 @@ export default function ManufacturersClient({
           <PaginationBar total={total} page={page} pageSize={pageSize} />
         </CardContent>
       </Card>
+      <EditMfgDialog
+        mfg={editMfg}
+        onSuccess={refresh}
+        onClose={() => setEditMfg(null)}
+      />
     </>
   )
 }
