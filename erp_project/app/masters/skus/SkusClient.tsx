@@ -79,7 +79,7 @@ export default function SkusClient({
     router.push(`${pathname}?${params.toString()}`)
   }
   const [brandFilter, setBrandFilter] = useState("all");
-  const hasFilters = !!currentSearch || !!currentStatus
+  const hasFilters = !!currentSearch || !!currentStatus ||  brandFilter !== "all";
   const refresh    = () => router.refresh()
   const filteredRows = useMemo(() => {
   if (brandFilter === "all") return rows
