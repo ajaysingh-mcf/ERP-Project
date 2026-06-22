@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Server-Side Pagination — Implementation Plan</title>
+<style>
+  :root {
+    --ground:   #F1F5F9;
+    --surface:  #FFFFFF;
+    --text:     #0F172A;
+    --muted:    #64748B;
+    --border:   #E2E8F0;
+    --accent:   #4F46E5;
+    --accent-bg:#EEF2FF;
+    --code-bg:  #0F172A;
+    --code-text:#CBD5E1;
+    --green-bg: #F0FDF4;
+    --green:    #166534;
+    --amber-bg: #FFFBEB;
+    --amber:    #92400E;
+    --toc-w:    220px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--ground);
+    color: var(--text);
+    font-size: 0.9375rem;
+    line-height: 1.65;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .topbar-title { font-size: 0.875rem; font-weight: 600; letter-spacing: -0.01em; }
+  .topbar-sub   { font-size: 0.8125rem; color: var(--muted); }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid;
+    line-height: 1;
+  }
+  .badge-indigo { background: var(--accent-bg); color: var(--accent); border-color: #C7D2FE; }
+  .badge-green  { background: var(--green-bg);  color: var(--green);  border-color: #BBF7D0; }
+  .badge-amber  { background: var(--amber-bg);  color: var(--amber);  border-color: #FDE68A; }
+  .ml-auto { margin-left: auto; }
+
+  .layout {
+    display: flex;
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    gap: 0;
+  }
+
+  .sidebar { width: var(--toc-w); flex-shrink: 0; padding: 2rem 0; }
+  .toc     { position: sticky; top: 57px; padding-right: 1.5rem; }
+  .toc-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+  }
+  .toc ul  { list-style: none; }
+  .toc li  { margin-bottom: 0.1rem; }
+  .toc a {
+    display: block;
+    font-size: 0.8125rem;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 0.3rem 0.6rem;
+    border-radius: 6px;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+    line-height: 1.3;
+  }
+  .toc a:hover { color: var(--text); background: var(--border); }
+  .toc a.active {
+    color: var(--accent);
+    background: var(--accent-bg);
+    border-left-color: var(--accent);
+    font-weight: 500;
+  }
+  .toc .toc-group { margin-top: 1rem; }
+
+  .content {
+    flex: 1;
+    min-width: 0;
+    padding: 2rem 0 4rem 2.5rem;
+    border-left: 1px solid var(--border);
+  }
+
+  .section { margin-bottom: 3rem; scroll-margin-top: 72px; }
+  .section-eyebrow {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.35rem;
+  }
+  .section-title {
+    font-size: 1.375rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.25;
+    margin-bottom: 0.75rem;
+  }
+  .section-desc {
+    color: var(--muted);
+    font-size: 0.9rem;
+    max-width: 640px;
+    margin-bottom: 1.5rem;
+  }
+
+  .file-block { margin-bottom: 2rem; }
+  .file-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    background: #1E293B;
+    border-radius: 8px 8px 0 0;
+    border: 1px solid #334155;
+    border-bottom: none;
+  }
+  .file-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot-red   { background: #EF4444; }
+  .dot-amber { background: #F59E0B; }
+  .dot-green { background: #22C55E; }
+  .file-path {
+    font-family: 'Cascadia Code', 'SF Mono', ui-monospace, monospace;
+    font-size: 0.78rem;
+    color: #94A3B8;
+    margin-left: 0.25rem;
+  }
+  .file-tag {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    margin-left: auto;
+  }
+  .tag-new    { background: #14532D; color: #86EFAC; }
+  .tag-update { background: #1E3A5F; color: #93C5FD; }
+
+  pre {
+    background: var(--code-bg);
+    color: var(--code-text);
+    font-family: 'Cascadia Code', 'SF Mono', ui-monospace, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    padding: 1.25rem;
+    overflow-x: auto;
+    border: 1px solid #1E293B;
+    border-radius: 0 0 8px 8px;
+    tab-size: 2;
+  }
+
+  .arch-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .arch-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+  }
+  .arch-card.before { border-left: 3px solid #EF4444; }
+  .arch-card.after  { border-left: 3px solid #22C55E; }
+  .arch-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+  }
+  .arch-card.before .arch-label { color: #EF4444; }
+  .arch-card.after  .arch-label { color: #16A34A; }
+  .arch-flow { display: flex; flex-direction: column; gap: 0; }
+  .arch-node {
+    background: var(--ground);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.8rem;
+    font-family: 'Cascadia Code', 'SF Mono', ui-monospace, monospace;
+    color: var(--text);
+    text-align: center;
+  }
+  .arch-node.problem  { border-color: #FCA5A5; background: #FFF1F2; color: #9F1239; }
+  .arch-node.solution { border-color: #86EFAC; background: #F0FDF4; color: #14532D; }
+  .arch-arrow { text-align: center; font-size: 0.75rem; color: var(--muted); padding: 0.2rem 0; }
+  .arch-note  { font-size: 0.78rem; color: var(--muted); margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+
+  .callout {
+    border-radius: 8px;
+    padding: 0.875rem 1rem;
+    font-size: 0.875rem;
+    margin-bottom: 1.25rem;
+    border: 1px solid;
+  }
+  .callout-indigo { background: var(--accent-bg); border-color: #C7D2FE; color: #312E81; }
+  .callout-amber  { background: var(--amber-bg);  border-color: #FDE68A; color: var(--amber); }
+  .callout strong { font-weight: 600; }
+
+  .step-list { counter-reset: steps; list-style: none; }
+  .step-list li {
+    display: flex;
+    gap: 1rem;
+    padding: 0.875rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .step-list li:last-child { border-bottom: none; }
+  .step-num {
+    flex-shrink: 0;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    background: var(--accent-bg);
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .step-body  { flex: 1; }
+  .step-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.15rem; }
+  .step-desc  { font-size: 0.84rem; color: var(--muted); }
+
+  .checklist { list-style: none; }
+  .checklist li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem;
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .check-box {
+    flex-shrink: 0;
+    width: 1.1rem;
+    height: 1.1rem;
+    border: 1.5px solid var(--border);
+    border-radius: 3px;
+    margin-top: 0.15rem;
+  }
+
+  code {
+    font-family: 'Cascadia Code', 'SF Mono', ui-monospace, monospace;
+    font-size: 0.82em;
+    background: var(--accent-bg);
+    color: var(--accent);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+  }
+
+  .params-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    margin-bottom: 1.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .params-table th {
+    background: var(--ground);
+    padding: 0.5rem 0.875rem;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+  }
+  .params-table td {
+    padding: 0.55rem 0.875rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .params-table tr:last-child td { border-bottom: none; }
+  .params-table td:first-child {
+    font-family: 'Cascadia Code', 'SF Mono', ui-monospace, monospace;
+    font-size: 0.8rem;
+  }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  p  { margin-bottom: 0.75rem; }
+  p:last-child { margin-bottom: 0; }
+
+  @media (max-width: 800px) {
+    .layout  { flex-direction: column; padding: 0 1rem; }
+    .sidebar { width: 100%; padding: 1rem 0 0; }
+    .toc     { position: static; padding-right: 0; }
+    .content { padding: 1.5rem 0; border-left: none; }
+    .arch-grid { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="topbar-title">Server-Side Pagination</div>
+    <div class="topbar-sub">ERP Masters — Implementation Plan</div>
+  </div>
+  <div class="ml-auto" style="display:flex;gap:0.5rem;align-items:center;">
+    <span class="badge badge-indigo">6 pages</span>
+    <span class="badge badge-green">Ready to implement</span>
+  </div>
+</div>
+
+<div class="layout">
+
+  <nav class="sidebar">
+    <div class="toc">
+      <div class="toc-label">Contents</div>
+      <ul>
+        <li><a href="#why"  id="toc-why">Why this change</a></li>
+        <li><a href="#arch" id="toc-arch">Architecture</a></li>
+      </ul>
+      <div class="toc-group">
+        <div class="toc-label" style="margin-top:0">New Files</div>
+        <ul>
+          <li><a href="#pagination-ts"  id="toc-pagination-ts">lib/pagination.ts</a></li>
+          <li><a href="#pagination-bar" id="toc-pagination-bar">PaginationBar</a></li>
+          <li><a href="#url-search"     id="toc-url-search">UrlSearchInput</a></li>
+        </ul>
+      </div>
+      <div class="toc-group">
+        <div class="toc-label" style="margin-top:0">Pattern (Vendors)</div>
+        <ul>
+          <li><a href="#query-pattern"  id="toc-query-pattern">Query additions</a></li>
+          <li><a href="#page-pattern"   id="toc-page-pattern">page.tsx</a></li>
+          <li><a href="#client-pattern" id="toc-client-pattern">Client component</a></li>
+        </ul>
+      </div>
+      <div class="toc-group">
+        <div class="toc-label" style="margin-top:0">Other entities</div>
+        <ul>
+          <li><a href="#other-queries" id="toc-other-queries">SQL notes</a></li>
+        </ul>
+      </div>
+      <div class="toc-group">
+        <div class="toc-label" style="margin-top:0">Ship it</div>
+        <ul>
+          <li><a href="#rollout" id="toc-rollout">Rollout order</a></li>
+          <li><a href="#verify"  id="toc-verify">Verification</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <main class="content">
+
+    <!-- WHY -->
+    <section class="section" id="why">
+      <div class="section-eyebrow">Context</div>
+      <h1 class="section-title">Why this change</h1>
+      <p class="section-desc">
+        Every master page today runs an unbounded <code>SELECT *</code> at page load and filters
+        in memory on the client. With a small seed database this is invisible. As vendors,
+        materials, SKUs, and BOMs accumulate, the page load time, server memory, and browser
+        render cost will grow without bound.
+      </p>
+      <div class="callout callout-indigo">
+        <strong>Goal:</strong> Push filtering, searching, and pagination into the database so the
+        app always fetches only the 20 rows being displayed — regardless of how large the tables grow.
+      </div>
+      <div class="callout callout-amber">
+        <strong>Approach — URL-driven server-side pagination:</strong> Next.js App Router server
+        components already receive <code>searchParams</code>. Every master page will accept
+        <code>?page=1&amp;size=20&amp;search=term&amp;type=rm</code>. No new GET API routes needed.
+        <code>router.refresh()</code> in the Add/CSV dialogs already works — it re-runs the server
+        page with current URL params, keeping the user on the same page after an insert.
+      </div>
+    </section>
+
+    <!-- ARCHITECTURE -->
+    <section class="section" id="arch">
+      <div class="section-eyebrow">Design</div>
+      <h2 class="section-title">Architecture change</h2>
+      <div class="arch-grid">
+        <div class="arch-card before">
+          <div class="arch-label">Before — fetches everything</div>
+          <div class="arch-flow">
+            <div class="arch-node">MariaDB</div>
+            <div class="arch-arrow">↓ SELECT * (all rows)</div>
+            <div class="arch-node problem">Server Component<br><small>query&lt;T&gt;(sql.selectAll)</small></div>
+            <div class="arch-arrow">↓ initialRows: T[] (entire table)</div>
+            <div class="arch-node problem">Client Component<br><small>.filter() in memory</small></div>
+          </div>
+          <div class="arch-note">As data grows: slow load, wasted memory, browser lag.</div>
+        </div>
+        <div class="arch-card after">
+          <div class="arch-label">After — fetches a slice</div>
+          <div class="arch-flow">
+            <div class="arch-node">URL: ?page=2&amp;size=20&amp;search=acme</div>
+            <div class="arch-arrow">↓ searchParams</div>
+            <div class="arch-node solution">Server Component<br><small>paginate&lt;T&gt;(sql, params)</small></div>
+            <div class="arch-arrow">↓ LIMIT 20 OFFSET 20 + COUNT(*)</div>
+            <div class="arch-node">MariaDB</div>
+            <div class="arch-arrow">↑ rows: T[20] + total: number</div>
+            <div class="arch-node solution">Client Component<br><small>render rows + &lt;PaginationBar /&gt;</small></div>
+          </div>
+          <div class="arch-note">Constant load time. DB does the work it is built for.</div>
+        </div>
+      </div>
+    </section>
+
+    <hr>
+
+    <!-- lib/pagination.ts -->
+    <section class="section" id="pagination-ts">
+      <div class="section-eyebrow">New File 1 of 3</div>
+      <h2 class="section-title">lib/pagination.ts</h2>
+      <p class="section-desc">
+        Two exports: <code>parsePaginationParams</code> safely reads URL params (clamps page
+        to &ge;1, size to 5–100), and <code>paginate&lt;T&gt;</code> runs the data query and COUNT
+        query in parallel and returns a typed <code>PageResult</code>.
+      </p>
+      <div class="file-block">
+        <div class="file-header">
+          <div class="file-dot dot-red"></div>
+          <div class="file-dot dot-amber"></div>
+          <div class="file-dot dot-green"></div>
+          <span class="file-path">lib/pagination.ts</span>
+          <span class="file-tag tag-new">New</span>
+        </div>
+<pre>import { query } from "@/lib/db"
+
+export type PaginationParams = { page: number; size: number; offset: number }
+
+export function parsePaginationParams(
+  sp: Record&lt;string, string | string[] | undefined&gt;,
+  defaults = { page: 1, size: 20 }
+): PaginationParams {
+  const page = Math.max(1, parseInt(String(sp.page ?? defaults.page), 10) || 1)
+  const size = Math.min(100, Math.max(5, parseInt(String(sp.size ?? defaults.size), 10) || 20))
+  return { page, size, offset: (page - 1) * size }
+}
+
+export type PageResult&lt;T&gt; = {
+  rows: T[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export async function paginate&lt;T&gt;(
+  dataQuery: string,
+  dataParams: any[],
+  countQuery: string,
+  countParams: any[],
+  page: number,
+  size: number
+): Promise&lt;PageResult&lt;T&gt;&gt; {
+  const [rows, countRows] = await Promise.all([
+    query&lt;T&gt;(dataQuery, dataParams),
+    query&lt;{ total: number }&gt;(countQuery, countParams),
+  ])
+  return { rows, total: Number(countRows[0]?.total ?? 0), page, pageSize: size }
+}</pre>
+      </div>
+    </section>
+
+    <!-- PaginationBar -->
+    <section class="section" id="pagination-bar">
+      <div class="section-eyebrow">New File 2 of 3</div>
+      <h2 class="section-title">components/ui/pagination-bar.tsx</h2>
+      <p class="section-desc">
+        Drop this at the bottom of any master table. All navigation merges only the changed key
+        into the current URL params — so <code>?view=</code>, <code>?search=</code>,
+        <code>?type=</code> survive across every page turn.
+      </p>
+      <div class="file-block">
+        <div class="file-header">
+          <div class="file-dot dot-red"></div>
+          <div class="file-dot dot-amber"></div>
+          <div class="file-dot dot-green"></div>
+          <span class="file-path">components/ui/pagination-bar.tsx</span>
+          <span class="file-tag tag-new">New</span>
+        </div>
+<pre>"use client"
+
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { ChevronLeft, ChevronRight } from "lucide-react"
+
+export function PaginationBar({
+  total,
+  page,
+  pageSize,
+}: {
+  total: number
+  page: number
+  pageSize: number
+}) {
+  const router       = useRouter()
+  const pathname     = usePathname()
+  const searchParams = useSearchParams()
+
+  function navigate(updates: Record&lt;string, string&gt;) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) params.set(k, v)
+      else   params.delete(k)
+    }
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1
+  const to   = Math.min(page * pageSize, total)
+
+  return (
+    &lt;div className="flex items-center justify-between px-4 py-3 border-t border-border"&gt;
+      &lt;div className="flex items-center gap-2 text-sm text-muted-foreground"&gt;
+        &lt;span className="text-xs"&gt;Rows per page&lt;/span&gt;
+        &lt;select
+          value={pageSize}
+          onChange={(e) =&gt; navigate({ size: e.target.value, page: "1" })}
+          className="h-7 rounded border border-input bg-background px-2 text-xs"
+        &gt;
+          {[10, 20, 50, 100].map((n) =&gt; (
+            &lt;option key={n} value={n}&gt;{n}&lt;/option&gt;
+          ))}
+        &lt;/select&gt;
+      &lt;/div&gt;
+      &lt;div className="flex items-center gap-3 text-sm text-muted-foreground"&gt;
+        &lt;span className="text-xs"&gt;
+          {total === 0 ? "No records" : `${from}–${to} of ${total}`}
+        &lt;/span&gt;
+        &lt;div className="flex gap-1"&gt;
+          &lt;Button
+            variant="outline"
+            size="icon-sm"
+            disabled={page &lt;= 1}
+            onClick={() =&gt; navigate({ page: String(page - 1) })}
+            aria-label="Previous page"
+          &gt;
+            &lt;ChevronLeft /&gt;
+          &lt;/Button&gt;
+          &lt;Button
+            variant="outline"
+            size="icon-sm"
+            disabled={page &gt;= totalPages}
+            onClick={() =&gt; navigate({ page: String(page + 1) })}
+            aria-label="Next page"
+          &gt;
+            &lt;ChevronRight /&gt;
+          &lt;/Button&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  )
+}</pre>
+      </div>
+    </section>
+
+    <!-- UrlSearchInput -->
+    <section class="section" id="url-search">
+      <div class="section-eyebrow">New File 3 of 3</div>
+      <h2 class="section-title">components/masters/UrlSearchInput.tsx</h2>
+      <p class="section-desc">
+        Wraps the existing <code>SearchInput</code> with a 350 ms debounce that pushes
+        <code>?search=term&amp;page=1</code> to the URL. Keeps a local <code>useState</code> so
+        keystrokes feel instant. Reads <code>initialValue</code> from the server so a page reload
+        never shows an empty box while rows are filtered below.
+      </p>
+      <div class="file-block">
+        <div class="file-header">
+          <div class="file-dot dot-red"></div>
+          <div class="file-dot dot-amber"></div>
+          <div class="file-dot dot-green"></div>
+          <span class="file-path">components/masters/UrlSearchInput.tsx</span>
+          <span class="file-tag tag-new">New</span>
+        </div>
+<pre>"use client"
+
+import { useState, useEffect, useRef } from "react"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
+import { SearchInput } from "@/components/masters/SearchInput"
+
+export function UrlSearchInput({
+  initialValue = "",
+  placeholder,
+  debounceMs = 350,
+}: {
+  initialValue?: string
+  placeholder?: string
+  debounceMs?: number
+}) {
+  const [value, setValue]    = useState(initialValue)
+  const router               = useRouter()
+  const pathname             = usePathname()
+  const searchParams         = useSearchParams()
+  const timerRef             = useRef&lt;ReturnType&lt;typeof setTimeout&gt;&gt;(undefined)
+
+  // Sync when server re-renders with a new initialValue (e.g. after clear filters)
+  useEffect(() =&gt; { setValue(initialValue) }, [initialValue])
+
+  function handleChange(v: string) {
+    setValue(v)
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() =&gt; {
+      const params = new URLSearchParams(searchParams.toString())
+      if (v) params.set("search", v)
+      else   params.delete("search")
+      params.set("page", "1")
+      router.push(`${pathname}?${params.toString()}`)
+    }, debounceMs)
+  }
+
+  return (
+    &lt;SearchInput
+      value={value}
+      onChange={handleChange}
+      placeholder={placeholder}
+    /&gt;
+  )
+}</pre>
+      </div>
+    </section>
+
+    <hr>
+
+    <!-- Query pattern -->
+    <section class="section" id="query-pattern">
+      <div class="section-eyebrow">Pattern — Vendors example</div>
+      <h2 class="section-title">Query file additions</h2>
+      <p class="section-desc">
+        Add <code>selectPaginated</code> and <code>countAll</code> alongside the existing
+        <code>selectAll</code> in each query file. Never remove <code>selectAll</code> —
+        it is still used by the Add/CSV wizard dropdowns which need the full list.
+      </p>
+      <div class="callout callout-indigo">
+        <strong>SQL pattern:</strong> <code>? IS NULL OR col LIKE ?</code> — when no search is
+        active pass <code>null</code> as the first param and MySQL short-circuits without
+        scanning rows. Param order for data query:
+        <code>[like, like, like, typeParam, typeParam, size, offset]</code>.
+        Drop the last two for the count query.
+      </div>
+      <div class="file-block">
+        <div class="file-header">
+          <div class="file-dot dot-red"></div>
+          <div class="file-dot dot-amber"></div>
+          <div class="file-dot dot-green"></div>
+          <span class="file-path">lib/queries/vendors.ts — additions only (add inside vendors object)</span>
+          <span class="file-tag tag-update">Update</span>
+        </div>
+<pre>selectPaginated: `
+  SELECT
+    vd.vendor_id, vd.gst_number, vd.location, vd.status,
+    v.code, v.name, v.type
+  FROM vendor_details vd
+  JOIN vendors v ON vd.vendor_id = v.id
+  WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
+    AND (? IS NULL OR v.type = ?)
+  ORDER BY v.code ASC
+  LIMIT ? OFFSET ?
+`,
+
+countAll: `
+  SELECT COUNT(*) AS total
+  FROM vendor_details vd
+  JOIN vendors v ON vd.vendor_id = v.id
+  WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
+    AND (? IS NULL OR v.type = ?)
+`,</pre>
+      </div>
+    </section>
+
+    <!-- page.tsx pattern -->
+    <section class="section" id="page-pattern">
+      <div class="section-eyebrow">Pattern — Vendors example</div>
+      <h2 class="section-title">Server page.tsx (full replacement)</h2>
+      <p class="section-desc">
+        Auth and permission guards are unchanged. The only additions are reading
+        <code>searchParams</code>, calling <code>parsePaginationParams</code>, and using
+        <code>paginate</code> instead of the bare <code>query</code>.
+      </p>
+      <div class="file-block">
+        <div class="file-header">
+          <div class="file-dot dot-red"></div>
+          <div class="file-dot dot-amber"></div>
+          <div class="file-dot dot-green"></div>
+          <span class="file-path">app/masters/vendors/page.tsx</span>
+          <span class="file-tag tag-update">Update</span>
+        </div>
+<pre>import { auth } from "@/lib/auth"
+import { resolveAccess } from "@/lib/permissions"
+import { redirect } from "next/navigation"
+import { parsePaginationParams, paginate } from "@/lib/pagination"
+import { vendors } from "@/lib/queries/vendors"
+import type { Vendor } from "@/types/masters"
+import VendorsClient from "./VendorsClient"
+
+export default async function VendorsPage({
+  searchParams,
+}: {
+  searchParams: Promise&lt;Record&lt;string, string | string[] | undefined&gt;&gt;
+}) {
+  const session = await auth()
+  if (!session) redirect("/auth/signin")
+  const userId = parseInt(session.user.id)
+  const access = await resolveAccess(userId, session.user.roles, "/masters")
+  if (access === "none") redirect("/auth/unauthorized")
+
+  const sp         = await searchParams
+  const { page, size, offset } = parsePaginationParams(sp)
+  const search     = String(sp.search ?? "")
+  const typeFilter = String(sp.type   ?? "")
+  const like       = search     ? `%${search}%` : null
+  const type       = typeFilter ? typeFilter     : null
+
+  const { rows, total } = await paginate&lt;Vendor&gt;(
+    vendors.selectPaginated,
+    [like, like, like, type, type, size, offset],
+    vendors.countAll,
+    [like, like, like, type, type],
+    page,
+    size
+  )
+
+  return (
+    &lt;div className="p-6"&gt;
+      &lt;div className="mb-5"&gt;
+        &lt;h1 className="text-2xl font-bold tracking-tight"&gt;Vendors&lt;/h1&gt;
+        &lt;p className="text-muted-foreground text-sm mt-1"&gt;All registered vendors&lt;/p&gt;
+      &lt;/div&gt;
+      &lt;VendorsClient
+        rows={rows}
+        total={total}
+        page={page}
+        pageSize={size}
+        currentSearch={search}
+        currentType={typeFilter}
+      /&gt;
+    &lt;/div&gt;
+  )
+}</pre>
+      </div>
+    </section>
+
+    <!-- Client pattern -->
+    <section class="section" id="client-pattern">
+      <div class="section-eyebrow">Pattern — Vendors example</div>
+      <h2 class="section-title">Client component (full replacement)</h2>
+      <p class="section-desc">
+        The <code>VENDOR_FIELDS</code> constant, dialogs, and table columns are identical to
+        before. The structural changes are: new props signature, a <code>navigate()</code> URL
+        helper, <code>UrlSearchInput</code> replaces <code>SearchInput</code>, and
+        <code>&lt;PaginationBar /&gt;</code> is added below the table.
+      </p>
+      <div class="file-block">
+        <div class="file-header">
+          <div class="file-dot dot-red"></div>
+          <div class="file-dot dot-amber"></div>
+          <div class="file-dot dot-green"></div>
+          <span class="file-path">app/masters/vendors/VendorsClient.tsx</span>
+          <span class="file-tag tag-update">Update</span>
+        </div>
+<pre>"use client"
+
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table"
+import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
+import { PaginationBar } from "@/components/ui/pagination-bar"
+import {
+  MasterToolbar, MasterToolbarActions,
+} from "@/components/masters/MasterToolbar"
+import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
+import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
+import type { MasterField } from "@/components/masters/field-config"
+import type { Vendor } from "@/types/masters"
+
+const VENDOR_FIELDS: MasterField[] = [
+  { key: "code",       label: "Code",       required: true,  placeholder: "e.g. VEN-001", sample: "VEN-001" },
+  { key: "name",       label: "Name",       required: true,  placeholder: "Vendor name",  sample: "Acme Pvt Ltd" },
+  {
+    key: "type", label: "Type", type: "select", required: true,
+    default: "rm", colSpan: 2, sample: "rm",
+    options: [
+      { value: "rm",   label: "RM"   },
+      { value: "pm",   label: "PM"   },
+      { value: "both", label: "Both" },
+    ],
+  },
+  { key: "location",   label: "Location",   required: true },
+  { key: "gst_number", label: "GST Number", required: true },
+  {
+    key: "status", label: "Status", type: "select", required: false,
+    default: "active", colSpan: 2, sample: "active",
+    options: [
+      { value: "active",   label: "Active"   },
+      { value: "inactive", label: "Inactive" },
+    ],
+  },
+]
+
+export default function VendorsClient({
+  rows,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentType,
+}: {
+  rows: Vendor[]
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentType: string
+}) {
+  const router       = useRouter()
+  const pathname     = usePathname()
+  const searchParams = useSearchParams()
+
+  // Merges key-value updates into the URL and resets page to 1
+  function navigate(updates: Record&lt;string, string&gt;) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) params.set(k, v)
+      else   params.delete(k)
+    }
+    params.set("page", "1")
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
+  const hasFilters = currentSearch || currentType
+  const refresh    = () =&gt; router.refresh()
+
+  return (
+    &lt;&gt;
+      &lt;MasterToolbar&gt;
+        &lt;UrlSearchInput
+          initialValue={currentSearch}
+          placeholder="Search by code or name…"
+        /&gt;
+        &lt;select
+          value={currentType || "all"}
+          onChange={(e) =&gt;
+            navigate({ type: e.target.value === "all" ? "" : e.target.value })
+          }
+          className="h-9 rounded-lg border border-input bg-background px-3 text-sm
+                     text-foreground focus-visible:outline-none focus-visible:ring-1
+                     focus-visible:ring-ring"
+        &gt;
+          &lt;option value="all"&gt;All Types&lt;/option&gt;
+          &lt;option value="rm"&gt;RM&lt;/option&gt;
+          &lt;option value="pm"&gt;PM&lt;/option&gt;
+          &lt;option value="both"&gt;Both&lt;/option&gt;
+        &lt;/select&gt;
+        &lt;MasterToolbarActions&gt;
+          &lt;CsvImportDialog
+            entityLabel="Vendor"
+            endpoint="/api/masters/vendors"
+            templateFilename="vendor_template.csv"
+            fields={VENDOR_FIELDS}
+            onSuccess={refresh}
+          /&gt;
+          &lt;AddRecordDialog
+            entityLabel="Vendor"
+            endpoint="/api/masters/vendors"
+            fields={VENDOR_FIELDS}
+            onSuccess={refresh}
+          /&gt;
+        &lt;/MasterToolbarActions&gt;
+      &lt;/MasterToolbar&gt;
+
+      &lt;Card&gt;
+        &lt;CardHeader className="pb-2"&gt;
+          &lt;CardTitle className="text-sm font-medium text-muted-foreground"&gt;
+            {total} record{total !== 1 ? "s" : ""}
+            {hasFilters &amp;&amp; (
+              &lt;button
+                onClick={() =&gt; navigate({ search: "", type: "" })}
+                className="ml-2 text-xs text-primary hover:underline"
+              &gt;
+                Clear filters
+              &lt;/button&gt;
+            )}
+          &lt;/CardTitle&gt;
+        &lt;/CardHeader&gt;
+        &lt;CardContent className="p-0"&gt;
+          &lt;Table&gt;
+            &lt;TableHeader&gt;
+              &lt;TableRow&gt;
+                &lt;TableHead&gt;Code&lt;/TableHead&gt;
+                &lt;TableHead&gt;Name&lt;/TableHead&gt;
+                &lt;TableHead&gt;Type&lt;/TableHead&gt;
+                &lt;TableHead&gt;Location&lt;/TableHead&gt;
+                &lt;TableHead&gt;GST Number&lt;/TableHead&gt;
+                &lt;TableHead&gt;Status&lt;/TableHead&gt;
+              &lt;/TableRow&gt;
+            &lt;/TableHeader&gt;
+            &lt;TableBody&gt;
+              {rows.length === 0 ? (
+                &lt;TableRow&gt;
+                  &lt;TableCell colSpan={6} className="text-center text-muted-foreground py-10"&gt;
+                    {hasFilters ? "No vendors match your filters." : "No records found."}
+                  &lt;/TableCell&gt;
+                &lt;/TableRow&gt;
+              ) : (
+                rows.map((row) =&gt; (
+                  &lt;TableRow key={row.vendor_id}&gt;
+                    &lt;TableCell className="font-mono text-xs font-medium"&gt;{row.code}&lt;/TableCell&gt;
+                    &lt;TableCell className="font-medium"&gt;{row.name}&lt;/TableCell&gt;
+                    &lt;TableCell&gt;
+                      &lt;Badge variant="outline" className="capitalize"&gt;{row.type}&lt;/Badge&gt;
+                    &lt;/TableCell&gt;
+                    &lt;TableCell&gt;{row.location ?? "—"}&lt;/TableCell&gt;
+                    &lt;TableCell&gt;{row.gst_number ?? "—"}&lt;/TableCell&gt;
+                    &lt;TableCell&gt;{row.status ?? "—"}&lt;/TableCell&gt;
+                  &lt;/TableRow&gt;
+                ))
+              )}
+            &lt;/TableBody&gt;
+          &lt;/Table&gt;
+          &lt;PaginationBar total={total} page={page} pageSize={pageSize} /&gt;
+        &lt;/CardContent&gt;
+      &lt;/Card&gt;
+    &lt;/&gt;
+  )
+}</pre>
+      </div>
+    </section>
+
+    <hr>
+
+    <!-- Other entity SQL notes -->
+    <section class="section" id="other-queries">
+      <div class="section-eyebrow">Reference</div>
+      <h2 class="section-title">SQL notes for other entities</h2>
+      <p class="section-desc">
+        All five remaining entities follow the same two-query pattern. The WHERE clause and
+        param order differ based on which columns are searchable and which filters each page has.
+      </p>
+      <table class="params-table">
+        <thead>
+          <tr>
+            <th>Entity</th>
+            <th>Query file</th>
+            <th>Search columns</th>
+            <th>Extra filter param</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Manufacturers</td>
+            <td>lib/queries/manufacturers.ts</td>
+            <td>mfg.code, mfg.name</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>SKUs</td>
+            <td>lib/queries/skus.ts (create new)</td>
+            <td>sku_code, name, brand</td>
+            <td>status</td>
+          </tr>
+          <tr>
+            <td>BOM Master</td>
+            <td>lib/queries/bom_master.ts</td>
+            <td>bom.bom_code, bom.name</td>
+            <td>status</td>
+          </tr>
+          <tr>
+            <td>Packing Materials (vendor)</td>
+            <td>lib/queries/product-materials.ts</td>
+            <td>pm.pm_code, pm.name</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>Packing Materials (mfg)</td>
+            <td>lib/queries/product-materials.ts</td>
+            <td>pm.pm_code, pm.name</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>Raw Materials (vendor)</td>
+            <td>lib/queries/raw-materials.ts</td>
+            <td>r.rm_code, r.name</td>
+            <td>type</td>
+          </tr>
+          <tr>
+            <td>Raw Materials (mfg)</td>
+            <td>lib/queries/raw-materials.ts</td>
+            <td>r.rm_code, r.name</td>
+            <td>type</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout callout-amber">
+        <strong>ViewToggle note (Packing &amp; Raw Materials):</strong> Update each ViewToggle
+        href to include <code>&amp;page=1</code> so toggling views resets to page 1.
+        The <code>vendorSql.selectAll</code> and <code>mfgSql.selectAll</code> calls feeding
+        the Add wizard dropdowns are <em>not</em> paginated — they are small reference lists
+        needed in full.
+      </div>
+      <p style="font-size:0.875rem;color:var(--muted);margin-top:1rem;">
+        <strong>SKU page:</strong> The inline SQL string in <code>app/masters/skus/page.tsx</code>
+        should move into a new <code>lib/queries/skus.ts</code> file with <code>selectAll</code>,
+        <code>selectPaginated</code>, and <code>countAll</code> exports — matching the same
+        structure as all other query files.
+      </p>
+    </section>
+
+    <hr>
+
+    <!-- Rollout -->
+    <section class="section" id="rollout">
+      <div class="section-eyebrow">Execution</div>
+      <h2 class="section-title">Rollout order</h2>
+      <p class="section-desc">
+        Steps 1–2 are pure additions with zero breakage risk. Each subsequent step is
+        independently testable before moving to the next.
+      </p>
+      <ol class="step-list">
+        <li>
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Create the 3 shared files</div>
+            <div class="step-desc"><code>lib/pagination.ts</code>, <code>components/ui/pagination-bar.tsx</code>, <code>components/masters/UrlSearchInput.tsx</code>. Build passes, nothing uses them yet.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Add paginated SQL to all query files</div>
+            <div class="step-desc">Add <code>selectPaginated</code> + <code>countAll</code> to each <code>lib/queries/*.ts</code>. No pages change yet — existing <code>selectAll</code> untouched.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Wire Vendors — validates the full pattern end-to-end</div>
+            <div class="step-desc">Simplest entity: one JOIN, one filter. Use the code above directly.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Wire Manufacturers</div>
+            <div class="step-desc">Identical structure to vendors. No view toggle, no extra filter.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <div class="step-title">Wire SKUs</div>
+            <div class="step-desc">Create <code>lib/queries/skus.ts</code>, extract inline SQL, wire pagination + status filter.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <div class="step-title">Wire BOM Master</div>
+            <div class="step-desc">JOIN with <code>bom_details</code>. Add status filter to the WHERE clause.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-num">7</div>
+          <div class="step-body">
+            <div class="step-title">Wire Packing Materials</div>
+            <div class="step-desc">Two client variants (vendor + manufacturer). Update ViewToggle hrefs to reset page on view switch.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-num">8</div>
+          <div class="step-body">
+            <div class="step-title">Wire Raw Materials</div>
+            <div class="step-desc">Same structure as packing materials. Add type filter to SQL WHERE.</div>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <!-- Verification -->
+    <section class="section" id="verify">
+      <div class="section-eyebrow">Testing</div>
+      <h2 class="section-title">Verification checklist</h2>
+      <p class="section-desc">Run after wiring each master page. Final <code>npm run build</code> at the end.</p>
+      <ul class="checklist">
+        <li><div class="check-box"></div><span>Navigate to page — only 20 rows load by default (check Network tab: small JSON payload)</span></li>
+        <li><div class="check-box"></div><span>Type in search box, wait 350 ms — rows filter via DB, URL updates to <code>?search=term&amp;page=1</code></span></li>
+        <li><div class="check-box"></div><span>Click Next / Prev — URL page param increments/decrements, correct slice shown</span></li>
+        <li><div class="check-box"></div><span>Change page size to 50 — refetches 50 rows, URL becomes <code>?size=50&amp;page=1</code></span></li>
+        <li><div class="check-box"></div><span>Add a record via the dialog — <code>router.refresh()</code> stays on same page and keeps filters</span></li>
+        <li><div class="check-box"></div><span>Import CSV — same, user stays on current page with current filters</span></li>
+        <li><div class="check-box"></div><span>Click "Clear filters" — search and type params removed, back to page 1</span></li>
+        <li><div class="check-box"></div><span><em>(Packing / Raw Materials)</em> Toggle view — lands on page 1 of the new view</span></li>
+        <li><div class="check-box"></div><span>Copy URL, open in new tab — same page, search, and filters load correctly (URL is shareable)</span></li>
+        <li><div class="check-box"></div><span><code>npm run build</code> — no TypeScript errors, clean output</span></li>
+        <li><div class="check-box"></div><span><code>npm run lint</code> — no lint errors</span></li>
+      </ul>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  (function () {
+    const sections = document.querySelectorAll('.section[id]')
+    const tocLinks = {}
+    sections.forEach(function(s) {
+      var link = document.querySelector('#toc-' + s.id)
+      if (link) tocLinks[s.id] = link
+    })
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(e) {
+        if (e.isIntersecting) {
+          Object.values(tocLinks).forEach(function(l) { l.classList.remove('active') })
+          var link = tocLinks[e.target.id]
+          if (link) link.classList.add('active')
+        }
+      })
+    }, { rootMargin: '-20% 0px -70% 0px' })
+    sections.forEach(function(s) { observer.observe(s) })
+  })()
+</script>
+
+</body>
+</html>

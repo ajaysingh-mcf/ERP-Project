@@ -27,6 +27,42 @@ export const vendors = {
     JOIN vendors v ON vd.vendor_id = v.id
   `,
 
+  // ============ PAGINATED SELECT QUERIES ============
+
+  /**
+   * Paginated vendor list with optional search + type filter.
+   *
+   * SQL pattern: (? IS NULL OR col LIKE ?) — passing null for the first
+   * param short-circuits the condition, returning all rows.
+   *
+   * Params: [like, like, like, type, type, LIMIT, OFFSET]
+   *   like — '%search%' or null (used three times: null-check + code LIKE + name LIKE)
+   *   type — 'rm'|'pm'|'both' or null
+   */
+  selectPaginated: `
+    SELECT
+      vd.vendor_id, vd.gst_number, vd.location, vd.status,
+      v.code, v.name, v.type
+    FROM vendor_details vd
+    JOIN vendors v ON vd.vendor_id = v.id
+    WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
+      AND (? IS NULL OR v.type = ?)
+    ORDER BY v.code ASC
+    LIMIT ? OFFSET ?
+  `,
+
+  /**
+   * Matching COUNT for selectPaginated (same WHERE, no LIMIT/OFFSET).
+   * Params: [like, like, like, type, type]
+   */
+  countAll: `
+    SELECT COUNT(*) AS total
+    FROM vendor_details vd
+    JOIN vendors v ON vd.vendor_id = v.id
+    WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
+      AND (? IS NULL OR v.type = ?)
+  `,
+
   // ============ INSERT QUERIES ============
 
   /**

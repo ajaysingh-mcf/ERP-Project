@@ -1,7 +1,25 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+/**
+ * CLIENT component for /masters/vendors.
+ *
+ * Receives a pre-filtered, pre-paginated slice of vendors from the server page.
+ * Owns all interactive behaviour:
+ *   - URL-synced search (UrlSearchInput — 350 ms debounce → ?search=)
+ *   - Type filter (select → ?type=)
+ *   - Add record dialog (POST /api/masters/vendors)
+ *   - CSV import dialog  (POST /api/masters/vendors)
+ *   - Pagination footer  (PaginationBar — navigates ?page= / ?size=)
+ *
+ * Navigation strategy: every filter/page change is merged into the current URL
+ * via the local `navigate()` helper, which calls router.push(). This keeps all
+ * active params (?search=, ?type=, ?page=, ?size=) consistent in the URL.
+ *
+ * After an Add or CSV import, router.refresh() re-runs the server page with
+ * the SAME URL params so the user stays on their current page and filters.
+ */
+
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -12,7 +30,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { SearchInput } from "@/components/masters/SearchInput"
+import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
+import { PaginationBar } from "@/components/ui/pagination-bar"
 import {
   MasterToolbar,
   MasterToolbarActions,
@@ -22,107 +41,86 @@ import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
 import type { MasterField } from "@/components/masters/field-config"
 import type { Vendor } from "@/types/masters"
 
-// CLIENT component for /masters/vendors. Receives vendor rows from the server
-// page as `initialRows` and owns search + a type filter + the Add / CSV-import
-// dialogs, which POST to /api/masters/vendors.
-
+// Field definitions shared by the Add form and the CSV importer.
 const VENDOR_FIELDS: MasterField[] = [
+  { key: "code",       label: "Code",       required: true,  placeholder: "e.g. VEN-001",         sample: "VEN-001" },
+  { key: "name",       label: "Name",       required: true,  placeholder: "Vendor name",           sample: "Acme Pvt Ltd" },
   {
-    key: "code",
-    label: "Code",
-    required: true,
-    placeholder: "e.g. VEN-001",
-    sample: "VEN-001",
-  },
-  {
-    key: "name",
-    label: "Name",
-    required: true,
-    placeholder: "Vendor name",
-    sample: "Acme Pvt Ltd",
-  },
-  {
-    key: "type",
-    label: "Type",
-    type: "select",
-    required: true,
-    default: "rm",
-    colSpan: 2,
-    sample: "rm",
+    key: "type", label: "Type", type: "select", required: true, default: "rm", colSpan: 2, sample: "rm",
     options: [
-      { value: "rm", label: "RM" },
-      { value: "pm", label: "PM" },
+      { value: "rm",   label: "RM"   },
+      { value: "pm",   label: "PM"   },
       { value: "both", label: "Both" },
     ],
   },
+  { key: "location",   label: "Location",   required: true  },
+  { key: "gst_number", label: "GST Number", required: true  },
   {
-    key: "location",
-    label: "Location",
-    required: true,
-  },
-  {
-    key: "gst_number",
-    label: "GST Number",
-    required: true,
-  },
-  {
-    key: "status",
-    label: "Status",
-    required: false,
-    type: "select",
-    default: "active",
-    colSpan: 2,
-    sample: "active",
+    key: "status", label: "Status", type: "select", required: false, default: "active", colSpan: 2, sample: "active",
     options: [
-      { value: "active", label: "Active" },
+      { value: "active",   label: "Active"   },
       { value: "inactive", label: "Inactive" },
     ],
-  }
-
+  },
 ]
 
 export default function VendorsClient({
-  initialRows,
+  rows,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentType,
 }: {
-  initialRows: Vendor[]
+  rows: Vendor[]
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentType: string
 }) {
-  const router = useRouter()
-  const [search, setSearch] = useState("")
-  const [typeFilter, setTypeFilter] = useState("all")
+  const router       = useRouter()
+  const pathname     = usePathname()
+  const searchParams = useSearchParams()
 
-  const filtered = initialRows.filter((r) => {
-    const q = search.toLowerCase()
-    const matchSearch =
-      !q ||
-      r.code.toLowerCase().includes(q) ||
-      r.name.toLowerCase().includes(q)
-    const matchType = typeFilter === "all" || r.type === typeFilter
-    return matchSearch && matchType
-  })
+  /**
+   * Merge one or more key/value overrides into the current URL params,
+   * reset page to 1, then navigate. Empty-string values delete the param.
+   */
+  function navigate(updates: Record<string, string>) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) params.set(k, v)
+      else   params.delete(k)
+    }
+    params.set("page", "1")
+    router.push(`${pathname}?${params.toString()}`)
+  }
 
-  const hasFilters = search || typeFilter !== "all"
-  const refresh = () => router.refresh()
+  const hasFilters = currentSearch || currentType
+  // router.refresh() re-runs the server page with the SAME URL, keeping page + filters.
+  const refresh    = () => router.refresh()
 
   return (
     <>
+      {/* ── Toolbar ── */}
       <MasterToolbar>
-        <SearchInput
-          value={search}
-          onChange={setSearch}
+        <UrlSearchInput
+          initialValue={currentSearch}
           placeholder="Search by code or name…"
         />
 
         <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
+          value={currentType || "all"}
+          onChange={(e) =>
+            navigate({ type: e.target.value === "all" ? "" : e.target.value })
+          }
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="all">All Types</option>
           <option value="rm">RM</option>
           <option value="pm">PM</option>
           <option value="both">Both</option>
-          <option value="location">Location</option>
-          <option value="gst_number">GST Number</option>
         </select>
 
         <MasterToolbarActions>
@@ -142,16 +140,14 @@ export default function VendorsClient({
         </MasterToolbarActions>
       </MasterToolbar>
 
+      {/* ── Table card ── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            {filtered.length} of {initialRows.length} records
+            {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => {
-                  setSearch("")
-                  setTypeFilter("all")
-                }}
+                onClick={() => navigate({ search: "", type: "" })}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters
@@ -172,28 +168,19 @@ export default function VendorsClient({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell
-                    colSpan={3}
-                    className="text-center text-muted-foreground py-10"
-                  >
-                    {hasFilters
-                      ? "No vendors match your filters."
-                      : "No records found."}
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
+                    {hasFilters ? "No vendors match your filters." : "No records found."}
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((row) => (
+                rows.map((row) => (
                   <TableRow key={row.vendor_id}>
-                    <TableCell className="font-mono text-xs font-medium">
-                      {row.code}
-                    </TableCell>
+                    <TableCell className="font-mono text-xs font-medium">{row.code}</TableCell>
                     <TableCell className="font-medium">{row.name}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="capitalize">
-                        {row.type}
-                      </Badge>
+                      <Badge variant="outline" className="capitalize">{row.type}</Badge>
                     </TableCell>
                     <TableCell>{row.location ?? "—"}</TableCell>
                     <TableCell>{row.gst_number ?? "—"}</TableCell>
@@ -203,6 +190,9 @@ export default function VendorsClient({
               )}
             </TableBody>
           </Table>
+
+          {/* Pagination footer: rows-per-page selector + prev/next */}
+          <PaginationBar total={total} page={page} pageSize={pageSize} />
         </CardContent>
       </Card>
     </>

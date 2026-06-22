@@ -43,7 +43,13 @@ export async function query<T = Record<string, unknown>>(
   params?: any[]
 ): Promise<T[]> {
   return withRetry(async () => {
-    const [rows] = await pool.execute(sql, params);
+    // pool.query uses client-side parameter interpolation (text protocol).
+    // pool.execute (server-side prepared statements) rejects null params in
+    // MariaDB when used with the `? IS NULL` pattern (ER_WRONG_ARGUMENTS).
+    // All paginated queries pass null to short-circuit WHERE clauses, so
+    // pool.query is required here. DML statements (INSERT/UPDATE/DELETE) keep
+    // pool.execute via the separate execute() function below.
+    const [rows] = await pool.query(sql, params);
     return rows as T[];
   });
 }

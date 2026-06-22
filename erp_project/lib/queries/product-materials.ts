@@ -27,6 +27,66 @@ export const PMMaterials = {
     FROM pm_mrm AS pmm
     INNER JOIN pm AS p ON pmm.pm_id = p.id
   `,
+  // ============ PAGINATED SELECT QUERIES ============
+
+  /**
+   * Paginated PM × vendor rates with optional search + status filter.
+   * Params: [like, like, like, status, status, LIMIT, OFFSET]
+   *   like   — '%search%' or null (pm_code / name columns)
+   *   status — 'active'|'discontinued' or null
+   */
+  selectVendorPaginated: `
+    SELECT
+      p.pm_code, p.name, p.type,
+      p.hsn_code, pmv.pm_id,
+      pmv.vendor_id, pmv.vendor_code,
+      pmv.curr_rate, pmv.moq,
+      pmv.uom, pmv.status,
+      pmv.effective_from, pmv.effective_to
+    FROM pm_vrm AS pmv
+    INNER JOIN pm AS p ON pmv.pm_id = p.id
+    WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
+      AND (? IS NULL OR pmv.status = ?)
+    ORDER BY p.pm_code ASC
+    LIMIT ? OFFSET ?
+  `,
+
+  /** Matching COUNT for selectVendorPaginated. Params: [like, like, like, status, status] */
+  countVendor: `
+    SELECT COUNT(*) AS total
+    FROM pm_vrm AS pmv
+    INNER JOIN pm AS p ON pmv.pm_id = p.id
+    WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
+      AND (? IS NULL OR pmv.status = ?)
+  `,
+
+  /**
+   * Paginated PM × manufacturer rates with optional search + status filter.
+   * Params: [like, like, like, status, status, LIMIT, OFFSET]
+   */
+  selectMfgPaginated: `
+    SELECT
+      p.pm_code, p.name, p.type,
+      p.hsn_code, p.uom, pmm.pm_id,
+      pmm.mfg_id, pmm.mfg_code, pmm.curr_rate,
+      pmm.uom, pmm.status, pmm.effective_from
+    FROM pm_mrm AS pmm
+    INNER JOIN pm AS p ON pmm.pm_id = p.id
+    WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
+      AND (? IS NULL OR pmm.status = ?)
+    ORDER BY p.pm_code ASC
+    LIMIT ? OFFSET ?
+  `,
+
+  /** Matching COUNT for selectMfgPaginated. Params: [like, like, like, status, status] */
+  countMfg: `
+    SELECT COUNT(*) AS total
+    FROM pm_mrm AS pmm
+    INNER JOIN pm AS p ON pmm.pm_id = p.id
+    WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
+      AND (? IS NULL OR pmm.status = ?)
+  `,
+
   insert: `
     INSERT INTO pm (pm_code, name, type, hsn_code, uom, status)
     VALUES (?, ?, ?, ?, ?, ?)

@@ -1,7 +1,17 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+/**
+ * CLIENT component for /masters/bom-master.
+ *
+ * Receives a paginated BOM slice from the server page. Owns all interactive
+ * behaviour: URL-synced search, material-type filter, BOM-status filter,
+ * Add/CSV dialogs, and the PaginationBar footer.
+ *
+ * All filter changes reset to page 1 via the local navigate() helper.
+ * router.refresh() after Add/CSV keeps the user on the current page.
+ */
+
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -12,7 +22,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { SearchInput } from "@/components/masters/SearchInput"
+import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
+import { PaginationBar } from "@/components/ui/pagination-bar"
 import {
   MasterToolbar,
   MasterToolbarActions,
@@ -23,100 +34,30 @@ import type { MasterField } from "@/components/masters/field-config"
 import type { BOM } from "@/types/masters"
 
 const BOM_FIELDS: MasterField[] = [
+  { key: "bom_code",      label: "BOM Code",        required: true,  placeholder: "e.g. BOM-001",   sample: "BOM-001",  colSpan: 2 },
+  { key: "sku_code",      label: "SKU Code",        required: true,  placeholder: "e.g. SKU-001",   sample: "SKU-001",  colSpan: 2 },
+  { key: "mfg_id",        label: "Manufacturer ID", type: "number",  required: true,  placeholder: "e.g. 1",  sample: "1" },
   {
-    key: "bom_code",
-    label: "BOM Code",
-    required: true,
-    placeholder: "e.g. BOM-001",
-    sample: "BOM-001",
-    colSpan: 2,
-  },
-  {
-    key: "sku_code",
-    label: "SKU Code",
-    required: true,
-    placeholder: "e.g. SKU-001",
-    sample: "SKU-001",
-    colSpan: 2,
-  },
-  {
-    key: "mfg_id",
-    label: "Manufacturer ID",
-    type: "number",
-    required: true,
-    placeholder: "e.g. 1",
-    sample: "1",
-  },
-  {
-    key: "status",
-    label: "BOM Status",
-    type: "select",
-    required: false,
-    default: "draft",
-    sample: "draft",
+    key: "status", label: "BOM Status", type: "select", required: false, default: "draft", sample: "draft",
     options: [
-      { value: "draft", label: "Draft" },
-      { value: "active", label: "Active" },
+      { value: "draft",    label: "Draft"    },
+      { value: "active",   label: "Active"   },
       { value: "inactive", label: "Inactive" },
     ],
   },
   {
-    key: "mtrl_type",
-    label: "Material Type",
-    type: "select",
-    required: true,
-    default: "rm",
-    sample: "rm",
+    key: "mtrl_type", label: "Material Type", type: "select", required: true, default: "rm", sample: "rm",
     options: [
       { value: "rm", label: "RM" },
       { value: "pm", label: "PM" },
     ],
   },
-  {
-    key: "mtrl_id",
-    label: "Material ID",
-    type: "number",
-    required: true,
-    placeholder: "e.g. 10",
-    sample: "10",
-  },
-  {
-    key: "amount",
-    label: "Amount",
-    type: "number",
-    required: true,
-    placeholder: "e.g. 0.5",
-    sample: "0.5",
-  },
-  {
-    key: "uom",
-    label: "UOM",
-    required: false,
-    placeholder: "e.g. kg",
-    sample: "kg",
-  },
-  {
-    key: "mtrl_cost",
-    label: "Material Cost",
-    type: "number",
-    required: false,
-    placeholder: "e.g. 120.00",
-    sample: "120.00",
-  },
-  {
-    key: "effective_from",
-    label: "Effective From",
-    required: false,
-    placeholder: "YYYY-MM-DD",
-    sample: "2025-01-01",
-  },
-  {
-    key: "effective_till",
-    label: "Effective Till",
-    required: false,
-    placeholder: "YYYY-MM-DD",
-    sample: "2025-12-31",
-  },
+  { key: "mtrl_id",       label: "Material ID",     type: "number",  required: true,  placeholder: "e.g. 10",      sample: "10" },
+  { key: "amount",        label: "Amount",          type: "number",  required: true,  placeholder: "e.g. 0.5",     sample: "0.5" },
+  { key: "uom",           label: "UOM",             required: false, placeholder: "e.g. kg",      sample: "kg" },
+  { key: "mtrl_cost",     label: "Material Cost",   type: "number",  required: false, placeholder: "e.g. 120.00",  sample: "120.00" },
+  { key: "effective_from", label: "Effective From", required: false, placeholder: "YYYY-MM-DD",   sample: "2025-01-01" },
+  { key: "effective_till", label: "Effective Till", required: false, placeholder: "YYYY-MM-DD",   sample: "2025-12-31" },
 ]
 
 function formatDate(val: Date | string | null) {
@@ -125,38 +66,56 @@ function formatDate(val: Date | string | null) {
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
 }
 
-export default function BOMMasterComponent({ initialRows }: { initialRows: BOM[] }) {
-  const router = useRouter()
-  const [search, setSearch] = useState("")
-  const [typeFilter, setTypeFilter] = useState("all")
-  const [statusFilter, setStatusFilter] = useState("all")
+export default function BOMMasterComponent({
+  rows,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentType,
+  currentStatus,
+}: {
+  rows: BOM[]
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentType: string
+  currentStatus: string
+}) {
+  const router       = useRouter()
+  const pathname     = usePathname()
+  const searchParams = useSearchParams()
 
-  const filtered = initialRows.filter((r) => {
-    const q = search.toLowerCase()
-    const matchSearch =
-      !q ||
-      (r.bom_code ?? "").toLowerCase().includes(q) ||
-      (r.sku_code ?? "").toLowerCase().includes(q)
-    const matchType = typeFilter === "all" || r.mtrl_type === typeFilter
-    const matchStatus = statusFilter === "all" || r.bom_status === statusFilter
-    return matchSearch && matchType && matchStatus
-  })
+  /** Merge URL-param overrides and reset to page 1. */
+  function navigate(updates: Record<string, string>) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) params.set(k, v)
+      else   params.delete(k)
+    }
+    params.set("page", "1")
+    router.push(`${pathname}?${params.toString()}`)
+  }
 
-  const hasFilters = search || typeFilter !== "all" || statusFilter !== "all"
-  const refresh = () => router.refresh()
+  const hasFilters = currentSearch || currentType || currentStatus
+  const refresh    = () => router.refresh()
 
   return (
     <>
+      {/* ── Toolbar ── */}
       <MasterToolbar>
-        <SearchInput
-          value={search}
-          onChange={setSearch}
+        <UrlSearchInput
+          initialValue={currentSearch}
           placeholder="Search by BOM code or SKU code…"
         />
 
+        {/* Material type filter */}
         <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
+          value={currentType || "all"}
+          onChange={(e) =>
+            navigate({ type: e.target.value === "all" ? "" : e.target.value })
+          }
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="all">All Types</option>
@@ -164,9 +123,12 @@ export default function BOMMasterComponent({ initialRows }: { initialRows: BOM[]
           <option value="pm">PM</option>
         </select>
 
+        {/* BOM status filter */}
         <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          value={currentStatus || "all"}
+          onChange={(e) =>
+            navigate({ status: e.target.value === "all" ? "" : e.target.value })
+          }
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="all">All Statuses</option>
@@ -195,17 +157,14 @@ export default function BOMMasterComponent({ initialRows }: { initialRows: BOM[]
         </MasterToolbarActions>
       </MasterToolbar>
 
+      {/* ── Table card ── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            {filtered.length} of {initialRows.length} records
+            {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => {
-                  setSearch("")
-                  setTypeFilter("all")
-                  setStatusFilter("all")
-                }}
+                onClick={() => navigate({ search: "", type: "", status: "" })}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters
@@ -231,30 +190,21 @@ export default function BOMMasterComponent({ initialRows }: { initialRows: BOM[]
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell
-                    colSpan={11}
-                    className="text-center text-muted-foreground py-10"
-                  >
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-10">
                     {hasFilters ? "No BOM records match your filters." : "No records found."}
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((row, i) => (
+                rows.map((row, i) => (
                   <TableRow key={`${row.bom_id}-${row.mtrl_id}-${i}`}>
-                    <TableCell className="font-mono text-xs font-medium">
-                      {row.bom_code ?? "—"}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {row.sku_code ?? "—"}
-                    </TableCell>
+                    <TableCell className="font-mono text-xs font-medium">{row.bom_code ?? "—"}</TableCell>
+                    <TableCell className="font-mono text-xs">{row.sku_code ?? "—"}</TableCell>
                     <TableCell>{row.mtrl_id ?? "—"}</TableCell>
                     <TableCell>
                       {row.mtrl_type ? (
-                        <Badge variant="outline" className="uppercase text-xs">
-                          {row.mtrl_type}
-                        </Badge>
+                        <Badge variant="outline" className="uppercase text-xs">{row.mtrl_type}</Badge>
                       ) : "—"}
                     </TableCell>
                     <TableCell>{row.uom ?? "—"}</TableCell>
@@ -283,6 +233,8 @@ export default function BOMMasterComponent({ initialRows }: { initialRows: BOM[]
               )}
             </TableBody>
           </Table>
+
+          <PaginationBar total={total} page={page} pageSize={pageSize} />
         </CardContent>
       </Card>
     </>

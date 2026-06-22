@@ -1,5 +1,12 @@
 "use client"
 
+/**
+ * CLIENT component — Vendor view of /masters/packing-materials.
+ *
+ * Thin wrapper that passes vendor-specific columns + pagination props to PmRateTable.
+ * Also owns the VendorPMDetailDialog (opened when the user clicks the compare icon).
+ */
+
 import { useState } from "react"
 import { GitCompare } from "lucide-react"
 import type { PMVendor, Vendor, Mfg } from "@/types/masters"
@@ -31,10 +38,20 @@ export default function VendorPackingMaterialsClient({
   rows,
   vendors,
   manufacturers,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentStatus,
 }: {
   rows: PMVendor[]
   vendors: Vendor[]
   manufacturers: Mfg[]
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentStatus: string
 }) {
   const [selectedRow, setSelectedRow] = useState<PMVendor | null>(null)
 
@@ -45,6 +62,11 @@ export default function VendorPackingMaterialsClient({
         columns={VENDOR_COLUMNS}
         vendors={vendors}
         manufacturers={manufacturers}
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        currentSearch={currentSearch}
+        currentStatus={currentStatus}
         actionColumn={(row) => (
           <button
             onClick={() => setSelectedRow(row as unknown as PMVendor)}
@@ -56,6 +78,7 @@ export default function VendorPackingMaterialsClient({
         )}
       />
 
+      {/* Compare dialog — shows all rates for the selected PM code on the current page */}
       <VendorPMDetailDialog
         row={selectedRow}
         allRows={rows}

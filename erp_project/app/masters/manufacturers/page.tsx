@@ -1,24 +1,46 @@
+/**
+ * SERVER component for /masters/manufacturers.
+ *
+ * Reads ?page, ?size, ?search from URL searchParams and runs a
+ * DB-level LIMIT/OFFSET query so only the requested slice is fetched.
+ */
+
 import { auth } from "@/lib/auth"
 import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
-import { query } from "@/lib/db"
+import { parsePaginationParams, paginate } from "@/lib/pagination"
+import { manufacturers } from "@/lib/queries/manufacturers"
 import type { Mfg } from "@/types/masters"
 import ManufacturersClient from "./ManufacturersClient"
-import { manufacturers } from "@/lib/queries/manufacturers"
 
-export default async function ManufacturersPage() {
+export default async function ManufacturersPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  // ── Auth + permission guard ────────────────────────────────────────────────
   const session = await auth()
   if (!session) redirect("/auth/signin")
   const userId = parseInt(session.user.id)
   const access = await resolveAccess(userId, session.user.roles, "/masters")
   if (access === "none") redirect("/auth/unauthorized")
 
-  let rows: Mfg[] = []
-  try {
-    rows = await query<Mfg>(manufacturers.selectAll)
-  } catch (error) {
-    console.error("Error fetching manufacturers:", error)
-  }
+  // ── Read URL params ────────────────────────────────────────────────────────
+  const sp     = await searchParams
+  const { page, size, offset } = parsePaginationParams(sp)
+  const search = String(sp.search ?? "")
+  const like   = search ? `%${search}%` : null
+
+  // ── DB query (paginated) ───────────────────────────────────────────────────
+  // Param order: [like, like, like, LIMIT, OFFSET] (data) / [like, like, like] (count)
+  const { rows, total } = await paginate<Mfg>(
+    manufacturers.selectPaginated,
+    [like, like, like, size, offset],
+    manufacturers.countAll,
+    [like, like, like],
+    page,
+    size
+  )
 
   return (
     <div className="p-6">
@@ -28,7 +50,13 @@ export default async function ManufacturersPage() {
           All registered manufacturers (MFGs)
         </p>
       </div>
-      <ManufacturersClient initialRows={rows} />
+      <ManufacturersClient
+        rows={rows}
+        total={total}
+        page={page}
+        pageSize={size}
+        currentSearch={search}
+      />
     </div>
   )
 }

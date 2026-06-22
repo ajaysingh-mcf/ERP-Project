@@ -9,11 +9,7 @@ import MaterialMasterClient from "./MaterialMasterClient"
 
 type AnyRow = Record<string, unknown>
 
-export default async function MaterialMasterPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ material?: string }>
-}) {
+export default async function MaterialMasterPage({searchParams,}: {searchParams: Promise<{ material?: string } > }) {
   const session = await auth()
   if (!session) redirect("/auth/signin")
   const userId = parseInt(session.user.id)

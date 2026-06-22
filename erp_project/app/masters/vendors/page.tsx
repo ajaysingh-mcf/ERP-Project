@@ -1,33 +1,76 @@
-// SERVER component for /masters/vendors.
-// Gates access, reads vendor rows from the DB, and passes them to the client
-// component. The interactive search/filter/add/CSV lives in VendorsClient.
+/**
+ * SERVER component for /masters/vendors.
+ *
+ * Responsibilities:
+ *   1. Auth + page-permission guard (unchanged).
+ *   2. Read pagination params (?page, ?size) and filter params (?search, ?type)
+ *      from the URL searchParams.
+ *   3. Run a DB-level LIMIT/OFFSET query so only the requested slice is fetched.
+ *   4. Hand the slice + metadata to the client component for rendering.
+ *
+ * The interactive toolbar (search box, type filter, Add, CSV import) and the
+ * PaginationBar footer both live in VendorsClient.
+ */
+
 import { auth } from "@/lib/auth"
 import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
-import { query } from "@/lib/db"
+import { parsePaginationParams, paginate } from "@/lib/pagination"
 import { vendors } from "@/lib/queries/vendors"
 import type { Vendor } from "@/types/masters"
 import VendorsClient from "./VendorsClient"
 
-export default async function VendorsPage() {
+export default async function VendorsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  // ── Auth + permission guard ────────────────────────────────────────────────
   const session = await auth()
   if (!session) redirect("/auth/signin")
   const userId = parseInt(session.user.id)
   const access = await resolveAccess(userId, session.user.roles, "/masters")
   if (access === "none") redirect("/auth/unauthorized")
 
-const rows = await query<Vendor>(vendors.selectAll)
+  // ── Read URL params ────────────────────────────────────────────────────────
+  const sp         = await searchParams
+  const { page, size, offset } = parsePaginationParams(sp)
+  const search     = String(sp.search ?? "")
+  const typeFilter = String(sp.type   ?? "")
 
+  // Build the SQL params.
+  // like = '%term%' → enables LIKE search; null → IS NULL check short-circuits,
+  // returning all rows without a table scan for the LIKE pattern.
+  const like = search     ? `%${search}%` : null
+  const type = typeFilter ? typeFilter    : null
+
+  // ── DB query (paginated) ───────────────────────────────────────────────────
+  // Param order matches vendors.selectPaginated / countAll:
+  //   [like, like, like, type, type, LIMIT, OFFSET]  (data)
+  //   [like, like, like, type, type]                 (count)
+  const { rows, total } = await paginate<Vendor>(
+    vendors.selectPaginated,
+    [like, like, like, type, type, size, offset],
+    vendors.countAll,
+    [like, like, like, type, type],
+    page,
+    size
+  )
 
   return (
     <div className="p-6">
       <div className="mb-5">
         <h1 className="text-2xl font-bold tracking-tight">Vendors</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          All registered vendors
-        </p>
+        <p className="text-muted-foreground text-sm mt-1">All registered vendors</p>
       </div>
-      <VendorsClient initialRows={rows} />
+      <VendorsClient
+        rows={rows}
+        total={total}
+        page={page}
+        pageSize={size}
+        currentSearch={search}
+        currentType={typeFilter}
+      />
     </div>
   )
 }

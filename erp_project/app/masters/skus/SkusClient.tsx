@@ -1,7 +1,18 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+/**
+ * CLIENT component for /masters/skus.
+ *
+ * Receives a paginated slice of SKUs from the server page (SkusPage).
+ * Owns all interactive behaviour: URL-synced search, status filter, Add/CSV
+ * dialogs, and the PaginationBar footer.
+ *
+ * Filter changes push new URL params (resetting to page 1); the server
+ * re-renders with the DB-filtered slice. router.refresh() after Add/CSV keeps
+ * the user on their current page with their current filters.
+ */
+
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -12,7 +23,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { SearchInput } from "@/components/masters/SearchInput"
+import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
+import { PaginationBar } from "@/components/ui/pagination-bar"
 import {
   MasterToolbar,
   MasterToolbarActions,
@@ -22,81 +34,67 @@ import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
 import type { MasterField } from "@/components/masters/field-config"
 import type { Sku } from "@/types/masters"
 
-// CLIENT component for /masters/skus. Receives the SKU rows from the server
-// page (SkusPage) as `initialSkus` and owns all interactivity: search, status
-// filter, and the Add / CSV-import dialogs. The dialogs POST to
-// /api/masters/skus and call router.refresh() on success to re-fetch the page.
-
-// Single source of truth for the SKU Add form + CSV importer.
 const SKU_FIELDS: MasterField[] = [
+  { key: "sku_code",  label: "SKU Code",  required: true,  aliases: ["code"], placeholder: "e.g. SKU-001", sample: "SKU-001" },
+  { key: "name",      label: "Name",      required: true,  placeholder: "Product Name",  sample: "Product Alpha" },
+  { key: "brand",     label: "Brand",     placeholder: "Brand",    sample: "Brand A" },
+  { key: "category",  label: "Category",  placeholder: "Category", sample: "Category 1" },
   {
-    key: "sku_code",
-    label: "SKU Code",
-    required: true,
-    aliases: ["code"],
-    placeholder: "e.g. SKU-001",
-    sample: "SKU-001",
-  },
-  {
-    key: "name",
-    label: "Name",
-    required: true,
-    placeholder: "Product Name",
-    sample: "Product Alpha",
-  },
-  { key: "brand", label: "Brand", placeholder: "Brand", sample: "Brand A" },
-  {
-    key: "category",
-    label: "Category",
-    placeholder: "Category",
-    sample: "Category 1",
-  },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    default: "active",
-    colSpan: 2,
-    sample: "active",
+    key: "status", label: "Status", type: "select", default: "active", colSpan: 2, sample: "active",
     options: [
-      { value: "active", label: "Active" },
+      { value: "active",   label: "Active"   },
       { value: "inactive", label: "Inactive" },
     ],
   },
 ]
 
-export default function SkusClient({ initialSkus }: { initialSkus: Sku[] }) {
-  const router = useRouter()
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
+export default function SkusClient({
+  rows,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentStatus,
+}: {
+  rows: Sku[]
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentStatus: string
+}) {
+  const router       = useRouter()
+  const pathname     = usePathname()
+  const searchParams = useSearchParams()
 
-  const filtered = initialSkus.filter((s) => {
-    const q = search.toLowerCase()
-    const matchSearch =
-      !q ||
-      s.sku_code.toLowerCase().includes(q) ||
-      s.name.toLowerCase().includes(q) ||
-      (s.brand ?? "").toLowerCase().includes(q) ||
-      (s.category ?? "").toLowerCase().includes(q)
-    const matchStatus = statusFilter === "all" || s.status === statusFilter
-    return matchSearch && matchStatus
-  })
+  /** Merge URL-param overrides and reset to page 1. */
+  function navigate(updates: Record<string, string>) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) params.set(k, v)
+      else   params.delete(k)
+    }
+    params.set("page", "1")
+    router.push(`${pathname}?${params.toString()}`)
+  }
 
-  const hasFilters = search || statusFilter !== "all"
-  const refresh = () => router.refresh()
+  const hasFilters = currentSearch || currentStatus
+  const refresh    = () => router.refresh()
 
   return (
     <>
+      {/* ── Toolbar ── */}
       <MasterToolbar>
-        <SearchInput
-          value={search}
-          onChange={setSearch}
+        <UrlSearchInput
+          initialValue={currentSearch}
           placeholder="Search by code, name, brand…"
         />
 
         <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          value={currentStatus || "all"}
+          onChange={(e) =>
+            navigate({ status: e.target.value === "all" ? "" : e.target.value })
+          }
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="all">All Status</option>
@@ -123,16 +121,14 @@ export default function SkusClient({ initialSkus }: { initialSkus: Sku[] }) {
         </MasterToolbarActions>
       </MasterToolbar>
 
+      {/* ── Table card ── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            {filtered.length} of {initialSkus.length} records
+            {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => {
-                  setSearch("")
-                  setStatusFilter("all")
-                }}
+                onClick={() => navigate({ search: "", status: "" })}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters
@@ -154,30 +150,19 @@ export default function SkusClient({ initialSkus }: { initialSkus: Sku[] }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="text-center text-muted-foreground py-10"
-                  >
-                    {hasFilters
-                      ? "No SKUs match your filters."
-                      : "No records found."}
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                    {hasFilters ? "No SKUs match your filters." : "No records found."}
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((row) => (
+                rows.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell className="font-mono text-xs font-medium">
-                      {row.sku_code}
-                    </TableCell>
+                    <TableCell className="font-mono text-xs font-medium">{row.sku_code}</TableCell>
                     <TableCell className="font-medium">{row.name}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {row.brand ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {row.category ?? "—"}
-                    </TableCell>
+                    <TableCell className="text-muted-foreground">{row.brand ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{row.category ?? "—"}</TableCell>
                     <TableCell>
                       <Badge
                         variant={row.status === "active" ? "success" : "secondary"}
@@ -199,6 +184,8 @@ export default function SkusClient({ initialSkus }: { initialSkus: Sku[] }) {
               )}
             </TableBody>
           </Table>
+
+          <PaginationBar total={total} page={page} pageSize={pageSize} />
         </CardContent>
       </Card>
     </>

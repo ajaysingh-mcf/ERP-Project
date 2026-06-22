@@ -1,7 +1,13 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+/**
+ * CLIENT component for /masters/manufacturers.
+ *
+ * Receives a paginated slice of manufacturers from the server page.
+ * Owns search (UrlSearchInput), Add/CSV dialogs, and the PaginationBar footer.
+ */
+
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -11,7 +17,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { SearchInput } from "@/components/masters/SearchInput"
+import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
+import { PaginationBar } from "@/components/ui/pagination-bar"
 import {
   MasterToolbar,
   MasterToolbarActions,
@@ -21,71 +28,37 @@ import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
 import type { MasterField } from "@/components/masters/field-config"
 import type { Mfg } from "@/types/masters"
 
-// CLIENT component for /masters/manufacturers. Receives manufacturer rows from
-// the server page as `initialRows` and owns search + the Add / CSV-import
-// dialogs, which POST to /api/masters/manufacturers.
-
 const MFG_FIELDS: MasterField[] = [
-  {
-    key: "code",
-    label: "Code",
-    required: true,
-    placeholder: "e.g. MFG-001",
-    sample: "MFG-001",
-  },
-  {
-    key: "name",
-    label: "Name",
-    required: true,
-    colSpan: 2,
-    placeholder: "Manufacturer name",
-    sample: "Acme Manufacturing",
-  },
-  {
-    key: "location",
-    label: "Location",
-    placeholder: "e.g. Mumbai",
-    sample: "Mumbai",
-  },
-  {
-    key: "gst_number",
-    label: "GST Number",
-    placeholder: "e.g. 27AAEPM1234C1Z5",
-    sample: "27AAEPM1234C1Z5",
-  },  
-  {
-    key: "status",
-    label: "Status",
-    placeholder: "e.g. active/inactive",
-    sample: "active",
-  },
+  { key: "code",       label: "Code",       required: true,  placeholder: "e.g. MFG-001",         sample: "MFG-001" },
+  { key: "name",       label: "Name",       required: true,  colSpan: 2, placeholder: "Manufacturer name", sample: "Acme Manufacturing" },
+  { key: "location",   label: "Location",   placeholder: "e.g. Mumbai",           sample: "Mumbai" },
+  { key: "gst_number", label: "GST Number", placeholder: "e.g. 27AAEPM1234C1Z5",  sample: "27AAEPM1234C1Z5" },
+  { key: "status",     label: "Status",     placeholder: "e.g. active/inactive",  sample: "active" },
 ]
 
 export default function ManufacturersClient({
-  initialRows,
+  rows,
+  total,
+  page,
+  pageSize,
+  currentSearch,
 }: {
-  initialRows: Mfg[]
+  rows: Mfg[]
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
 }) {
   const router = useRouter()
-  const [search, setSearch] = useState("")
-
-  const filtered = initialRows.filter((r) => {
-    const q = search.toLowerCase()
-    return (
-      !q ||
-      r.code.toLowerCase().includes(q) ||
-      r.name.toLowerCase().includes(q)
-    )
-  })
-
+  // router.refresh() re-runs the server page with current URL — keeps page + filters.
   const refresh = () => router.refresh()
 
   return (
     <>
+      {/* ── Toolbar ── */}
       <MasterToolbar>
-        <SearchInput
-          value={search}
-          onChange={setSearch}
+        <UrlSearchInput
+          initialValue={currentSearch}
           placeholder="Search by code or name…"
         />
         <MasterToolbarActions>
@@ -105,17 +78,17 @@ export default function ManufacturersClient({
         </MasterToolbarActions>
       </MasterToolbar>
 
+      {/* ── Table card ── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            {filtered.length} of {initialRows.length} records
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                className="ml-2 text-xs text-primary hover:underline"
-              >
-                Clear filters
-              </button>
+            {total} record{total !== 1 ? "s" : ""}
+            {currentSearch && (
+              // UrlSearchInput handles clearing ?search= via the debounce, but we expose
+              // a quick-clear button so the user doesn't have to empty the text box manually.
+              <span className="ml-2 text-xs text-muted-foreground">
+                matching &ldquo;{currentSearch}&rdquo;
+              </span>
             )}
           </CardTitle>
         </CardHeader>
@@ -131,30 +104,29 @@ export default function ManufacturersClient({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="text-center text-muted-foreground py-10"
-                  >
-                    {search ? "No manufacturers match your search." : "No records found."}
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
+                    {currentSearch
+                      ? "No manufacturers match your search."
+                      : "No records found."}
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((row) => (
+                rows.map((row) => (
                   <TableRow key={row.mfg_id}>
-                    <TableCell className="font-mono text-xs font-medium">
-                      {row.code}
-                    </TableCell>
+                    <TableCell className="font-mono text-xs font-medium">{row.code}</TableCell>
                     <TableCell className="font-medium">{row.name}</TableCell>
-                    <TableCell className="font-medium">{row.location}</TableCell>
-                    <TableCell className="font-medium">{row.gst_number}</TableCell>
-                    <TableCell className="font-medium">{row.status}</TableCell>
+                    <TableCell>{row.location}</TableCell>
+                    <TableCell>{row.gst_number}</TableCell>
+                    <TableCell>{row.status}</TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
+
+          <PaginationBar total={total} page={page} pageSize={pageSize} />
         </CardContent>
       </Card>
     </>

@@ -1,5 +1,12 @@
 "use client"
 
+/**
+ * CLIENT component — Vendor view of /masters/raw-materials.
+ *
+ * Thin wrapper that passes vendor-specific columns + pagination props to RmRateTable.
+ * Also owns the VendorDetailDialog (opened when the user clicks the compare icon).
+ */
+
 import { useState } from "react"
 import { GitCompare } from "lucide-react"
 import type { RM, Vendor, Mfg } from "@/types/masters"
@@ -20,7 +27,7 @@ const VENDOR_COLUMNS: ColumnDef[] = [
   { key: "type",           label: "Type",           sortAs: "text" },
   { key: "curr_rate",      label: "Current Rate",   sortAs: "num"  },
   { key: "vendor_code",    label: "Vendor Code",    sortAs: "text" },
-  { key: "vendor_id",      label: "Vendor Id",      sortAs: "text"  },
+  { key: "vendor_id",      label: "Vendor Id",      sortAs: "text" },
   { key: "hsn_code",       label: "HSN Code",       sortAs: "text" },
   { key: "status",         label: "Status",         sortAs: "text", render: statusBadge },
   { key: "moq",            label: "MOQ",            sortAs: "num"  },
@@ -33,10 +40,20 @@ export default function VendorRawMaterialsClient({
   rows,
   vendors,
   manufacturers,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentStatus,
 }: {
   rows: RM[]
   vendors: Vendor[]
   manufacturers: Mfg[]
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentStatus: string
 }) {
   const [selectedRow, setSelectedRow] = useState<RM | null>(null)
 
@@ -47,6 +64,11 @@ export default function VendorRawMaterialsClient({
         columns={VENDOR_COLUMNS}
         vendors={vendors}
         manufacturers={manufacturers}
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        currentSearch={currentSearch}
+        currentStatus={currentStatus}
         actionColumn={(row) => (
           <button
             onClick={() => setSelectedRow(row as unknown as RM)}
@@ -58,6 +80,7 @@ export default function VendorRawMaterialsClient({
         )}
       />
 
+      {/* Compare dialog — shows all rates for the selected RM code on the current page */}
       <VendorDetailDialog
         row={selectedRow}
         allRows={rows}

@@ -36,6 +36,62 @@ export const rawMaterials = {
     inner join rm as r on r.id = rmv.rm_id
   `,
 
+  // ============ PAGINATED SELECT QUERIES ============
+
+  /**
+   * Paginated RM × vendor rates with optional search + status filter.
+   * Params: [like, like, like, status, status, LIMIT, OFFSET]
+   *   like   — '%search%' or null (rm_code / name columns)
+   *   status — 'active'|'discontinued' or null
+   */
+  selectVendorPaginated: `
+    SELECT
+      r.hsn_code, r.inci_name, r.make, r.name, r.rm_code, r.status, r.type,
+      rmv.curr_rate, rmv.effective_from, rmv.effective_to,
+      rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id
+    FROM rm_vrm AS rmv
+    INNER JOIN rm AS r ON r.id = rmv.rm_id
+    WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
+      AND (? IS NULL OR r.status = ?)
+    ORDER BY r.rm_code ASC
+    LIMIT ? OFFSET ?
+  `,
+
+  /** Matching COUNT for selectVendorPaginated. Params: [like, like, like, status, status] */
+  countVendor: `
+    SELECT COUNT(*) AS total
+    FROM rm_vrm AS rmv
+    INNER JOIN rm AS r ON r.id = rmv.rm_id
+    WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
+      AND (? IS NULL OR r.status = ?)
+  `,
+
+  /**
+   * Paginated RM × manufacturer rates with optional search + status filter.
+   * Params: [like, like, like, status, status, LIMIT, OFFSET]
+   */
+  selectMfgPaginated: `
+    SELECT
+      rmm.rm_id, rmm.mfg_id, rmm.mfg_code, rmm.approved_vendor_id, rmm.approved_vendor_code,
+      rmm.curr_rate, rmm.effective_from, rmm.uom, r.status,
+      r.id, r.name, r.make, r.type, r.hsn_code, r.rm_code, r.inci_name
+    FROM rm_mrm AS rmm
+    INNER JOIN rm AS r ON r.id = rmm.rm_id
+    WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
+      AND (? IS NULL OR r.status = ?)
+    ORDER BY r.rm_code ASC
+    LIMIT ? OFFSET ?
+  `,
+
+  /** Matching COUNT for selectMfgPaginated. Params: [like, like, like, status, status] */
+  countMfg: `
+    SELECT COUNT(*) AS total
+    FROM rm_mrm AS rmm
+    INNER JOIN rm AS r ON r.id = rmm.rm_id
+    WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
+      AND (? IS NULL OR r.status = ?)
+  `,
+
   // ============ INSERT QUERIES ============
 
   /**

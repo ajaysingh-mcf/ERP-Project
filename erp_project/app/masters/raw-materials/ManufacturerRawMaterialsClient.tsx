@@ -1,5 +1,12 @@
 "use client"
 
+/**
+ * CLIENT component — Manufacturer view of /masters/raw-materials.
+ *
+ * Thin wrapper that passes mfg-specific columns + pagination props to RmRateTable.
+ * Also owns the MfgDetailDialog (opened when the user clicks the compare icon).
+ */
+
 import { useState } from "react"
 import { GitCompare } from "lucide-react"
 import type { RMByMfg, Vendor, Mfg } from "@/types/masters"
@@ -31,10 +38,20 @@ export default function ManufacturerRawMaterialsClient({
   rows,
   vendors,
   manufacturers,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentStatus,
 }: {
   rows: RMByMfg[]
   vendors: Vendor[]
   manufacturers: Mfg[]
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentStatus: string
 }) {
   const [selectedRow, setSelectedRow] = useState<RMByMfg | null>(null)
 
@@ -45,6 +62,11 @@ export default function ManufacturerRawMaterialsClient({
         columns={MFG_COLUMNS}
         vendors={vendors}
         manufacturers={manufacturers}
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        currentSearch={currentSearch}
+        currentStatus={currentStatus}
         actionColumn={(row) => (
           <button
             onClick={() => setSelectedRow(row as unknown as RMByMfg)}
@@ -56,6 +78,7 @@ export default function ManufacturerRawMaterialsClient({
         )}
       />
 
+      {/* Compare dialog — shows all rates for the selected RM code on the current page */}
       <MfgDetailDialog
         row={selectedRow}
         allRows={rows}

@@ -1,7 +1,14 @@
 "use client"
 
+/**
+ * CLIENT component — Manufacturer view of /masters/packing-materials.
+ *
+ * Thin wrapper that passes mfg-specific columns + pagination props to PmRateTable.
+ * Also owns the MfgPMDetailDialog (opened when the user clicks the compare icon).
+ */
+
 import { useState } from "react"
-import { GitCompare  } from "lucide-react"
+import { GitCompare } from "lucide-react"
 import type { PMByMfg, Vendor, Mfg } from "@/types/masters"
 import {
   PmRateTable,
@@ -29,10 +36,20 @@ export default function ManufacturerPackingMaterialsClient({
   rows,
   vendors,
   manufacturers,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentStatus,
 }: {
   rows: PMByMfg[]
   vendors: Vendor[]
   manufacturers: Mfg[]
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentStatus: string
 }) {
   const [selectedRow, setSelectedRow] = useState<PMByMfg | null>(null)
 
@@ -43,17 +60,23 @@ export default function ManufacturerPackingMaterialsClient({
         columns={MFG_COLUMNS}
         vendors={vendors}
         manufacturers={manufacturers}
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        currentSearch={currentSearch}
+        currentStatus={currentStatus}
         actionColumn={(row) => (
           <button
             onClick={() => setSelectedRow(row as unknown as PMByMfg)}
             className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
             title="View manufacturer comparison"
           >
-            <GitCompare  className="h-4 w-4" />
+            <GitCompare className="h-4 w-4" />
           </button>
         )}
       />
 
+      {/* Compare dialog — shows all rates for the selected PM code on the current page */}
       <MfgPMDetailDialog
         row={selectedRow}
         allRows={rows}

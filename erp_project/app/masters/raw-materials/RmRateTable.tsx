@@ -1,13 +1,22 @@
 "use client"
 
-// Shared, reusable table core for the Raw Materials rate views.
-// Both child components (Vendor / Manufacturer) render THIS, passing their own
-// rows + column config. It owns the common behaviour: search, status filter,
-// sortable headers, the empty state, and the Add / CSV-import dialogs (which
-// POST to /api/masters/raw-materials). The two views differ only in columns.
+/**
+ * Shared, reusable table core for the Raw Materials rate views.
+ *
+ * Both child components (VendorRawMaterialsClient / ManufacturerRawMaterialsClient)
+ * render THIS and pass their own rows + column config. This component owns:
+ *   - URL-synced search (UrlSearchInput, 350 ms debounce)
+ *   - URL-driven status filter (select → navigate → server re-render)
+ *   - Client-side sort within the current page (click column header)
+ *   - PaginationBar footer (prev/next, page-size selector)
+ *   - CsvImportDialog + AddRawMaterialWizard actions
+ *
+ * The `rows` prop is already filtered + sliced by the server (DB LIMIT/OFFSET).
+ * Client-side sort applies on top of that to order within the current page.
+ */
 
 import { useMemo, useState, type ReactNode } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,18 +28,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { SearchInput } from "@/components/masters/SearchInput"
+import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
+import { PaginationBar } from "@/components/ui/pagination-bar"
 import {
   MasterToolbar,
   MasterToolbarActions,
 } from "@/components/masters/MasterToolbar"
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import type { MasterField } from "@/components/masters/field-config"
-import { cn } from "@/lib/utils"
 import { AddRawMaterialWizard } from "./AddRawMaterialWizard"
 import type { Vendor, Mfg } from "@/types/masters"
 
-/* ───────────────────────────── Column config ──────────────────────────────
+/* ────────────────────────── Column config ──────────────────────────────────
  * A view = an ordered list of ColumnDef. Header + body are generated from the
  * SAME list, so they can never drift out of sync. Rows are read generically
  * (string-keyed) because the two views have different shapes.
@@ -44,9 +53,10 @@ export type ColumnDef = {
   render?: (row: AnyRow) => ReactNode
 }
 
-// Shared cell helpers reused by both column configs.
+// ── Shared cell helpers reused by both column configs ───────────────────────
 export const fmtDate = (v: unknown) =>
   v ? new Date(v as string).toLocaleDateString("en-CA") : "—"
+
 export const statusBadge = (row: AnyRow) => (
   <Badge
     variant={row.status === "active" ? "success" : "secondary"}
@@ -56,24 +66,26 @@ export const statusBadge = (row: AnyRow) => (
   </Badge>
 )
 
-// The Add-form + CSV-import schema targets the `rm` table itself, so it is the
-// same regardless of which rate view is showing.
+// ── RM form fields (shared by Add dialog and CSV importer) ──────────────────
+// Targets the `rm` table itself — the same regardless of which rate view is active.
 const RM_FIELDS: MasterField[] = [
-  { key: "rm_code", label: "RM Code", aliases: ["code"], placeholder: "e.g. RM-001", sample: "RM-001" },
-  { key: "name", label: "Name", required: true, placeholder: "Material name", sample: "Glycerin" },
-  { key: "make", label: "Make", placeholder: "Make", sample: "Brand X" },
-  { key: "type", label: "Type", placeholder: "Type", sample: "Liquid" },
-  { key: "uom", label: "UOM", placeholder: "e.g. kg", sample: "kg" },
+  { key: "rm_code",   label: "RM Code",   aliases: ["code"], placeholder: "e.g. RM-001",     sample: "RM-001" },
+  { key: "name",      label: "Name",      required: true,    placeholder: "Material name",    sample: "Glycerin" },
+  { key: "make",      label: "Make",                         placeholder: "Make",             sample: "Brand X" },
+  { key: "type",      label: "Type",                         placeholder: "Type",             sample: "Liquid" },
+  { key: "uom",       label: "UOM",                          placeholder: "e.g. kg",          sample: "kg" },
   {
     key: "status", label: "Status", type: "select", default: "active", colSpan: 2, sample: "active",
     options: [
-      { value: "active", label: "Active" },
+      { value: "active",       label: "Active"       },
       { value: "discontinued", label: "Discontinued" },
     ],
   },
-  { key: "hsn_code", label: "HSN Code", placeholder: "e.g. 33081000", sample: "33081000" },
-  { key: "inci_name", label: "INCI Name", placeholder: "e.g. Glycerin", sample: "Glycerin" },
+  { key: "hsn_code",  label: "HSN Code",  placeholder: "e.g. 33081000",  sample: "33081000" },
+  { key: "inci_name", label: "INCI Name", placeholder: "e.g. Glycerin",  sample: "Glycerin" },
 ]
+
+// ── Component ───────────────────────────────────────────────────────────────
 
 export function RmRateTable({
   rows,
@@ -81,17 +93,29 @@ export function RmRateTable({
   actionColumn,
   vendors,
   manufacturers,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentStatus,
 }: {
   rows: AnyRow[]
   columns: ColumnDef[]
   actionColumn?: (row: AnyRow) => ReactNode
   vendors: Vendor[]
   manufacturers: Mfg[]
+  // Pagination + filter state from the server (URL-driven):
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentStatus: string
 }) {
-  const router = useRouter()
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  // Sorting state: which column key, and direction. null = original order.
+  const router       = useRouter()
+  const pathname     = usePathname()
+  const searchParams = useSearchParams()
+
+  // Client-side sort state (sorts within the current DB page only).
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
 
@@ -105,25 +129,26 @@ export function RmRateTable({
     }
   }
 
-  // Search (over fields common to both views) + status filter.
-  const filtered = rows.filter((r) => {
-    const q = search.toLowerCase()
-    const matchSearch =
-      !q ||
-      String(r.rm_code ?? "").toLowerCase().includes(q) ||
-      String(r.name ?? "").toLowerCase().includes(q) ||
-      String(r.make ?? "").toLowerCase().includes(q) ||
-      String(r.type ?? "").toLowerCase().includes(q)
-    const matchStatus = statusFilter === "all" || r.status === statusFilter
-    return matchSearch && matchStatus
-  })
+  /**
+   * Merge URL-param overrides, reset to page 1, then navigate.
+   * Preserves ?view= so switching status/search doesn't flip vendor ↔ mfg view.
+   */
+  function navigate(updates: Record<string, string>) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) params.set(k, v)
+      else   params.delete(k)
+    }
+    params.set("page", "1")
+    router.push(`${pathname}?${params.toString()}`)
+  }
 
-  // Sort the filtered rows by the active column (copy so the source isn't mutated).
+  // Sort within current page — rows are already DB-filtered and sliced by the server.
   const sorted = useMemo(() => {
-    if (!sortKey) return filtered
+    if (!sortKey) return rows
     const col = columns.find((c) => c.key === sortKey)
     const dir = sortDir === "asc" ? 1 : -1
-    return [...filtered].sort((a, b) => {
+    return [...rows].sort((a, b) => {
       const av = a[sortKey]
       const bv = b[sortKey]
       // Empty/null values always sink to the bottom, regardless of direction.
@@ -132,7 +157,6 @@ export function RmRateTable({
       if (aEmpty && bEmpty) return 0
       if (aEmpty) return 1
       if (bEmpty) return -1
-
       let cmp = 0
       if (col?.sortAs === "num") {
         cmp = Number(av) - Number(bv)
@@ -143,23 +167,26 @@ export function RmRateTable({
       }
       return cmp * dir
     })
-  }, [filtered, columns, sortKey, sortDir])
+  }, [rows, columns, sortKey, sortDir])
 
-  const hasFilters = search || statusFilter !== "all"
-  const refresh = () => router.refresh()
+  const hasFilters = currentSearch || currentStatus
+  // router.refresh() re-runs the server page with current URL — keeps page + filters.
+  const refresh    = () => router.refresh()
 
   return (
     <>
+      {/* ── Toolbar ── */}
       <MasterToolbar>
-        <SearchInput
-          value={search}
-          onChange={setSearch}
+        <UrlSearchInput
+          initialValue={currentSearch}
           placeholder="Search by code, name, make…"
         />
 
         <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          value={currentStatus || "all"}
+          onChange={(e) =>
+            navigate({ status: e.target.value === "all" ? "" : e.target.value })
+          }
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="all">All Status</option>
@@ -184,16 +211,14 @@ export function RmRateTable({
         </MasterToolbarActions>
       </MasterToolbar>
 
+      {/* ── Table card ── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            {filtered.length} of {rows.length} records
+            {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => {
-                  setSearch("")
-                  setStatusFilter("all")
-                }}
+                onClick={() => navigate({ search: "", status: "" })}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters
@@ -224,7 +249,7 @@ export function RmRateTable({
                             <ArrowDown className="h-3.5 w-3.5" />
                           )
                         ) : (
-                          // Faint icon on inactive columns hints they're sortable.
+                          // Faint icon on inactive columns hints they are sortable.
                           <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />
                         )}
                       </button>
@@ -238,7 +263,7 @@ export function RmRateTable({
               {sorted.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={columns.length}
+                    colSpan={columns.length + (actionColumn ? 1 : 0)}
                     className="text-center text-muted-foreground py-10"
                   >
                     {hasFilters
@@ -270,6 +295,8 @@ export function RmRateTable({
               )}
             </TableBody>
           </Table>
+
+          <PaginationBar total={total} page={page} pageSize={pageSize} />
         </CardContent>
       </Card>
     </>

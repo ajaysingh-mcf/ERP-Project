@@ -1,7 +1,22 @@
 "use client"
 
+/**
+ * Shared, reusable table core for the Packing Materials rate views.
+ *
+ * Both child components (VendorPackingMaterialsClient / ManufacturerPackingMaterialsClient)
+ * render THIS and pass their own rows + column config. This component owns:
+ *   - URL-synced search (UrlSearchInput, 350 ms debounce)
+ *   - URL-driven status filter (select → navigate → server re-render)
+ *   - Client-side sort within the current page (click column header)
+ *   - PaginationBar footer (prev/next, page-size selector)
+ *   - CsvImportDialog + AddPackingMaterialWizard actions
+ *
+ * The `rows` prop is already filtered + sliced by the server (DB LIMIT/OFFSET).
+ * Client-side sort applies on top of that to order within the current page.
+ */
+
 import { useMemo, useState, type ReactNode } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,18 +28,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { SearchInput } from "@/components/masters/SearchInput"
+import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
+import { PaginationBar } from "@/components/ui/pagination-bar"
 import {
   MasterToolbar,
   MasterToolbarActions,
 } from "@/components/masters/MasterToolbar"
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import type { MasterField } from "@/components/masters/field-config"
-import { cn } from "@/lib/utils"
 import { AddPackingMaterialWizard } from "./AddPackingMaterialWizard"
 import type { Vendor, Mfg } from "@/types/masters"
 
 export type AnyRow = Record<string, unknown>
+
+/**
+ * Column descriptor — one entry per visible table column.
+ * The key/label/sortAs triple drives both the `<th>` and each `<td>` render.
+ */
 export type ColumnDef = {
   key: string
   label: string
@@ -33,6 +53,7 @@ export type ColumnDef = {
   render?: (row: AnyRow) => ReactNode
 }
 
+// ── Shared cell helpers ─────────────────────────────────────────────────────
 export const fmtDate = (v: unknown) =>
   v ? new Date(v as string).toLocaleDateString("en-CA") : "—"
 
@@ -45,20 +66,23 @@ export const statusBadge = (row: AnyRow) => (
   </Badge>
 )
 
+// ── PM form fields (shared by Add dialog and CSV importer) ──────────────────
 const PM_FIELDS: MasterField[] = [
   { key: "pm_code", label: "PM Code", aliases: ["code"], placeholder: "e.g. PM-001", sample: "PM-001" },
-  { key: "name", label: "Name", required: true, placeholder: "Material name", sample: "Label 100ml" },
-  { key: "type", label: "Type", placeholder: "e.g. Label / Carton", sample: "Label" },
+  { key: "name",    label: "Name",    required: true, placeholder: "Material name", sample: "Label 100ml" },
+  { key: "type",    label: "Type",    placeholder: "e.g. Label / Carton", sample: "Label" },
   { key: "hsn_code", label: "HSN Code", placeholder: "e.g. 48191000", sample: "48191000" },
-  { key: "uom", label: "UOM", placeholder: "e.g. pcs", sample: "pcs" },
+  { key: "uom",     label: "UOM",     placeholder: "e.g. pcs", sample: "pcs" },
   {
     key: "status", label: "Status", type: "select", default: "active", colSpan: 2, sample: "active",
     options: [
-      { value: "active", label: "Active" },
+      { value: "active",       label: "Active"       },
       { value: "discontinued", label: "Discontinued" },
     ],
   },
 ]
+
+// ── Component ───────────────────────────────────────────────────────────────
 
 export function PmRateTable({
   rows,
@@ -66,16 +90,29 @@ export function PmRateTable({
   actionColumn,
   vendors,
   manufacturers,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentStatus,
 }: {
   rows: AnyRow[]
   columns: ColumnDef[]
   actionColumn?: (row: AnyRow) => ReactNode
   vendors: Vendor[]
   manufacturers: Mfg[]
+  // Pagination + filter state from the server (URL-driven):
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentStatus: string
 }) {
-  const router = useRouter()
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
+  const router       = useRouter()
+  const pathname     = usePathname()
+  const searchParams = useSearchParams()
+
+  // Client-side sort (within the current DB page only).
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
 
@@ -88,24 +125,29 @@ export function PmRateTable({
     }
   }
 
-  const filtered = rows.filter((r) => {
-    const q = search.toLowerCase()
-    const matchSearch =
-      !q ||
-      String(r.pm_code ?? "").toLowerCase().includes(q) ||
-      String(r.name ?? "").toLowerCase().includes(q) ||
-      String(r.type ?? "").toLowerCase().includes(q)
-    const matchStatus = statusFilter === "all" || r.status === statusFilter
-    return matchSearch && matchStatus
-  })
+  /**
+   * Merge URL-param overrides, reset to page 1, then navigate.
+   * Preserves ?view= so switching status/search doesn't flip vendor ↔ mfg.
+   */
+  function navigate(updates: Record<string, string>) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) params.set(k, v)
+      else   params.delete(k)
+    }
+    params.set("page", "1")
+    router.push(`${pathname}?${params.toString()}`)
+  }
 
+  // Sort rows within current page — rows are already DB-filtered and sliced.
   const sorted = useMemo(() => {
-    if (!sortKey) return filtered
+    if (!sortKey) return rows
     const col = columns.find((c) => c.key === sortKey)
     const dir = sortDir === "asc" ? 1 : -1
-    return [...filtered].sort((a, b) => {
+    return [...rows].sort((a, b) => {
       const av = a[sortKey]
       const bv = b[sortKey]
+      // Null/empty values always sink to the bottom regardless of direction.
       const aEmpty = av === null || av === undefined || av === ""
       const bEmpty = bv === null || bv === undefined || bv === ""
       if (aEmpty && bEmpty) return 0
@@ -121,23 +163,26 @@ export function PmRateTable({
       }
       return cmp * dir
     })
-  }, [filtered, columns, sortKey, sortDir])
+  }, [rows, columns, sortKey, sortDir])
 
-  const hasFilters = search || statusFilter !== "all"
-  const refresh = () => router.refresh()
+  const hasFilters = currentSearch || currentStatus
+  // router.refresh() re-runs the server page with current URL — keeps page + filters.
+  const refresh    = () => router.refresh()
 
   return (
     <>
+      {/* ── Toolbar ── */}
       <MasterToolbar>
-        <SearchInput
-          value={search}
-          onChange={setSearch}
+        <UrlSearchInput
+          initialValue={currentSearch}
           placeholder="Search by code, name, type…"
         />
 
         <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          value={currentStatus || "all"}
+          onChange={(e) =>
+            navigate({ status: e.target.value === "all" ? "" : e.target.value })
+          }
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="all">All Status</option>
@@ -162,16 +207,14 @@ export function PmRateTable({
         </MasterToolbarActions>
       </MasterToolbar>
 
+      {/* ── Table card ── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            {filtered.length} of {rows.length} records
+            {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => {
-                  setSearch("")
-                  setStatusFilter("all")
-                }}
+                onClick={() => navigate({ search: "", status: "" })}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters
@@ -180,6 +223,8 @@ export function PmRateTable({
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
+          {/* whitespace-nowrap keeps every column on a single line; the Table's
+              own overflow-x wrapper lets the grid scroll sideways instead. */}
           <Table className="[&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
             <TableHeader>
               <TableRow>
@@ -187,6 +232,7 @@ export function PmRateTable({
                   const active = sortKey === col.key
                   return (
                     <TableHead key={col.key} className="bg-gray-200 font-medium text-muted-foreground">
+                      {/* Whole header is a button so clicking anywhere sorts it. */}
                       <button
                         onClick={() => toggleSort(col.key)}
                         className="inline-flex items-center gap-1 font-medium hover:text-foreground transition-colors"
@@ -199,6 +245,7 @@ export function PmRateTable({
                             <ArrowDown className="h-3.5 w-3.5" />
                           )
                         ) : (
+                          // Faint icon on inactive columns hints they are sortable.
                           <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />
                         )}
                       </button>
@@ -212,7 +259,7 @@ export function PmRateTable({
               {sorted.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={columns.length}
+                    colSpan={columns.length + (actionColumn ? 1 : 0)}
                     className="text-center text-muted-foreground py-10"
                   >
                     {hasFilters
@@ -244,6 +291,8 @@ export function PmRateTable({
               )}
             </TableBody>
           </Table>
+
+          <PaginationBar total={total} page={page} pageSize={pageSize} />
         </CardContent>
       </Card>
     </>
