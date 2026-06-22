@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { execute, query, pool } from "@/lib/db"
 import { PMMaterials } from "@/lib/queries/packing-materials"
+import { PmRateTable } from "@/app/masters/packing-materials/PmRateTable"
 
 function toPmParams(r: any) {
   return [
@@ -220,7 +221,7 @@ export async function POST(req: NextRequest) {
 
         if (existing) {
           await conn.execute(PMMaterials.archiveToHistoryMrm, [
-            existing.mfg_id, pmId, 0, existing.curr_rate,
+            existing.mfg_id, pmId, null, existing.curr_rate,
             existing.effective_from, null, existing.status === "active" ? 1 : 0,
           ])
           await conn.execute(PMMaterials.updateMfgRate, [
@@ -315,9 +316,11 @@ export async function POST(req: NextRequest) {
           const mfgId = m.mfg_id ? Number(m.mfg_id) : null
           const [existingRows] = await conn.execute(PMMaterials.checkMfgRate, [pmId, mfgId])
           const existing = (existingRows as any[])[0]
+          
           if (existing) {
+            const ven_id = await conn.execute(PMMaterials.getVendorId , [pmId]);
             await conn.execute(PMMaterials.archiveToHistoryMrm, [
-              existing.mfg_id, pmId, 0, existing.curr_rate,
+              existing.mfg_id, pmId, ven_id, existing.curr_rate,
               existing.effective_from, null, existing.status === "active" ? 1 : 0,
             ])
             await conn.execute(PMMaterials.updateMfgRate, [
