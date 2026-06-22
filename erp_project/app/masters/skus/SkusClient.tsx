@@ -14,6 +14,7 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
+import { useMemo , useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -77,10 +78,17 @@ export default function SkusClient({
     params.set("page", "1")
     router.push(`${pathname}?${params.toString()}`)
   }
-
-  const hasFilters = currentSearch || currentStatus
+  const [brandFilter, setBrandFilter] = useState("all");
+  const hasFilters = !!currentSearch || !!currentStatus
   const refresh    = () => router.refresh()
+  const filteredRows = useMemo(() => {
+  if (brandFilter === "all") return rows
 
+  return rows.filter(
+    (row) =>
+      row.brand?.toLowerCase() === brandFilter.toLowerCase()
+  )
+}, [rows, brandFilter])
   return (
     <>
       {/* ── Toolbar ── */}
@@ -100,9 +108,19 @@ export default function SkusClient({
           <option value="all">All Status</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
-          <option value="mCaffeine">mCaffeine</option>
-          <option value="Hyphen">Hyphen</option>
+          <option value="discontinued"> Discontinued</option>
         </select>
+
+        <select
+          value={brandFilter}
+          onChange={(e) => setBrandFilter(e.target.value)}
+          className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <option value="all">All Brands</option>
+          <option value="mCaffeine">mCaffeine</option>
+          <option value="hyphen">Hyphen</option>
+        </select>
+
 
         <MasterToolbarActions>
           <CsvImportDialog
@@ -128,7 +146,7 @@ export default function SkusClient({
             {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => navigate({ search: "", status: "" })}
+                onClick={() => navigate({ search: "", status: "" , brand:""})}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters
@@ -150,14 +168,14 @@ export default function SkusClient({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.length === 0 ? (
+              {filteredRows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
                     {hasFilters ? "No SKUs match your filters." : "No records found."}
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((row) => (
+                filteredRows.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell className="font-mono text-xs font-medium">{row.sku_code}</TableCell>
                     <TableCell className="font-medium">{row.name}</TableCell>
