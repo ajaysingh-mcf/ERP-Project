@@ -110,6 +110,39 @@ Process: Runs a **transaction** — INSERT into `vendors`, then INSERT into `ven
 { "id": 12 }
 ```
 
+#### action: `"update"` — Edit an existing vendor
+
+```json
+{
+  "action": "update",
+  "vendor_id": 12,
+  "name": "Updated Supplier Ltd",
+  "type": "both",
+  "location": "Delhi",
+  "gst_number": "07AADCS0472N1Z3",
+  "status": "active"
+}
+```
+
+| Field | Required | Type |
+|-------|----------|------|
+| `vendor_id` | Yes | number |
+| `name` | Yes | string |
+| `type` | Yes | `"rm"` \| `"pm"` \| `"both"` |
+| `location` | No | string |
+| `gst_number` | No | string |
+| `status` | No | `"active"` \| `"inactive"` \| `"blacklisted"` \| `"discontinued"` |
+
+Process: Transaction — UPDATE `master_vendors`, then UPDATE `vendor_details`.
+
+```json
+// Response 200
+{ "ok": true }
+
+// Response 400 — missing vendor_id or name
+{ "error": "vendor_id, name, and type are required" }
+```
+
 #### action: `"bulk"` — Bulk insert vendors
 
 ```json
@@ -142,6 +175,34 @@ Process: Transaction — INSERT into `mfgs`, then INSERT into `mfg_details`.
 ```json
 // Response 200
 { "id": 5 }
+```
+
+#### action: `"update"` — Edit an existing manufacturer
+
+```json
+{
+  "action": "update",
+  "mfg_id": 5,
+  "name": "Updated Plant A",
+  "location": "Nashik",
+  "gst_number": "27AADCS0472N1Z1",
+  "status": "active"
+}
+```
+
+| Field | Required | Type |
+|-------|----------|------|
+| `mfg_id` | Yes | number |
+| `name` | Yes | string |
+| `location` | No | string |
+| `gst_number` | No | string |
+| `status` | No | `"active"` \| `"inactive"` |
+
+Process: Transaction — UPDATE `master_mfgs`, then UPDATE `mfg_details`.
+
+```json
+// Response 200
+{ "ok": true }
 ```
 
 #### action: `"bulk"`
@@ -248,13 +309,57 @@ This is the primary create path. Runs in a **single transaction**.
 ```
 
 Process:
-1. INSERT into `rm`
-2. For each vendor: if a rate already exists → archive to `vrm_history`, then UPDATE `rm_vrm`; otherwise INSERT `rm_vrm`
-3. For each manufacturer: INSERT into `rm_mrm`
+1. INSERT into `master_rm`
+2. For each vendor: if a rate already exists → archive old row to `vrm_history` + `history_vrm`, then UPDATE `rm_vrm_dynamic`; otherwise INSERT new row
+3. For each manufacturer: if a rate already exists → archive old row to `history_mrm`, then UPDATE `rm_mrm_fixed`; otherwise INSERT new row
 
 ```json
 // Response 200
 { "id": 23 }
+```
+
+#### action: `"add-rates"` — Add or update rates on an existing RM
+
+Used by the pencil-edit dialogs on the Raw Materials page. Looks up the RM by `name + make + inci_name`, then upserts vendor and/or manufacturer rates with full history archiving.
+
+```json
+{
+  "action": "add-rates",
+  "name": "Aloe Vera Extract",
+  "make": "Natural",
+  "inci_name": "Aloe Barbadensis",
+  "vendors": [
+    {
+      "vendor_id": 7,
+      "vendor_code": "VEN007",
+      "curr_rate": 160.00,
+      "moq": 100,
+      "rate_uom": "kg",
+      "rate_status": "active",
+      "effective_from": "2025-06-01",
+      "effective_to": null
+    }
+  ],
+  "manufacturers": [
+    {
+      "mfg_id": 2,
+      "mfg_code": "MFG002",
+      "curr_rate": 155.00,
+      "rate_uom": "kg",
+      "effective_from": "2025-06-01"
+    }
+  ]
+}
+```
+
+At least one of `vendors` or `manufacturers` must be non-empty. Each entry is upserted (archive-then-update if exists, insert if new).
+
+```json
+// Response 200
+{ "id": 23 }
+
+// Response 404 — RM not found by name+make+inci_name
+{ "error": "Material not found" }
 ```
 
 #### action: `"bulk"` — Bulk insert raw materials
@@ -322,7 +427,12 @@ Process:
 
 #### action: `"create-full"` — Full wizard: PM + vendor rates + manufacturer approvals
 
-Runs in a **single transaction**. Vendor rate upsert archives the old `pm_vrm` row to `vrm_history` (`mtrl_type = 'pm'`) before updating.
+Runs in a **single transaction**.
+
+Process:
+1. INSERT into `master_pm`
+2. For each vendor: if a rate already exists → archive old row to `history_vrm` (via `archiveVendorRate`), then UPDATE `pm_vrm_dynamic`; otherwise INSERT new row
+3. For each manufacturer: if a rate already exists → archive old row to `history_mrm`, then UPDATE `pm_mrm_fixed`; otherwise INSERT new row
 
 ```json
 {
@@ -346,6 +456,48 @@ Runs in a **single transaction**. Vendor rate upsert archives the old `pm_vrm` r
 ```json
 // Response 200
 { "id": 8 }
+```
+
+#### action: `"add-rates"` — Add or update rates on an existing PM
+
+Used by the pencil-edit dialogs on the Packing Materials page. Pass `pm_id` directly to bypass the name+type lookup (recommended for edit flows where `type` may be null). At least one of `vendors` or `manufacturers` must be non-empty.
+
+```json
+{
+  "action": "add-rates",
+  "pm_id": 8,
+  "vendors": [
+    {
+      "vendor_id": 5,
+      "vendor_code": "VEN005",
+      "curr_rate": 3.75,
+      "moq": 500,
+      "rate_uom": "pcs",
+      "rate_status": "active",
+      "effective_from": "2025-06-01",
+      "effective_to": null
+    }
+  ],
+  "manufacturers": [
+    {
+      "mfg_id": 2,
+      "mfg_code": "MFG002",
+      "curr_rate": 3.60,
+      "rate_uom": "pcs",
+      "effective_from": "2025-06-01"
+    }
+  ]
+}
+```
+
+If `pm_id` is omitted, falls back to looking up the PM by `name + type` (same as the wizard flow).
+
+```json
+// Response 200
+{ "pmId": 8 }
+
+// Response 404 — PM not found (only when pm_id is omitted and name lookup fails)
+{ "error": "Material not found" }
 ```
 
 #### action: `"bulk"`

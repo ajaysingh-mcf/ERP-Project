@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { pool, query } from "@/lib/db"
-import { bom } from "@/lib/queries/bom_master"
+import { bom } from "@/lib/queries/bom"
 import { bomType } from "@/types/masters" 
 function toParams(r: any) {
   return {
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     }
     /* Check if the bom already exixst for the entered bom id and sku code. */
     const exists = await query<bomType>(
-      bom.selectByIdBOMId,
+      bom.selectByBomCode,
       [bom_code , sku_code ]
     );
     if(exists) {
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
           continue
         }
         const exists = await query<bomType>(
-          bom.selectByIdBOMId,
+          bom.selectByBomCode,
           [row.bom_code , row.sku_code ]
         );
         if(exists) {

@@ -1,7 +1,22 @@
 "use client"
 
+/**
+ * CLIENT component for /masters/material-master.
+ *
+ * Owns:
+ *   - URL-synced search (UrlSearchInput, 350 ms debounce)
+ *   - URL-driven status filter (select → navigate → server re-render)
+ *   - Client-side sort within the current DB page (click column header)
+ *   - PaginationBar footer
+ *   - EditMaterialDialog (inline pencil-button per row)
+ *   - AddMaterialDialog action in the toolbar
+ *
+ * Rows are already filtered + sliced by the DB. Client-side sort operates
+ * only within the current page.
+ */
+
 import { useMemo, useState, type ReactNode } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,13 +28,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { SearchInput } from "@/components/masters/SearchInput"
+import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
+import { PaginationBar } from "@/components/ui/pagination-bar"
 import {
   MasterToolbar,
   MasterToolbarActions,
 } from "@/components/masters/MasterToolbar"
 import { cn } from "@/lib/utils"
 import AddMaterialDialog from "./AddMaterialDialog"
+import EditMaterialDialog, { EditButton } from "./EditMaterialDialog"
 
 type AnyRow = Record<string, unknown>
 type ColumnDef = {
@@ -62,18 +79,32 @@ const PM_COLUMNS: ColumnDef[] = [
 export default function MaterialMasterClient({
   material,
   rows,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentStatus,
 }: {
   material: "rm" | "pm"
   rows: AnyRow[]
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentStatus: string
 }) {
-  const router = useRouter()
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
+  const router       = useRouter()
+  const pathname     = usePathname()
+  const searchParams = useSearchParams()
+
+  // Edit dialog state — which row is being edited (null = closed).
+  const [editRow, setEditRow] = useState<AnyRow | null>(null)
+
+  // Client-side sort state (sorts within the current DB page only).
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
 
   const columns = material === "rm" ? RM_COLUMNS : PM_COLUMNS
-  const codeKey = material === "rm" ? "rm_code" : "pm_code"
 
   const toggleSort = (key: string) => {
     if (sortKey === key) {
@@ -84,23 +115,26 @@ export default function MaterialMasterClient({
     }
   }
 
-  const filtered = rows.filter((r) => {
-    const q = search.toLowerCase()
-    const matchSearch =
-      !q ||
-      String(r[codeKey] ?? "").toLowerCase().includes(q) ||
-      String(r.name ?? "").toLowerCase().includes(q) ||
-      String(r.type ?? "").toLowerCase().includes(q) ||
-      (material === "rm" ? String(r.make ?? "").toLowerCase().includes(q) : false)
-    const matchStatus = statusFilter === "all" || r.status === statusFilter
-    return matchSearch && matchStatus
-  })
+  /**
+   * Merge URL-param overrides, reset to page 1, then navigate.
+   * Preserves ?material= so switching status/search doesn't flip rm ↔ pm view.
+   */
+  function navigate(updates: Record<string, string>) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) params.set(k, v)
+      else   params.delete(k)
+    }
+    params.set("page", "1")
+    router.push(`${pathname}?${params.toString()}`)
+  }
 
+  // Sort within current page — rows are already DB-filtered and sliced.
   const sorted = useMemo(() => {
-    if (!sortKey) return filtered
+    if (!sortKey) return rows
     const col = columns.find((c) => c.key === sortKey)
     const dir = sortDir === "asc" ? 1 : -1
-    return [...filtered].sort((a, b) => {
+    return [...rows].sort((a, b) => {
       const av = a[sortKey]
       const bv = b[sortKey]
       const aEmpty = av === null || av === undefined || av === ""
@@ -114,27 +148,30 @@ export default function MaterialMasterClient({
           : String(av).localeCompare(String(bv), undefined, { numeric: true })
       return cmp * dir
     })
-  }, [filtered, columns, sortKey, sortDir])
+  }, [rows, columns, sortKey, sortDir])
 
-  const hasFilters = search || statusFilter !== "all"
-  const refresh = () => router.refresh()
+  const hasFilters = currentSearch || currentStatus
+  // router.refresh() re-runs the server page with current URL — keeps page + filters.
+  const refresh    = () => router.refresh()
 
   return (
     <>
+      {/* ── Toolbar ── */}
       <MasterToolbar>
-        <SearchInput
-          value={search}
-          onChange={setSearch}
+        <UrlSearchInput
+          initialValue={currentSearch}
           placeholder={
             material === "rm"
-              ? "Search by code, name, make, type…"
+              ? "Search by code, name, make…"
               : "Search by code, name, type…"
           }
         />
 
         <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          value={currentStatus || "all"}
+          onChange={(e) =>
+            navigate({ status: e.target.value === "all" ? "" : e.target.value })
+          }
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="all">All Status</option>
@@ -143,21 +180,18 @@ export default function MaterialMasterClient({
         </select>
 
         <MasterToolbarActions>
-          {/* Simple dialog — adds base material only, no vendor/mfg rate steps */}
           <AddMaterialDialog material={material} onSuccess={refresh} />
         </MasterToolbarActions>
       </MasterToolbar>
 
+      {/* ── Table card ── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            {filtered.length} of {rows.length} records
+            {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => {
-                  setSearch("")
-                  setStatusFilter("all")
-                }}
+                onClick={() => navigate({ search: "", status: "" })}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters
@@ -194,13 +228,14 @@ export default function MaterialMasterClient({
                     </TableHead>
                   )
                 })}
+                <TableHead className="bg-gray-200 w-10 font-medium text-muted-foreground">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sorted.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={columns.length}
+                    colSpan={columns.length + 1}
                     className="text-center text-muted-foreground py-10"
                   >
                     {hasFilters
@@ -212,9 +247,7 @@ export default function MaterialMasterClient({
                 sorted.map((row, index) => (
                   <TableRow
                     key={index}
-                    className={cn(
-                      index % 2 === 0 ? "bg-white" : "bg-gray-200"
-                    )}
+                    className={cn(index % 2 === 0 ? "bg-white" : "bg-gray-200")}
                   >
                     {columns.map((col) => (
                       <TableCell
@@ -226,13 +259,26 @@ export default function MaterialMasterClient({
                           : ((row[col.key] as ReactNode) ?? "—")}
                       </TableCell>
                     ))}
+                    <TableCell>
+                      <EditButton onClick={() => setEditRow(row)} />
+                    </TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
+
+          <PaginationBar total={total} page={page} pageSize={pageSize} />
         </CardContent>
       </Card>
+
+      {/* ── Edit dialog — rendered once, driven by editRow state ── */}
+      <EditMaterialDialog
+        material={material}
+        row={editRow}
+        onClose={() => setEditRow(null)}
+        onSuccess={refresh}
+      />
     </>
   )
 }

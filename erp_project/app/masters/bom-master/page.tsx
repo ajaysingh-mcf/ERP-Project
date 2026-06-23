@@ -9,7 +9,7 @@ import { auth } from "@/lib/auth"
 import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
 import { parsePaginationParams, paginate } from "@/lib/pagination"
-import { bom } from "@/lib/queries/bom_master"
+import { bom } from "@/lib/queries/bom"
 import type { BOM } from "@/types/masters"
 import BOMMasterComponent from "./BOMMasterComponent"
 

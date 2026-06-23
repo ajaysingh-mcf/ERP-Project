@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { execute } from "@/lib/db"
 import { rawMaterials } from "@/lib/queries/raw-materials"
-import { PMMaterials } from "@/lib/queries/packing-materials"
+import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
 
 // ─── Param builders ──────────────────────────────────────────────────────────
 
@@ -114,4 +114,65 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ error: "Invalid action." }, { status: 400 })
+}
+
+// ─── PUT: update an existing RM or PM base record ────────────────────────────
+
+export async function PUT(req: NextRequest) {
+  const session = await auth()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const body = await req.json()
+  const { material, id } = body
+
+  if (!id) {
+    return NextResponse.json({ error: "Record ID is required." }, { status: 400 })
+  }
+
+  if (material === "rm") {
+    const { name, make, type, uom, status, hsn_code, inci_name } = body
+    if (!name?.trim())      return NextResponse.json({ error: "Name is required." }, { status: 400 })
+    if (!make?.trim())      return NextResponse.json({ error: "Make is required." }, { status: 400 })
+    if (!inci_name?.trim()) return NextResponse.json({ error: "INCI Name is required." }, { status: 400 })
+    try {
+      await execute(rawMaterials.update, [
+        name.trim(),
+        make.trim(),
+        type?.trim() || null,
+        uom?.trim() || null,
+        status || "active",
+        hsn_code?.trim() || null,
+        inci_name.trim(),
+        id,
+      ])
+      return NextResponse.json({ ok: true })
+    } catch (err: any) {
+      console.error("Material master RM update error:", err)
+      return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+    }
+  }
+
+  if (material === "pm") {
+    const { name, type, uom, status, hsn_code } = body
+    if (!name?.trim()) return NextResponse.json({ error: "Name is required." }, { status: 400 })
+    if (!type?.trim()) return NextResponse.json({ error: "Type is required." }, { status: 400 })
+    try {
+      await execute(PMMaterials.update, [
+        name.trim(),
+        type.trim(),
+        uom?.trim() || null,
+        status || "active",
+        hsn_code?.trim() || null,
+        id,
+      ])
+      return NextResponse.json({ ok: true })
+    } catch (err: any) {
+      console.error("Material master PM update error:", err)
+      return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+    }
+  }
+
+  return NextResponse.json({ error: 'material must be "rm" or "pm".' }, { status: 400 })
 }

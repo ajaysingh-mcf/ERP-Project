@@ -17,10 +17,11 @@ export const rawMaterials = {
    * Used in RawMaterialsPage manufacturer view
    */
   selectByManufacturer: `
-    select rmm.rm_id, rmm.mfg_id, rmm.mfg_code, rmm.approved_vendor_id, rmm.approved_vendor_code,
+    SELECT rmm.rm_id, rmm.mfg_id, rmm.mfg_code, rmm.approved_vendor_id, rmm.approved_vendor_code,
       rmm.curr_rate, rmm.effective_from, rmm.uom, r.status,
       r.id, r.name, r.make, r.type, r.hsn_code, r.rm_code, r.inci_name
-    from rm_mrm_fixed as rmm inner join master_rm as r on r.id = rmm.rm_id
+    FROM rm_mrm_fixed AS rmm
+    INNER JOIN master_rm AS r ON r.id = rmm.rm_id
   `,
 
   /**
@@ -28,15 +29,49 @@ export const rawMaterials = {
    * Used in RawMaterialsPage vendor view
    */
   selectByVendor: `
-    select
+    SELECT
       r.hsn_code, r.inci_name, r.make, r.name, r.rm_code, r.status, r.type,
       rmv.curr_rate, rmv.effective_from, rmv.effective_to,
       rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id
-    from rm_vrm_dynamic as rmv
-    inner join master_rm as r on r.id = rmv.rm_id
+    FROM rm_vrm_dynamic AS rmv
+    INNER JOIN master_rm AS r ON r.id = rmv.rm_id
   `,
 
-  // ============ PAGINATED SELECT QUERIES ============
+  // ============ PAGINATED BASE TABLE QUERIES (material-master page) ============
+
+  /**
+   * Paginated base RM list with optional search + status filter.
+   * Params: [like, like, like, like, status, status, LIMIT, OFFSET]
+   *   like   — '%search%' or null (rm_code / name / make columns)
+   *   status — 'active'|'discontinued' or null
+   */
+  selectPaginated: `
+    SELECT id, rm_code, name, make, type, uom, status, hsn_code, inci_name
+    FROM master_rm
+    WHERE (? IS NULL OR rm_code LIKE ? OR name LIKE ? OR make LIKE ?)
+      AND (? IS NULL OR status = ?)
+    ORDER BY name ASC
+    LIMIT ? OFFSET ?
+  `,
+
+  /** Matching COUNT for selectPaginated. Params: [like, like, like, like, status, status] */
+  countAll: `
+    SELECT COUNT(*) AS total FROM master_rm
+    WHERE (? IS NULL OR rm_code LIKE ? OR name LIKE ? OR make LIKE ?)
+      AND (? IS NULL OR status = ?)
+  `,
+
+  /**
+   * Update RM base record fields (rm_code is auto-generated, never changed).
+   * Params: [name, make, type, uom, status, hsn_code, inci_name, id]
+   */
+  update: `
+    UPDATE master_rm
+    SET name = ?, make = ?, type = ?, uom = ?, status = ?, hsn_code = ?, inci_name = ?
+    WHERE id = ?
+  `,
+
+  // ============ PAGINATED SELECT QUERIES (raw-materials rate page) ============
 
   /**
    * Paginated RM × vendor rates with optional search + status filter.
@@ -152,7 +187,7 @@ export const rawMaterials = {
    * Parameters: [rm_id, vendor_id, curr_rate, moq, uom, effective_from, effective_to, status]
    */
   archiveVendorRate: `
-    INSERT INTO vrm_history (mtrl_type, mtrl_id, vendor_id, rate, moq, uom, effective_from, effective_to, status)
+    INSERT INTO history_vrm (mtrl_type, mtrl_id, vendor_id, rate, moq, uom, effective_from, effective_to, status)
     VALUES ('rm', ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
@@ -195,5 +230,10 @@ export const rawMaterials = {
   archiveToHistoryMrm: `
     INSERT INTO history_mrm (mfg_id, mtrl_type, mtrl_id, vendor_id, rate, effective_from, effective_to, status)
     VALUES (?, 'rm', ?, ?, ?, ?, ?, ?)
+  `,
+
+  /** Find the first vendor_id linked to an RM in the vendor rate master. Parameters: [rm_id] */
+  getVendorId: `
+    SELECT vendor_id FROM rm_vrm_dynamic WHERE rm_id = ? AND vendor_id IS NOT NULL LIMIT 1
   `,
 }

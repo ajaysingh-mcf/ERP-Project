@@ -13,11 +13,11 @@ Master data records are created once and referenced repeatedly by transactional 
 | Entity | Route | API Endpoint | Tables |
 |--------|-------|-------------|--------|
 | SKUs | `/masters/skus` | `POST /api/masters/skus` | `skus` |
-| Vendors | `/masters/vendors` | `POST /api/masters/vendors` | `vendors`, `vendor_details` |
-| Manufacturers | `/masters/manufacturers` | `POST /api/masters/manufacturers` | `mfgs`, `mfg_details` |
-| Raw Materials | `/masters/raw-materials` | `POST /api/masters/raw-materials` | `rm`, `rm_vrm`, `rm_mrm`, `vrm_history` |
-| Packing Materials | `/masters/packing-materials` | `POST /api/masters/packing-materials` | `pm`, `pm_vrm`, `pm_mrm`, `vrm_history` |
-| Material Master | `/masters/material-master` | `POST /api/masters/material-master` | `rm`, `pm` |
+| Vendors | `/masters/vendors` | `POST /api/masters/vendors` | `master_vendors`, `vendor_details` |
+| Manufacturers | `/masters/manufacturers` | `POST /api/masters/manufacturers` | `master_mfgs`, `mfg_details` |
+| Raw Materials | `/masters/raw-materials` | `POST /api/masters/raw-materials` | `master_rm`, `rm_vrm_dynamic`, `rm_mrm_fixed`, `vrm_history`, `history_vrm`, `history_mrm` |
+| Packing Materials | `/masters/packing-materials` | `POST /api/masters/packing-materials` | `master_pm`, `pm_vrm_dynamic`, `pm_mrm_fixed`, `history_vrm`, `history_mrm` |
+| Material Master | `/masters/material-master` | `POST /api/masters/material-master` | `master_rm`, `master_pm` |
 | BOM Master | `/masters/bom-master` | `POST /api/masters/bom-master` | `bom`, `bom_details` |
 
 ## Server + Client Component Pattern
@@ -123,6 +123,51 @@ Top toolbar that renders:
 
 Controlled text input. On change, filters the displayed rows in the Client Component by matching the search term against row values. Client-side only — does not hit the API.
 
+## Edit Actions — Vendors and Manufacturers
+
+Vendors and Manufacturers support in-place editing via a pencil (✏) button in each table row. Clicking it opens a pre-populated dialog.
+
+### Vendor Edit (`EditVendorDialog.tsx`)
+
+Editable fields: `name`, `type` (rm/pm/both), `location`, `gst_number`, `status` (active/inactive/blacklisted/discontinued).
+
+Submits `POST /api/masters/vendors` with `action: "update"` and `vendor_id`. The route runs a transaction updating both `master_vendors` and `vendor_details`.
+
+### Manufacturer Edit (`EditMfgDialog.tsx`)
+
+Editable fields: `name`, `location`, `gst_number`, `status` (active/inactive).
+
+Submits `POST /api/masters/manufacturers` with `action: "update"` and `mfg_id`. The route updates both `master_mfgs` and `mfg_details`.
+
+Both dialogs use `useEffect` (not `useState` initializer) to re-populate the form whenever a different row is selected, so switching between rows always shows the correct data.
+
+---
+
+## Edit Actions — Rate Masters
+
+Vendor rate and manufacturer rate rows in the Raw Materials and Packing Materials pages also have pencil buttons. These open edit dialogs that submit via the existing `action: "add-rates"` endpoint, which performs a full upsert (archive old → update existing).
+
+| Dialog | File | Calls |
+|--------|------|-------|
+| RM vendor rate | `EditRmVendorRateDialog.tsx` | `POST /api/masters/raw-materials` `add-rates` |
+| RM mfg rate | `EditRmMfgRateDialog.tsx` | `POST /api/masters/raw-materials` `add-rates` |
+| PM vendor rate | `EditPmVendorRateDialog.tsx` | `POST /api/masters/packing-materials` `add-rates` |
+| PM mfg rate | `EditPmMfgRateDialog.tsx` | `POST /api/masters/packing-materials` `add-rates` |
+
+PM edit dialogs pass `pm_id` directly in the request body to avoid the name+type lookup (which can fail if type is null). The `add-rates` handler short-circuits the `checkDuplicate` query when `pm_id` is provided.
+
+All rate edit dialogs use a `toDateStr` helper to handle dates returned from the DB as `Date` objects rather than strings:
+
+```ts
+function toDateStr(val: unknown): string {
+  if (!val) return ""
+  if (val instanceof Date) return val.toISOString().slice(0, 10)
+  return String(val).slice(0, 10)
+}
+```
+
+---
+
 ## Raw Materials — Special Case
 
 Raw Materials is the most complex master entity due to the rate master structure.
@@ -148,7 +193,12 @@ A multi-step modal wizard instead of the standard `AddRecordDialog`. Steps:
 
 ### Rate Archive Pattern
 
-When updating a vendor rate, the existing `rm_vrm` row is **archived to `vrm_history`** before the update, preserving the audit trail. This is handled server-side in `app/api/masters/raw-materials/route.ts`.
+Two history tables are written when a rate is updated:
+
+- **Vendor rate update (`rm_vrm_dynamic`):** First archived to `vrm_history` (legacy, via `archiveVendorRate`) and also to `history_vrm` (via `archiveToHistoryVrm`). Then the live row is updated in place.
+- **Mfg rate update (`rm_mrm_fixed`):** The existing row is archived to `history_mrm` (via `archiveToHistoryMrm`) before updating. The `vendor_id` for the history row comes from `approved_vendor_id` on the rate row; if that is null, the first vendor linked to the RM in `rm_vrm_dynamic` is used; fallback is `0`.
+
+Both archive steps happen inside the same database transaction as the update.
 
 ## Packing Materials — Special Case
 
@@ -157,8 +207,8 @@ Packing Materials mirrors the Raw Materials pattern with the same dual-view and 
 ### Dual View
 
 The `/masters/packing-materials` page supports two views:
-- `?view=vendor` (default) — shows `pm_vrm` rows joined with `pm`
-- `?view=manufacturer` — shows `pm_mrm` rows joined with `pm`
+- `?view=vendor` (default) — shows `pm_vrm_dynamic` rows joined with `master_pm`
+- `?view=manufacturer` — shows `pm_mrm_fixed` rows joined with `master_pm`
 
 ### Add Packing Material Wizard (`AddPackingMaterialWizard.tsx`)
 
@@ -171,7 +221,8 @@ Same 3-step pattern as RM:
 
 ### Rate Archive Pattern
 
-Same as RM: existing `pm_vrm` rows are archived to `vrm_history` (with `mtrl_type = 'pm'`) before updating. The `vrm_history` table covers both RM and PM via this `mtrl_type` enum.
+- **Vendor rate update (`pm_vrm_dynamic`):** Archived to `history_vrm` (via `archiveVendorRate`, which already targets `history_vrm` for PM). No separate `archiveToHistoryVrm` call — that would duplicate the entry.
+- **Mfg rate update (`pm_mrm_fixed`):** Archived to `history_mrm` (via `archiveToHistoryMrm`). The `vendor_id` is looked up from `pm_vrm_dynamic` for the same `pm_id`; fallback is `0`. `pm_mrm_fixed` does not have an `approved_vendor_id` column (unlike `rm_mrm_fixed`).
 
 ---
 

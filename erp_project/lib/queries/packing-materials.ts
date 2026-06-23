@@ -1,4 +1,9 @@
-export const PMMaterials = {
+/**
+ * Packing Materials (PM) Queries
+ * Centralized queries for the pm table and related rate tables (pm_vrm_dynamic, pm_mrm_fixed)
+ */
+
+export const packingMaterials = {
   /** Get all packing materials (base data only, no rate joins) */
   selectAll: `
     SELECT id, pm_code, name, type, uom, status, hsn_code
@@ -27,7 +32,41 @@ export const PMMaterials = {
     FROM pm_mrm_fixed AS pmm
     INNER JOIN master_pm AS p ON pmm.pm_id = p.id
   `,
-  // ============ PAGINATED SELECT QUERIES ============
+  // ============ PAGINATED BASE TABLE QUERIES (material-master page) ============
+
+  /**
+   * Paginated base PM list with optional search + status filter.
+   * Params: [like, like, like, like, status, status, LIMIT, OFFSET]
+   *   like   — '%search%' or null (pm_code / name / type columns)
+   *   status — 'active'|'discontinued' or null
+   */
+  selectPaginated: `
+    SELECT id, pm_code, name, type, uom, status, hsn_code
+    FROM master_pm
+    WHERE (? IS NULL OR pm_code LIKE ? OR name LIKE ? OR type LIKE ?)
+      AND (? IS NULL OR status = ?)
+    ORDER BY name ASC
+    LIMIT ? OFFSET ?
+  `,
+
+  /** Matching COUNT for selectPaginated. Params: [like, like, like, like, status, status] */
+  countAll: `
+    SELECT COUNT(*) AS total FROM master_pm
+    WHERE (? IS NULL OR pm_code LIKE ? OR name LIKE ? OR type LIKE ?)
+      AND (? IS NULL OR status = ?)
+  `,
+
+  /**
+   * Update PM base record fields (pm_code is auto-generated, never changed).
+   * Params: [name, type, uom, status, hsn_code, id]
+   */
+  update: `
+    UPDATE master_pm
+    SET name = ?, type = ?, uom = ?, status = ?, hsn_code = ?
+    WHERE id = ?
+  `,
+
+  // ============ PAGINATED SELECT QUERIES (packing-materials rate page) ============
 
   /**
    * Paginated PM × vendor rates with optional search + status filter.
@@ -87,6 +126,9 @@ export const PMMaterials = {
       AND (? IS NULL OR pmm.status = ?)
   `,
 
+  // ============ INSERT QUERIES ============
+
+  /** Insert a packing material base record. Parameters: [pm_code, name, type, hsn_code, uom, status] */
   insert: `
     INSERT INTO master_pm (pm_code, name, type, hsn_code, uom, status)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -159,7 +201,8 @@ export const PMMaterials = {
     VALUES (?, 'pm', ?, ?, ?, ?, ?, ?)
   `,
 
-  getVendorId:`
-    select pvd.vendor_code  from pm_vrm_dynamic pvd where pvd.pm_id = ?; 
-  `
+  /** Find the first vendor_id linked to a PM in the vendor rate master. Parameters: [pm_id] */
+  getVendorId: `
+    SELECT vendor_id FROM pm_vrm_dynamic WHERE pm_id = ? AND vendor_id IS NOT NULL LIMIT 1
+  `,
 }

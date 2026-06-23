@@ -289,13 +289,42 @@ erDiagram
         string uom
         enum status
     }
+    history_vrm {
+        int id PK
+        enum mtrl_type
+        int mtrl_id
+        int vendor_id
+        decimal rate
+        date effective_from
+        date effective_to
+        enum status
+        datetime created_at
+    }
+    history_mrm {
+        int id PK
+        int mfg_id
+        enum mtrl_type
+        int mtrl_id
+        int vendor_id
+        decimal rate
+        date effective_from
+        date effective_to
+        tinyint status
+        datetime created_at
+    }
 
     rm ||--o{ rm_vrm : "vendor rates"
     rm ||--o{ rm_mrm : "mfg rates"
     pm ||--o{ pm_vrm : "vendor rates"
     pm ||--o{ pm_mrm : "mfg rates"
     vrm_history }o--|| vendors : "archived from"
+    history_vrm }o--o| rm : "rm vendor history"
+    history_vrm }o--o| pm : "pm vendor history"
+    history_mrm }o--o| rm_mrm : "rm mfg history"
+    history_mrm }o--o| pm_mrm : "pm mfg history"
 ```
+
+> **Actual SQL table names** differ from Prisma model names. The raw SQL queries in `lib/queries/` use: `master_rm`, `master_pm`, `rm_vrm_dynamic`, `rm_mrm_fixed`, `pm_vrm_dynamic`, `pm_mrm_fixed`, `master_vendors`, `vendor_details`, `master_mfgs`, `mfg_details`. The Prisma model names above are the logical names used in schema definitions.
 
 ### Table descriptions
 
@@ -303,15 +332,19 @@ erDiagram
 
 **`pm`** (Packing Materials) — Packing material master. `pm_code` is the business key. `status` enum: `active`, `discontinued`.
 
-**`rm_vrm`** — Raw Material Vendor Rate Master. The current vendor price for a raw material. `moq` = minimum order quantity. `status` enum: `active`, `inactive`, `discontinued`.
+**`rm_vrm`** (`rm_vrm_dynamic`) — Raw Material Vendor Rate Master. The current vendor price for a raw material. `moq` = minimum order quantity. `status` enum: `active`, `inactive`, `discontinued`.
 
-**`rm_mrm`** — Raw Material Manufacturer Rate Master. Links a raw material to the manufacturing site that uses it, with the approved vendor for that site.
+**`rm_mrm`** (`rm_mrm_fixed`) — Raw Material Manufacturer Rate Master. Links a raw material to the manufacturing site that uses it. Stores `approved_vendor_id` — the preferred vendor for that material-site combination.
 
-**`pm_vrm`** — Packing Material Vendor Rate Master. Same pattern as `rm_vrm` but for packing materials.
+**`pm_vrm`** (`pm_vrm_dynamic`) — Packing Material Vendor Rate Master. Same pattern as `rm_vrm` but for packing materials.
 
-**`pm_mrm`** — Packing Material Manufacturer Rate Master.
+**`pm_mrm`** (`pm_mrm_fixed`) — Packing Material Manufacturer Rate Master.
 
-**`vrm_history`** — Append-only archive of superseded vendor rates. When a vendor rate is updated, the old `rm_vrm` or `pm_vrm` row is archived here before the update. `mtrl_type` identifies whether `mtrl_id` points to `rm` or `pm`.
+**`vrm_history`** — Legacy append-only archive of superseded RM vendor rates. Written by `archiveVendorRate` when an `rm_vrm` row is overwritten. `mtrl_type` distinguishes `rm` vs `pm`.
+
+**`history_vrm`** — New vendor rate history table covering both RM and PM. Written by `archiveToHistoryVrm` (RM) and `archiveVendorRate` (PM, since that already targets `history_vrm`). `mtrl_type` distinguishes `rm` vs `pm`. For RM, both `vrm_history` and `history_vrm` receive entries on each update.
+
+**`history_mrm`** — Manufacturer rate history table covering both RM and PM. Written before any `rm_mrm_fixed` or `pm_mrm_fixed` row is updated. `vendor_id` holds `approved_vendor_id` from the rate row (looked up from the vendor rate master if not directly stored); uses `0` if no vendor is found. `status` stored as tinyint (`1` = active, `0` = inactive).
 
 ---
 

@@ -32,19 +32,21 @@ import {
 } from "@/components/masters/MasterToolbar"
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
+import { EditRecordDialog } from "@/components/masters/EditRecordDialog"
 import type { MasterField } from "@/components/masters/field-config"
 import type { Sku } from "@/types/masters"
 
 const SKU_FIELDS: MasterField[] = [
-  { key: "sku_code",  label: "SKU Code",  required: true,  aliases: ["code"], placeholder: "e.g. SKU-001", sample: "SKU-001" },
+  { key: "sku_code",  label: "SKU Code",  required: true,  aliases: ["code"], placeholder: "e.g. SKU-001", sample: "SKU-001", readonly: true },
   { key: "name",      label: "Name",      required: true,  placeholder: "Product Name",  sample: "Product Alpha" },
   { key: "brand",     label: "Brand",     placeholder: "Brand",    sample: "Brand A" },
   { key: "category",  label: "Category",  placeholder: "Category", sample: "Category 1" },
   {
     key: "status", label: "Status", type: "select", default: "active", colSpan: 2, sample: "active",
     options: [
-      { value: "active",   label: "Active"   },
-      { value: "inactive", label: "Inactive" },
+      { value: "active",       label: "Active"       },
+      { value: "inactive",     label: "Inactive"     },
+      { value: "discontinued", label: "Discontinued" },
     ],
   },
 ]
@@ -165,12 +167,13 @@ export default function SkusClient({
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Created By</TableHead>
+                <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
                     {hasFilters ? "No SKUs match your filters." : "No records found."}
                   </TableCell>
                 </TableRow>
@@ -196,6 +199,22 @@ export default function SkusClient({
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
                       {row.created_by ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      <EditRecordDialog
+                        entityLabel="SKU"
+                        endpoint="/api/masters/skus"
+                        fields={SKU_FIELDS}
+                        recordId={row.id}
+                        initialValues={{
+                          sku_code: row.sku_code ?? "",
+                          name:     row.name ?? "",
+                          brand:    row.brand ?? "",
+                          category: row.category ?? "",
+                          status:   row.status ?? "active",
+                        }}
+                        onSuccess={refresh}
+                      />
                     </TableCell>
                   </TableRow>
                 ))

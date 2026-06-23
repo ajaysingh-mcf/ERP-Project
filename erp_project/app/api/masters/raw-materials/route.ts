@@ -225,8 +225,13 @@ export async function POST(req: NextRequest) {
         const existingMfg = (existingMfgRows as any[])[0]
 
         if (existingMfg) {
+          let historyVendorId = existingMfg.approved_vendor_id
+          if (!historyVendorId) {
+            const [vRows] = await conn.execute(rawMaterials.getVendorId, [rmId])
+            historyVendorId = (vRows as any[])[0]?.vendor_id ?? 0
+          }
           await conn.execute(rawMaterials.archiveToHistoryMrm, [
-            existingMfg.mfg_id, rmId, existingMfg.approved_vendor_id ?? 0,
+            existingMfg.mfg_id, rmId, historyVendorId,
             existingMfg.curr_rate, existingMfg.effective_from, null,
             existingMfg.status === "active" ? 1 : 0,
           ])

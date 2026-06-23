@@ -33,6 +33,8 @@ export type MasterField = {
   form?: boolean
   /** Grid span in the Add form (1 or 2 columns). Default 1. */
   colSpan?: 1 | 2
+  /** Show in the Edit form but prevent changes (e.g. the unique code field). */
+  readonly?: boolean
 }
 
 export type ParsedRow = Record<string, unknown> & { _error?: string }

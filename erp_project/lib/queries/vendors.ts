@@ -78,12 +78,14 @@ export const vendors = {
     INSERT INTO vendor_details (vendor_id, location, gst_number, status) VALUES (?, ?, ?, ?)
   `,
 
-  /** Updating vendor details on edit */
+  // ============ UPDATE QUERIES ============
+
+  /** Update vendor name and type. Parameters: [name, type, id] */
   updateVendor: `
     UPDATE master_vendors SET name = ?, type = ? WHERE id = ?
   `,
 
-  /** Updaing vendor details in the rate master table. */
+  /** Update vendor details record. Parameters: [location, gst_number, status, vendor_id] */
   updateVendorDetails: `
     UPDATE vendor_details SET location = ?, gst_number = ?, status = ? WHERE vendor_id = ?
   `,

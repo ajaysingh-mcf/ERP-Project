@@ -1,9 +1,7 @@
 /**
  * SKU Queries
  *
- * Centralised queries for the `skus` table.
- * Previously the SELECT SQL lived inline in app/masters/skus/page.tsx;
- * moved here to follow the same pattern as every other master module.
+ * Centralised queries for the `skus` table and `sku_history` audit table.
  */
 
 export const skus = {
@@ -16,13 +14,22 @@ export const skus = {
     ORDER BY sku_code ASC
   `,
 
+  /**
+   * Fetch a single SKU by id (used before update to snapshot for history).
+   * Parameters: [id]
+   */
+  selectById: `
+    SELECT id, sku_code, name, brand, category, status
+    FROM master_skus WHERE id = ? LIMIT 1
+  `,
+
   // ============ PAGINATED SELECT QUERIES ============
 
   /**
    * Paginated SKU list with optional search + status filter.
    * Params: [like, like, like, like, status, status, LIMIT, OFFSET]
    *   like   — '%search%' or null (code / name / brand columns)
-   *   status — 'active'|'inactive'|brand name or null
+   *   status — 'active'|'inactive' or null
    */
   selectPaginated: `
     SELECT id, sku_code, name, brand, category, status, created_at, created_by
@@ -42,5 +49,28 @@ export const skus = {
     FROM master_skus
     WHERE (? IS NULL OR sku_code LIKE ? OR name LIKE ? OR brand LIKE ?)
       AND (? IS NULL OR status = ?)
+  `,
+
+  // ============ UPDATE QUERIES ============
+
+  /**
+   * Update editable SKU fields (sku_code is immutable).
+   * Parameters: [name, brand, category, status, id]
+   */
+  updateSku: `
+    UPDATE master_skus
+    SET name = ?, brand = ?, category = ?, status = ?
+    WHERE id = ?
+  `,
+
+  // ============ HISTORY QUERIES ============
+
+  /**
+   * Archive the pre-edit snapshot of a SKU to sku_history.
+   * Parameters: [sku_id, sku_code, name, brand, category, status, changed_by]
+   */
+  insertHistory: `
+    INSERT INTO sku_history (sku_id, sku_code, name, brand, category, status, changed_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `,
 }

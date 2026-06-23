@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { execute, query, pool } from "@/lib/db"
-import { PMMaterials } from "@/lib/queries/packing-materials"
-import { PmRateTable } from "@/app/masters/packing-materials/PmRateTable"
+import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
 
 function toPmParams(r: any) {
   return [
@@ -185,10 +184,6 @@ export async function POST(req: NextRequest) {
             existing.effective_to,
             existing.status,
           ])
-          await conn.execute(PMMaterials.archiveToHistoryVrm, [
-            pmId, existing.vendor_id, existing.curr_rate,
-            existing.effective_from, existing.effective_to, existing.status,
-          ])
           await conn.execute(PMMaterials.updateVendorRate, [
             v.curr_rate ? Number(v.curr_rate) : null,
             v.moq ? Number(v.moq) : null,
@@ -220,8 +215,10 @@ export async function POST(req: NextRequest) {
         const existing = (existingRows as any[])[0]
 
         if (existing) {
+          const [vRows] = await conn.execute(PMMaterials.getVendorId, [pmId])
+          const historyVendorId = (vRows as any[])[0]?.vendor_id ?? 0
           await conn.execute(PMMaterials.archiveToHistoryMrm, [
-            existing.mfg_id, pmId, null, existing.curr_rate,
+            existing.mfg_id, pmId, historyVendorId, existing.curr_rate,
             existing.effective_from, null, existing.status === "active" ? 1 : 0,
           ])
           await conn.execute(PMMaterials.updateMfgRate, [
@@ -290,10 +287,6 @@ export async function POST(req: NextRequest) {
               pmId, existing.vendor_id, existing.curr_rate, existing.moq,
               existing.uom, existing.effective_from, existing.effective_to, existing.status,
             ])
-            await conn.execute(PMMaterials.archiveToHistoryVrm, [
-              pmId, existing.vendor_id, existing.curr_rate,
-              existing.effective_from, existing.effective_to, existing.status,
-            ])
             await conn.execute(PMMaterials.updateVendorRate, [
               v.curr_rate ? Number(v.curr_rate) : null,
               v.moq ? Number(v.moq) : null,
@@ -318,9 +311,10 @@ export async function POST(req: NextRequest) {
           const existing = (existingRows as any[])[0]
           
           if (existing) {
-            const ven_id = await conn.execute(PMMaterials.getVendorId , [pmId]);
+            const [vRows] = await conn.execute(PMMaterials.getVendorId, [pmId])
+            const historyVendorId = (vRows as any[])[0]?.vendor_id ?? 0
             await conn.execute(PMMaterials.archiveToHistoryMrm, [
-              existing.mfg_id, pmId, ven_id, existing.curr_rate,
+              existing.mfg_id, pmId, historyVendorId, existing.curr_rate,
               existing.effective_from, null, existing.status === "active" ? 1 : 0,
             ])
             await conn.execute(PMMaterials.updateMfgRate, [

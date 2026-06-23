@@ -24,6 +24,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { execute, pool } from "@/lib/db"
+import { skus as skuSql } from "@/lib/queries/skus"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -103,6 +104,50 @@ export async function POST(req: NextRequest) {
       await conn.rollback()
       console.error("SKU bulk insert error:", err)
       return NextResponse.json({ error: "Bulk insert failed: " + err.message }, { status: 500 })
+    } finally {
+      conn.release()
+    }
+  }
+
+  if (action === "update") {
+    const { id, name, brand, category, status } = body
+    if (!id || !name?.trim()) {
+      return NextResponse.json({ error: "id and name are required" }, { status: 400 })
+    }
+
+    const conn = await pool.getConnection()
+    await conn.beginTransaction()
+    try {
+      // Fetch current values before overwriting — snapshot for history.
+      const [rows] = await conn.execute(skuSql.selectById, [id])
+      const old = (rows as any[])[0]
+      if (!old) {
+        await conn.rollback()
+        return NextResponse.json({ error: "SKU not found" }, { status: 404 })
+      }
+
+      // Archive the pre-edit snapshot.
+      await conn.execute(skuSql.insertHistory, [
+        old.id, old.sku_code, old.name, old.brand ?? null,
+        old.category ?? null, old.status ?? null,
+        parseInt(session.user.id),
+      ])
+
+      // Apply the update.
+      await conn.execute(skuSql.updateSku, [
+        name.trim(),
+        brand?.trim() || null,
+        category?.trim() || null,
+        status || "active",
+        id,
+      ])
+
+      await conn.commit()
+      return NextResponse.json({ ok: true })
+    } catch (err: any) {
+      await conn.rollback()
+      console.error("SKU update error:", err)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
     } finally {
       conn.release()
     }
