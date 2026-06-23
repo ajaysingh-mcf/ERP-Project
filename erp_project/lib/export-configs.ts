@@ -141,14 +141,11 @@ export const MFG_EXPORT_COLUMNS: ExportColumn[] = [
 
 export const BOM_EXPORT_COLUMNS: ExportColumn[] = [
   { key: "bom_code",        label: "BOM Code",        type: "text"   },
-  { key: "sku_code",        label: "SKU Code",        type: "text"   },
   { key: "mtrl_type",       label: "Material Type",   type: "text"   },
   { key: "mtrl_id",         label: "Material ID",     type: "number" },
   { key: "amount",          label: "Amount",          type: "number" },
   { key: "uom",             label: "UOM",             type: "text"   },
-  { key: "mtrl_cost",       label: "Material Cost",   type: "number" },
   { key: "material_status", label: "Material Status", type: "text"   },
   { key: "bom_status",      label: "BOM Status",      type: "text"   },
   { key: "effective_from",  label: "Effective From",  type: "date"   },
-  { key: "effective_till",  label: "Effective Till",  type: "date"   },
 ]

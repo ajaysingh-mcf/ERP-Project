@@ -9,7 +9,7 @@
  *   format — "csv" (default) | "xlsx"
  *   view   — "manufacturer" | anything else → vendor view (default)
  *   search — searches pm_code and name
- *   status — "active" | "discontinued"
+ *   status — "active" | "discontinued | "inactive"
  *
  * Responses:
  *   200  — file attachment
