@@ -61,7 +61,7 @@ export function DownloadButton({ endpoint, label, disabled }: DownloadButtonProp
         variant="outline"
         disabled={!!loading || disabled}
         onClick={() => download("csv")}
-        className="h-9 gap-1.5 text-xs"
+        className="h-8 gap-1.5 text-xs bg-blue-100 "
         title={`Download ${label} as CSV`}
       >
         <Download className="h-3.5 w-3.5" />
@@ -72,7 +72,7 @@ export function DownloadButton({ endpoint, label, disabled }: DownloadButtonProp
         variant="outline"
         disabled={!!loading || disabled}
         onClick={() => download("xlsx")}
-        className="h-9 gap-1.5 text-xs"
+        className="h-8 gap-1.5 text-xs bg-blue-100 "
         title={`Download ${label} as Excel`}
       >
         <Download className="h-3.5 w-3.5" />

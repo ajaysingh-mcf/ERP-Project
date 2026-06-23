@@ -19,6 +19,7 @@ export const rawMaterials = {
   selectByManufacturer: `
     SELECT rmm.rm_id, rmm.mfg_id, rmm.mfg_code, rmm.approved_vendor_id, rmm.approved_vendor_code,
       rmm.curr_rate, rmm.effective_from, rmm.uom, r.status,
+      rmm.status AS rate_status,
       r.id, r.name, r.make, r.type, r.hsn_code, r.rm_code, r.inci_name
     FROM rm_mrm_fixed AS rmm
     INNER JOIN master_rm AS r ON r.id = rmm.rm_id
@@ -31,6 +32,7 @@ export const rawMaterials = {
   selectByVendor: `
     SELECT
       r.hsn_code, r.inci_name, r.make, r.name, r.rm_code, r.status, r.type,
+      rmv.id AS vrm_id, rmv.status AS vrm_status,
       rmv.curr_rate, rmv.effective_from, rmv.effective_to,
       rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id
     FROM rm_vrm_dynamic AS rmv
@@ -95,6 +97,7 @@ export const rawMaterials = {
   selectVendorPaginated: `
     SELECT
       r.hsn_code, r.inci_name, r.make, r.name, r.rm_code, r.status, r.type,
+      rmv.id AS vrm_id, rmv.status AS vrm_status,
       rmv.curr_rate, rmv.effective_from, rmv.effective_to,
       rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id
     FROM rm_vrm_dynamic AS rmv
@@ -113,6 +116,7 @@ export const rawMaterials = {
   selectVendorAllFiltered: `
     SELECT
       r.hsn_code, r.inci_name, r.make, r.name, r.rm_code, r.status, r.type,
+      rmv.id AS vrm_id, rmv.status AS vrm_status,
       rmv.curr_rate, rmv.effective_from, rmv.effective_to,
       rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id
     FROM rm_vrm_dynamic AS rmv
@@ -137,8 +141,10 @@ export const rawMaterials = {
    */
   selectMfgPaginated: `
     SELECT
+      rmm.id AS rate_id,
       rmm.rm_id, rmm.mfg_id, rmm.mfg_code, rmm.approved_vendor_id, rmm.approved_vendor_code,
       rmm.curr_rate, rmm.effective_from, rmm.uom, r.status,
+      rmm.status AS rate_status,
       r.id, r.name, r.make, r.type, r.hsn_code, r.rm_code, r.inci_name
     FROM rm_mrm_fixed AS rmm
     INNER JOIN master_rm AS r ON r.id = rmm.rm_id
@@ -155,8 +161,10 @@ export const rawMaterials = {
    */
   selectMfgAllFiltered: `
     SELECT
+      rmm.id AS rate_id,
       rmm.rm_id, rmm.mfg_id, rmm.mfg_code, rmm.approved_vendor_id, rmm.approved_vendor_code,
       rmm.curr_rate, rmm.effective_from, rmm.uom, r.status,
+      rmm.status AS rate_status,
       r.id, r.name, r.make, r.type, r.hsn_code, r.rm_code, r.inci_name
     FROM rm_mrm_fixed AS rmm
     INNER JOIN master_rm AS r ON r.id = rmm.rm_id
@@ -282,5 +290,52 @@ export const rawMaterials = {
   /** Find the first vendor_id linked to an RM in the vendor rate master. Parameters: [rm_id] */
   getVendorId: `
     SELECT vendor_id FROM rm_vrm_dynamic WHERE rm_id = ? AND vendor_id IS NOT NULL LIMIT 1
+  `,
+
+  // ── Base-record approval-flow helpers ───────────────────────────────────────
+
+  /** Fetch a single master_rm row by its primary key.
+   *  Used by the approve handler to read current values before applying changes.
+   *  Parameters: [id]
+   */
+  selectBaseById: `
+    SELECT id, rm_code, name, make, type, uom, status, hsn_code, inci_name
+    FROM master_rm WHERE id = ? LIMIT 1
+  `,
+
+  /** Set status on a master_rm base record (e.g. 'in_review', 'draft', 'active').
+   *  Parameters: [status, id]
+   */
+  setBaseStatus: `UPDATE master_rm SET status = ? WHERE id = ?`,
+
+  // ── VRM Approval-flow helpers ─────────────────────────────────────────────
+
+  /** Set status on a rm_vrm_dynamic row (e.g. 'in_review', 'draft', 'active').
+   *  Parameters: [status, id]
+   */
+  setVendorRateStatus: `UPDATE rm_vrm_dynamic SET status = ? WHERE id = ?`,
+
+  /** Fetch a single rm_vrm_dynamic row by its primary key.
+   *  Parameters: [id]
+   */
+  selectVendorRateById: `
+    SELECT id, rm_id, vendor_id, curr_rate, moq, uom, effective_from, effective_to, status
+    FROM rm_vrm_dynamic WHERE id = ? LIMIT 1
+  `,
+
+  // ── Approval-flow helpers ────────────────────────────────────────────────
+
+  /** Set status on a rm_mrm_fixed rate row (e.g. 'in_review', 'draft', 'active').
+   *  Parameters: [status, id]
+   */
+  setRateStatus: `UPDATE rm_mrm_fixed SET status = ? WHERE id = ?`,
+
+  /** Fetch a single rm_mrm_fixed rate row by its primary key.
+   *  Used by the approve handler to read current values before archiving.
+   *  Parameters: [id]
+   */
+  selectRateById: `
+    SELECT id, mfg_id, rm_id, curr_rate, uom, approved_vendor_id, effective_from, status
+    FROM rm_mrm_fixed WHERE id = ? LIMIT 1
   `,
 }

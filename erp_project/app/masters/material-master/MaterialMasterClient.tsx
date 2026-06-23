@@ -48,14 +48,16 @@ type ColumnDef = {
   render?: (row: AnyRow) => ReactNode
 }
 
-const statusBadge = (row: AnyRow) => (
-  <Badge
-    variant={row.status === "active" ? "success" : "secondary"}
-    className="capitalize"
-  >
-    {(row.status as string) ?? "—"}
-  </Badge>
-)
+const statusBadge = (row: AnyRow) => {
+  const s = row.status as string | null
+  if (s === "in_review") return <Badge variant="warning"  className="capitalize">In Review</Badge>
+  if (s === "draft")     return <Badge variant="secondary" className="capitalize">Draft</Badge>
+  return (
+    <Badge variant={s === "active" ? "success" : "secondary"} className="capitalize">
+      {s ?? "—"}
+    </Badge>
+  )
+}
 
 const RM_COLUMNS: ColumnDef[] = [
   { key: "rm_code",   label: "RM Code",   sortAs: "text", className: "font-mono text-xs font-medium" },
@@ -265,7 +267,11 @@ export default function MaterialMasterClient({
                       </TableCell>
                     ))}
                     <TableCell>
-                      <EditButton onClick={() => setEditRow(row)} />
+                      <EditButton
+                        onClick={() => setEditRow(row)}
+                        disabled={row.status === "in_review"}
+                        title={row.status === "in_review" ? "Pending approval — cannot edit" : undefined}
+                      />
                     </TableCell>
                   </TableRow>
                 ))

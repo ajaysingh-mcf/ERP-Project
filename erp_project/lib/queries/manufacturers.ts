@@ -11,7 +11,7 @@ export const manufacturers = {
     SELECT mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
       mfgd.gst_number, mfg.code, mfg.name
     FROM master_mfgs AS mfg
-    INNER JOIN mfg_details AS mfgd ON mfgd.mfg_id = mfg.id
+    INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     ORDER BY mfg.code ASC
   `,
   // ============ PAGINATED SELECT QUERIES ============
@@ -26,7 +26,7 @@ export const manufacturers = {
       mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
       mfgd.gst_number, mfg.code, mfg.name
     FROM master_mfgs AS mfg
-    INNER JOIN mfg_details AS mfgd ON mfgd.mfg_id = mfg.id
+    INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     WHERE (? IS NULL OR mfg.code LIKE ? OR mfg.name LIKE ?)
     ORDER BY mfg.code ASC
     LIMIT ? OFFSET ?
@@ -42,7 +42,7 @@ export const manufacturers = {
       mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
       mfgd.gst_number, mfg.code, mfg.name
     FROM master_mfgs AS mfg
-    INNER JOIN mfg_details AS mfgd ON mfgd.mfg_id = mfg.id
+    INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     WHERE (? IS NULL OR mfg.code LIKE ? OR mfg.name LIKE ?)
     ORDER BY mfg.code ASC
   `,
@@ -54,7 +54,7 @@ export const manufacturers = {
   countAll: `
     SELECT COUNT(*) AS total
     FROM master_mfgs AS mfg
-    INNER JOIN mfg_details AS mfgd ON mfgd.mfg_id = mfg.id
+    INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     WHERE (? IS NULL OR mfg.code LIKE ? OR mfg.name LIKE ?)
   `,
 
@@ -74,7 +74,7 @@ export const manufacturers = {
    * Must be called after insert with the insertId.
    */
   insertDetails: `
-    INSERT INTO mfg_details (mfg_id, location, gst_number, status) VALUES (?, ?, ?, ?)
+    INSERT INTO details_mfg (mfg_id, location, gst_number, status) VALUES (?, ?, ?, ?)
   `,
 
   // ============ UPDATE QUERIES ============
@@ -86,6 +86,6 @@ export const manufacturers = {
 
   /** Update manufacturer details. Parameters: [location, gst_number, status, mfg_id] */
   updateMfgDetails: `
-    UPDATE mfg_details SET location = ?, gst_number = ?, status = ? WHERE mfg_id = ?
+    UPDATE details_mfg SET location = ?, gst_number = ?, status = ? WHERE mfg_id = ?
   `,
 }

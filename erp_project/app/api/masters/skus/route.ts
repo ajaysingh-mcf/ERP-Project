@@ -23,8 +23,9 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { execute, pool } from "@/lib/db"
+import { execute, pool, query } from "@/lib/db"
 import { skus as skuSql } from "@/lib/queries/skus"
+import { approvalsSql } from "@/lib/queries/approvals"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -115,38 +116,65 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "id and name are required" }, { status: 400 })
     }
 
+    const userId = parseInt(session.user.id)
+
+    // Block if this SKU already has a pending approval.
+    const pending = await query(approvalsSql.hasPending, ["SKU", id])
+    if (pending.length > 0) {
+      return NextResponse.json(
+        { error: "This SKU has a pending approval. Wait for it to be resolved before editing again." },
+        { status: 409 }
+      )
+    }
+
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     try {
-      // Fetch current values before overwriting — snapshot for history.
+      // Fetch current values to compute the field-level diff.
       const [rows] = await conn.execute(skuSql.selectById, [id])
-      const old = (rows as any[])[0]
-      if (!old) {
+      const current = (rows as any[])[0]
+      if (!current) {
         await conn.rollback()
         return NextResponse.json({ error: "SKU not found" }, { status: 404 })
       }
 
-      // Archive the pre-edit snapshot.
-      await conn.execute(skuSql.insertHistory, [
-        old.id, old.sku_code, old.name, old.brand ?? null,
-        old.category ?? null, old.status ?? null,
-        parseInt(session.user.id),
-      ])
+      // Build diff: only include fields whose value actually changed.
+      const proposed: Record<string, string> = {
+        name:     name.trim(),
+        brand:    brand?.trim() || "",
+        category: category?.trim() || "",
+        status:   status || "active",
+      }
+      const diff = Object.entries(proposed).filter(
+        ([k, v]) => String(current[k] ?? "") !== String(v ?? "")
+      )
+      if (diff.length === 0) {
+        await conn.rollback()
+        return NextResponse.json({ ok: true, message: "No changes detected" })
+      }
 
-      // Apply the update.
-      await conn.execute(skuSql.updateSku, [
-        name.trim(),
-        brand?.trim() || null,
-        category?.trim() || null,
-        status || "active",
-        id,
-      ])
+      // Create the parent approval record.
+      const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "SKU", id])
+      const approvalId = (approvalResult as any).insertId
+
+      // One approval_items row per changed field.
+      for (const [field, newVal] of diff) {
+        await conn.execute(approvalsSql.insertApprovalItem, [
+          approvalId,
+          field,
+          String(current[field] ?? ""),
+          String(newVal ?? ""),
+        ])
+      }
+
+      // Lock the SKU row so it cannot be re-edited while in review.
+      await conn.execute(skuSql.setStatus, ["in_review", id])
 
       await conn.commit()
-      return NextResponse.json({ ok: true })
+      return NextResponse.json({ ok: true, approval_id: approvalId })
     } catch (err: any) {
       await conn.rollback()
-      console.error("SKU update error:", err)
+      console.error("SKU update (approval) error:", err)
       return NextResponse.json({ error: "Database error" }, { status: 500 })
     } finally {
       conn.release()

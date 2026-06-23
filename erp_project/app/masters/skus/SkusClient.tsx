@@ -4,12 +4,11 @@
  * CLIENT component for /masters/skus.
  *
  * Receives a paginated slice of SKUs from the server page (SkusPage).
- * Owns all interactive behaviour: URL-synced search, status filter, Add/CSV
- * dialogs, and the PaginationBar footer.
+ * Owns all interactive behaviour: URL-synced search, status filter, edit
+ * dialog, and the PaginationBar footer.
  *
  * Filter changes push new URL params (resetting to page 1); the server
- * re-renders with the DB-filtered slice. router.refresh() after Add/CSV keeps
- * the user on their current page with their current filters.
+ * re-renders with the DB-filtered slice.
  */
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
@@ -30,27 +29,8 @@ import {
   MasterToolbar,
   MasterToolbarActions,
 } from "@/components/masters/MasterToolbar"
-import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
-import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
-import { EditRecordDialog } from "@/components/masters/EditRecordDialog"
 import { DownloadButton } from "@/components/masters/DownloadButton"
-import type { MasterField } from "@/components/masters/field-config"
 import type { Sku } from "@/types/masters"
-
-const SKU_FIELDS: MasterField[] = [
-  { key: "sku_code",  label: "SKU Code",  required: true,  aliases: ["code"], placeholder: "e.g. SKU-001", sample: "SKU-001", readonly: true },
-  { key: "name",      label: "Name",      required: true,  placeholder: "Product Name",  sample: "Product Alpha" },
-  { key: "brand",     label: "Brand",     placeholder: "Brand",    sample: "Brand A" },
-  { key: "category",  label: "Category",  placeholder: "Category", sample: "Category 1" },
-  {
-    key: "status", label: "Status", type: "select", default: "active", colSpan: 2, sample: "active",
-    options: [
-      { value: "active",       label: "Active"       },
-      { value: "inactive",     label: "Inactive"     },
-      { value: "discontinued", label: "Discontinued" },
-    ],
-  },
-]
 
 export default function SkusClient({
   rows,
@@ -82,8 +62,7 @@ export default function SkusClient({
     router.push(`${pathname}?${params.toString()}`)
   }
   const [brandFilter, setBrandFilter] = useState("all");
-  const hasFilters = !!currentSearch || !!currentStatus ||  brandFilter !== "all";
-  const refresh    = () => router.refresh()
+  const hasFilters = !!currentSearch || !!currentStatus || brandFilter !== "all";
   const filteredRows = useMemo(() => {
   if (brandFilter === "all") return rows
 
@@ -130,19 +109,6 @@ export default function SkusClient({
             endpoint="/api/masters/skus/export"
             label="SKUs"
           />
-          <CsvImportDialog
-            entityLabel="SKU"
-            endpoint="/api/masters/skus"
-            templateFilename="sku_template.csv"
-            fields={SKU_FIELDS}
-            onSuccess={refresh}
-          />
-          <AddRecordDialog
-            entityLabel="SKU"
-            endpoint="/api/masters/skus"
-            fields={SKU_FIELDS}
-            onSuccess={refresh}
-          />
         </MasterToolbarActions>
       </MasterToolbar>
 
@@ -172,13 +138,12 @@ export default function SkusClient({
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Created By</TableHead>
-                <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
                     {hasFilters ? "No SKUs match your filters." : "No records found."}
                   </TableCell>
                 </TableRow>
@@ -186,16 +151,22 @@ export default function SkusClient({
                 filteredRows.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell className="font-mono text-xs font-medium">{row.sku_code}</TableCell>
-                    <TableCell className="font-medium">{row.name}</TableCell>
+                    <TableCell className="font-medium text-wrap">{row.name}</TableCell>
                     <TableCell className="text-muted-foreground">{row.brand ?? "—"}</TableCell>
                     <TableCell className="text-muted-foreground">{row.category ?? "—"}</TableCell>
                     <TableCell>
-                      <Badge
-                        variant={row.status === "active" ? "success" : "secondary"}
-                        className="capitalize"
-                      >
-                        {row.status ?? "—"}
-                      </Badge>
+                      {row.status === "in_review" ? (
+                        <Badge variant="warning" className="capitalize">In Review</Badge>
+                      ) : row.status === "draft" ? (
+                        <Badge variant="secondary" className="capitalize">Draft</Badge>
+                      ) : (
+                        <Badge
+                          variant={row.status === "active" ? "success" : "secondary"}
+                          className="capitalize"
+                        >
+                          {row.status ?? "—"}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
                       {row.created_at
@@ -204,22 +175,6 @@ export default function SkusClient({
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
                       {row.created_by ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      <EditRecordDialog
-                        entityLabel="SKU"
-                        endpoint="/api/masters/skus"
-                        fields={SKU_FIELDS}
-                        recordId={row.id}
-                        initialValues={{
-                          sku_code: row.sku_code ?? "",
-                          name:     row.name ?? "",
-                          brand:    row.brand ?? "",
-                          category: row.category ?? "",
-                          status:   row.status ?? "active",
-                        }}
-                        onSuccess={refresh}
-                      />
                     </TableCell>
                   </TableRow>
                 ))

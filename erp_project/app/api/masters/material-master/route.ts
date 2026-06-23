@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { execute } from "@/lib/db"
+import { execute, query, pool } from "@/lib/db"
 import { rawMaterials } from "@/lib/queries/raw-materials"
 import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
+import { approvalsSql } from "@/lib/queries/approvals"
 
 // ─── Param builders ──────────────────────────────────────────────────────────
 
@@ -116,41 +117,85 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ error: "Invalid action." }, { status: 400 })
 }
 
-// ─── PUT: update an existing RM or PM base record ────────────────────────────
+// ─── PUT: submit an edit for approval ────────────────────────────────────────
+//
+// Instead of writing directly to the DB, this creates an approval record with
+// a field-level diff and locks the row to "in_review". The approver then
+// applies or rejects the change via POST /api/approvals/[id].
 
 export async function PUT(req: NextRequest) {
   const session = await auth()
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const body = await req.json()
+  const userId = parseInt(session.user.id)
+  const body   = await req.json()
   const { material, id } = body
 
-  if (!id) {
-    return NextResponse.json({ error: "Record ID is required." }, { status: 400 })
-  }
+  if (!id) return NextResponse.json({ error: "Record ID is required." }, { status: 400 })
 
   if (material === "rm") {
     const { name, make, type, uom, status, hsn_code, inci_name } = body
     if (!name?.trim())      return NextResponse.json({ error: "Name is required." }, { status: 400 })
     if (!make?.trim())      return NextResponse.json({ error: "Make is required." }, { status: 400 })
     if (!inci_name?.trim()) return NextResponse.json({ error: "INCI Name is required." }, { status: 400 })
+
+    // Fetch current row.
+    const curRows = await query<any>(rawMaterials.selectBaseById, [id])
+    const cur = curRows[0]
+    if (!cur) return NextResponse.json({ error: "Record not found." }, { status: 404 })
+
+    if (cur.status === "in_review") {
+      return NextResponse.json({ error: "This record is already pending approval." }, { status: 409 })
+    }
+
+    // For draft rows, only the original submitter may re-edit.
+    if (cur.status === "draft") {
+      const rejRows = await query<{ raised_by: number }>(approvalsSql.selectLatestRejection, ["RM_MAT", id])
+      if (rejRows[0] && rejRows[0].raised_by !== userId) {
+        return NextResponse.json({ error: "Only the original submitter can re-edit a rejected record." }, { status: 403 })
+      }
+    }
+
+    // Guard against double-submit.
+    const pending = await query(approvalsSql.hasPending, ["RM_MAT", id])
+    if (pending.length > 0) {
+      return NextResponse.json({ error: "An approval is already pending for this record." }, { status: 409 })
+    }
+
+    // Compute field-level diff.
+    const proposed: Record<string, string | null> = {
+      name:      name.trim(),
+      make:      make.trim(),
+      inci_name: inci_name.trim(),
+      type:      type?.trim() || null,
+      uom:       uom?.trim() || null,
+      hsn_code:  hsn_code?.trim() || null,
+      status:    status || "active",
+    }
+    const diff = Object.entries(proposed).filter(
+      ([k, v]) => String(cur[k] ?? "") !== String(v ?? "")
+    )
+    if (diff.length === 0) return NextResponse.json({ ok: true, message: "No changes detected." })
+
+    const conn = await pool.getConnection()
+    await conn.beginTransaction()
     try {
-      await execute(rawMaterials.update, [
-        name.trim(),
-        make.trim(),
-        type?.trim() || null,
-        uom?.trim() || null,
-        status || "active",
-        hsn_code?.trim() || null,
-        inci_name.trim(),
-        id,
-      ])
-      return NextResponse.json({ ok: true })
+      const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", id])
+      const approvalId = (ar as any).insertId
+      for (const [field, newVal] of diff) {
+        await conn.execute(approvalsSql.insertApprovalItem, [
+          approvalId, field, String(cur[field] ?? ""), String(newVal ?? ""),
+        ])
+      }
+      await conn.execute(rawMaterials.setBaseStatus, ["in_review", id])
+      await conn.commit()
+      return NextResponse.json({ ok: true, approval_id: approvalId })
     } catch (err: any) {
-      console.error("Material master RM update error:", err)
+      await conn.rollback()
+      console.error("Material master RM approval submit error:", err)
       return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+    } finally {
+      conn.release()
     }
   }
 
@@ -158,19 +203,58 @@ export async function PUT(req: NextRequest) {
     const { name, type, uom, status, hsn_code } = body
     if (!name?.trim()) return NextResponse.json({ error: "Name is required." }, { status: 400 })
     if (!type?.trim()) return NextResponse.json({ error: "Type is required." }, { status: 400 })
+
+    const curRows = await query<any>(PMMaterials.selectBaseById, [id])
+    const cur = curRows[0]
+    if (!cur) return NextResponse.json({ error: "Record not found." }, { status: 404 })
+
+    if (cur.status === "in_review") {
+      return NextResponse.json({ error: "This record is already pending approval." }, { status: 409 })
+    }
+
+    if (cur.status === "draft") {
+      const rejRows = await query<{ raised_by: number }>(approvalsSql.selectLatestRejection, ["PM_MAT", id])
+      if (rejRows[0] && rejRows[0].raised_by !== userId) {
+        return NextResponse.json({ error: "Only the original submitter can re-edit a rejected record." }, { status: 403 })
+      }
+    }
+
+    const pending = await query(approvalsSql.hasPending, ["PM_MAT", id])
+    if (pending.length > 0) {
+      return NextResponse.json({ error: "An approval is already pending for this record." }, { status: 409 })
+    }
+
+    const proposed: Record<string, string | null> = {
+      name:     name.trim(),
+      type:     type.trim(),
+      uom:      uom?.trim() || null,
+      hsn_code: hsn_code?.trim() || null,
+      status:   status || "active",
+    }
+    const diff = Object.entries(proposed).filter(
+      ([k, v]) => String(cur[k] ?? "") !== String(v ?? "")
+    )
+    if (diff.length === 0) return NextResponse.json({ ok: true, message: "No changes detected." })
+
+    const conn = await pool.getConnection()
+    await conn.beginTransaction()
     try {
-      await execute(PMMaterials.update, [
-        name.trim(),
-        type.trim(),
-        uom?.trim() || null,
-        status || "active",
-        hsn_code?.trim() || null,
-        id,
-      ])
-      return NextResponse.json({ ok: true })
+      const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PM_MAT", id])
+      const approvalId = (ar as any).insertId
+      for (const [field, newVal] of diff) {
+        await conn.execute(approvalsSql.insertApprovalItem, [
+          approvalId, field, String(cur[field] ?? ""), String(newVal ?? ""),
+        ])
+      }
+      await conn.execute(PMMaterials.setBaseStatus, ["in_review", id])
+      await conn.commit()
+      return NextResponse.json({ ok: true, approval_id: approvalId })
     } catch (err: any) {
-      console.error("Material master PM update error:", err)
+      await conn.rollback()
+      console.error("Material master PM approval submit error:", err)
       return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+    } finally {
+      conn.release()
     }
   }
 

@@ -55,10 +55,10 @@ export type Vendor = {
     status: string | null
 }
 
-/** `rm` table — Raw Materials. Used by app/masters/raw-materials. 
- * 
+/** `rm` table — Raw Materials. Used by app/masters/raw-materials.
+ *
  * r.hsn_code , r.inci_name , r.make , r.name, r.rm_code , r.status , r.type ,
-	rmv.curr_rate , rmv.effective_from, rmv.effective_to , 
+	rmv.curr_rate , rmv.effective_from, rmv.effective_to ,
     rmv.moq , rmv.uom , rmv.vendor_code , rmv.vendor_id
 */
 export type RM = {
@@ -76,6 +76,10 @@ export type RM = {
   moq:number | 0
   vendor_code: string | null
   vendor_id: string | null
+  /** Primary key of the rm_vrm_dynamic rate row — for approval flow. */
+  vrm_id: number | null
+  /** Status of the rm_vrm_dynamic rate row — for approval badges. */
+  vrm_status: string | null
 }
 
 /** Raw Material rate row as seen through the MANUFACTURER rate master (`rm_mrm`).
@@ -86,6 +90,8 @@ export type RM = {
  *  r.status, r.id, r.name, r.make, r.type, r.hsn_code, r.rm_code, r.inci_name
  */
 export type RMByMfg = {
+  /** Primary key of the rm_mrm_fixed rate row — used for approval entity_id. */
+  rate_id: number | null
   rm_id: number
   mfg_id: number | null
   mfg_code: string | null
@@ -94,7 +100,10 @@ export type RMByMfg = {
   curr_rate: string | null
   effective_from: string | null
   uom: string | null
+  /** Status of the base RM record (master_rm.status). */
   status: string | null
+  /** Status of the rate row in rm_mrm_fixed — used for approval badges. */
+  rate_status: string | null
   id: number
   name: string
   make: string | null
@@ -124,6 +133,8 @@ export type PMVendor = {
   type: string | null
   hsn_code: string | null
   pm_id: number
+  /** Primary key of the pm_vrm_dynamic rate row — for approval flow. */
+  vrm_id: number | null
   vendor_id: number | null
   vendor_code: string | null
   curr_rate: string | null
@@ -144,9 +155,12 @@ export type PMByMfg = {
   hsn_code: string | null
   uom: string | null
   pm_id: number
+  /** Primary key of the pm_mrm_fixed rate row — used for approval entity_id. */
+  rate_id: number | null
   mfg_id: number | null
   mfg_code: string | null
   curr_rate: string | null
+  /** Status of the pm_mrm_fixed rate row — used for approval badges. */
   status: string | null
   effective_from: string | null
 }

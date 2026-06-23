@@ -21,6 +21,7 @@ export function EditRecordDialog({
   fields,
   initialValues,
   recordId,
+  currentStatus,
   onSuccess,
 }: {
   /** Singular label, e.g. "SKU". */
@@ -32,6 +33,8 @@ export function EditRecordDialog({
   initialValues: Record<string, string>
   /** Primary key sent as `id` in the update payload. */
   recordId: number
+  /** Current entity status — used to disable editing when in_review. */
+  currentStatus?: string
   onSuccess?: () => void
 }) {
   const cols = formFields(fields)
@@ -70,6 +73,12 @@ export function EditRecordDialog({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Failed to update ${entityLabel}`)
       setOpen(false)
+      // The edit is now routed through the approval workflow.
+      if (data.message === "No changes detected") {
+        setError("No changes were made.")
+        setOpen(true)
+        return
+      }
       onSuccess?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong")
@@ -78,9 +87,18 @@ export function EditRecordDialog({
     }
   }
 
+  const isLocked = currentStatus === "in_review"
+
   return (
     <>
-      <Button size="sm" variant="ghost" onClick={openDialog} className="h-7 px-2">
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={openDialog}
+        disabled={isLocked}
+        title={isLocked ? "Pending approval — cannot edit" : `Edit ${entityLabel}`}
+        className="h-7 px-2"
+      >
         <Pencil className="h-3.5 w-3.5" />
       </Button>
 

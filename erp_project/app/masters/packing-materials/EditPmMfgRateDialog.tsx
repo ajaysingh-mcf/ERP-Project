@@ -1,11 +1,20 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { AlertTriangle } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { PMByMfg } from "@/types/masters"
+
+type RejectionInfo = {
+  raised_by: number
+  raised_by_name: string
+  rejected_by_name: string
+  remarks: string
+  rejected_on: string
+}
 
 export function EditPmMfgRateDialog({
   row,
@@ -23,6 +32,10 @@ export function EditPmMfgRateDialog({
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [submitted, setSubmitted] = useState(false)
+  const [rejection, setRejection]         = useState<RejectionInfo | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null)
+  const [loadingInfo, setLoadingInfo]     = useState(false)
 
   useEffect(() => {
     if (row) {
@@ -31,10 +44,28 @@ export function EditPmMfgRateDialog({
         uom: row.uom ?? "",
         effective_from: toDateStr(row.effective_from),
       })
+      setSubmitted(false)
+      setError(null)
+      setRejection(null)
+
+      if (row.status === "draft" && row.rate_id) {
+        setLoadingInfo(true)
+        fetch(`/api/approvals/entity?module=PM_RATE&entity_id=${row.rate_id}`)
+          .then((r) => r.json())
+          .then((data) => {
+            setRejection(data.rejection ?? null)
+            setCurrentUserId(data.current_user_id ?? null)
+          })
+          .catch(() => {})
+          .finally(() => setLoadingInfo(false))
+      }
     }
   }, [row])
 
   if (!row) return null
+
+  const isDraft = row.status === "draft"
+  const canEdit = !isDraft || currentUserId === null || rejection === null || currentUserId === rejection.raised_by
 
   function toDateStr(val: unknown): string {
     if (!val) return ""
@@ -47,6 +78,7 @@ export function EditPmMfgRateDialog({
   }
 
   async function handleSave() {
+    if (!canEdit) return
     setSaving(true)
     setError(null)
     try {
@@ -67,8 +99,8 @@ export function EditPmMfgRateDialog({
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? "Failed to save"); return }
-      onSuccess()
-      onClose()
+      setSubmitted(true)
+      setTimeout(() => { onSuccess(); onClose() }, 1500)
     } catch {
       setError("Network error")
     } finally {
@@ -85,26 +117,48 @@ export function EditPmMfgRateDialog({
 
         <div className="grid gap-4 py-2">
           <div className="text-xs text-muted-foreground">Manufacturer: {row.mfg_code}</div>
+
+          {isDraft && !loadingInfo && rejection && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                Rejected by {rejection.rejected_by_name}
+              </div>
+              <p className="text-xs text-amber-700 leading-relaxed">
+                &ldquo;{rejection.remarks}&rdquo;
+              </p>
+              {!canEdit && (
+                <p className="text-xs text-red-600 font-medium mt-1">
+                  Only {rejection.raised_by_name} (original submitter) can re-edit this record.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1">
               <Label>Current Rate</Label>
-              <Input type="number" value={form.curr_rate} onChange={(e) => set("curr_rate", e.target.value)} />
+              <Input type="number" value={form.curr_rate} onChange={(e) => set("curr_rate", e.target.value)} disabled={!canEdit} />
             </div>
             <div className="grid gap-1">
               <Label>UOM</Label>
-              <Input value={form.uom} onChange={(e) => set("uom", e.target.value)} />
+              <Input value={form.uom} onChange={(e) => set("uom", e.target.value)} disabled={!canEdit} />
             </div>
             <div className="grid gap-1 col-span-2">
               <Label>Effective From</Label>
-              <Input type="date" value={form.effective_from} onChange={(e) => set("effective_from", e.target.value)} />
+              <Input type="date" value={form.effective_from} onChange={(e) => set("effective_from", e.target.value)} disabled={!canEdit} />
             </div>
           </div>
+
           {error && <p className="text-sm text-destructive">{error}</p>}
+          {submitted && <p className="text-sm text-emerald-600 font-medium">Edit submitted for approval.</p>}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button onClick={handleSave} disabled={saving || !canEdit || submitted}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

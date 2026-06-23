@@ -29,8 +29,8 @@ const NAV: NavItem[] = [
       { label: "SKUs",              href: "/masters/skus" , icon: (props) => <Dot className="text-blue-500" {...props} />  },
       { label: "Manufacturers",     href: "/masters/manufacturers" },
       { label: "Vendors",           href: "/masters/vendors" },
-      { label: "Raw Materials",     href: "/masters/raw-materials" },
-      { label: "Packing Materials", href: "/masters/packing-materials" },
+      { label: "RM Cost Master",     href: "/masters/raw-materials" },
+      { label: "PM Cost Master", href: "/masters/packing-materials" },
       {label: "Bom Master" , href: "/masters/bom-master"},
       {label: "Material Master",     href:"/masters/material-master"}
     ],

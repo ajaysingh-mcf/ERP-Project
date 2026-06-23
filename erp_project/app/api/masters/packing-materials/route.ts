@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { execute, query, pool } from "@/lib/db"
 import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
+import { approvalsSql } from "@/lib/queries/approvals"
 
 function toPmParams(r: any) {
   return [
@@ -277,24 +278,46 @@ export async function POST(req: NextRequest) {
       const today = new Date().toISOString().slice(0, 10)
       const conn = await pool.getConnection()
       await conn.beginTransaction()
+      const userId = parseInt(session.user.id)
       try {
         for (const v of vendorList) {
           const vendorId = v.vendor_id ? Number(v.vendor_id) : null
           const [existingRows] = await conn.execute(PMMaterials.checkVendorRate, [pmId, vendorId])
           const existing = (existingRows as any[])[0]
           if (existing) {
-            await conn.execute(PMMaterials.archiveVendorRate, [
-              pmId, existing.vendor_id, existing.curr_rate, existing.moq,
-              existing.uom, existing.effective_from, existing.effective_to, existing.status,
-            ])
-            await conn.execute(PMMaterials.updateVendorRate, [
-              v.curr_rate ? Number(v.curr_rate) : null,
-              v.moq ? Number(v.moq) : null,
-              v.rate_uom?.trim() || null,
-              "active",
-              today,
-              existing.id,
-            ])
+            // Skip if already locked for approval.
+            if (existing.status === "in_review") continue
+
+            // For draft rows, only the original submitter may re-edit.
+            if (existing.status === "draft") {
+              const [latestRejection] = await query<{ raised_by: number }>(
+                approvalsSql.selectLatestRejection, ["PM_VRM", existing.id]
+              )
+              if (latestRejection && latestRejection.raised_by !== userId) continue
+            }
+
+            const pending = await query(approvalsSql.hasPending, ["PM_VRM", existing.id])
+            if (pending.length > 0) continue
+
+            const vrmFields: [string, unknown, unknown][] = [
+              ["curr_rate",      existing.curr_rate,      v.curr_rate],
+              ["moq",            existing.moq,            v.moq],
+              ["uom",            existing.uom,            v.rate_uom],
+              ["effective_from", existing.effective_from, v.effective_from ?? today],
+            ]
+            const diff = vrmFields.filter(([, oldVal, newVal]) =>
+              String(oldVal ?? "") !== String(newVal ?? "")
+            )
+            if (diff.length === 0) continue
+
+            const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PM_VRM", existing.id])
+            const approvalId = (ar as any).insertId
+            for (const [field, oldVal, newVal] of diff) {
+              await conn.execute(approvalsSql.insertApprovalItem, [
+                approvalId, field, String(oldVal ?? ""), String(newVal ?? ""),
+              ])
+            }
+            await conn.execute(PMMaterials.setVendorRateStatus, ["in_review", existing.id])
           } else {
             await conn.execute(PMMaterials.insertVendorRate, [
               pmId, vendorId, v.vendor_code?.trim() || null,
@@ -309,20 +332,45 @@ export async function POST(req: NextRequest) {
           const mfgId = m.mfg_id ? Number(m.mfg_id) : null
           const [existingRows] = await conn.execute(PMMaterials.checkMfgRate, [pmId, mfgId])
           const existing = (existingRows as any[])[0]
-          
+
           if (existing) {
-            const [vRows] = await conn.execute(PMMaterials.getVendorId, [pmId])
-            const historyVendorId = (vRows as any[])[0]?.vendor_id ?? 0
-            await conn.execute(PMMaterials.archiveToHistoryMrm, [
-              existing.mfg_id, pmId, historyVendorId, existing.curr_rate,
-              existing.effective_from, null, existing.status === "active" ? 1 : 0,
-            ])
-            await conn.execute(PMMaterials.updateMfgRate, [
-              m.curr_rate ? Number(m.curr_rate) : existing.curr_rate,
-              m.rate_uom?.trim() || existing.uom,
-              today,
-              existing.id,
-            ])
+            // Skip if the rate row is already in_review.
+            if (existing.status === "in_review") continue
+
+            // For draft rows, only the original submitter may re-edit.
+            if (existing.status === "draft") {
+              const [latestRejection] = await query<{ raised_by: number }>(
+                approvalsSql.selectLatestRejection, ["PM_RATE", existing.id]
+              )
+              if (latestRejection && latestRejection.raised_by !== userId) continue
+            }
+
+            // Check for a pending approval against this rate row.
+            const pending = await query(approvalsSql.hasPending, ["PM_RATE", existing.id])
+            if (pending.length > 0) continue
+
+            // Compute field-level diff for rate fields.
+            const rateFields: [string, unknown, unknown][] = [
+              ["curr_rate",      existing.curr_rate,      m.curr_rate],
+              ["uom",            existing.uom,            m.rate_uom],
+              ["effective_from", existing.effective_from, m.effective_from ?? today],
+            ]
+            const diff = rateFields.filter(([, oldVal, newVal]) =>
+              String(oldVal ?? "") !== String(newVal ?? "")
+            )
+            if (diff.length === 0) continue
+
+            // Create the approval record.
+            const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PM_RATE", existing.id])
+            const approvalId = (ar as any).insertId
+            for (const [field, oldVal, newVal] of diff) {
+              await conn.execute(approvalsSql.insertApprovalItem, [
+                approvalId, field, String(oldVal ?? ""), String(newVal ?? ""),
+              ])
+            }
+
+            // Lock the rate row.
+            await conn.execute(PMMaterials.setRateStatus, ["in_review", existing.id])
           } else {
             await conn.execute(PMMaterials.insertMfgApproval, [pmId, mfgId, m.mfg_code?.trim() || null, today])
           }

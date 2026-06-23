@@ -14,7 +14,7 @@ export const packingMaterials = {
   selectAllByVendor: `
     SELECT
       p.pm_code, p.name, p.type,
-      p.hsn_code, pmv.pm_id,
+      p.hsn_code, pmv.pm_id, pmv.id AS vrm_id,
       pmv.vendor_id, pmv.vendor_code,
       pmv.curr_rate, pmv.moq,
       pmv.uom, pmv.status,
@@ -26,7 +26,7 @@ export const packingMaterials = {
   selectAllByManufacturer: `
     SELECT
       p.pm_code, p.name, p.type,
-      p.hsn_code, p.uom, pmm.pm_id,
+      p.hsn_code, p.uom, pmm.pm_id, pmm.id AS rate_id,
       pmm.mfg_id, pmm.mfg_code, pmm.curr_rate,
       pmm.uom, pmm.status, pmm.effective_from
     FROM pm_mrm_fixed AS pmm
@@ -90,7 +90,7 @@ export const packingMaterials = {
   selectVendorPaginated: `
     SELECT
       p.pm_code, p.name, p.type,
-      p.hsn_code, pmv.pm_id,
+      p.hsn_code, pmv.pm_id, pmv.id AS vrm_id,
       pmv.vendor_id, pmv.vendor_code,
       pmv.curr_rate, pmv.moq,
       pmv.uom, pmv.status,
@@ -111,7 +111,7 @@ export const packingMaterials = {
   selectVendorAllFiltered: `
     SELECT
       p.pm_code, p.name, p.type,
-      p.hsn_code, pmv.pm_id,
+      p.hsn_code, pmv.pm_id, pmv.id AS vrm_id,
       pmv.vendor_id, pmv.vendor_code,
       pmv.curr_rate, pmv.moq,
       pmv.uom, pmv.status,
@@ -139,7 +139,7 @@ export const packingMaterials = {
   selectMfgPaginated: `
     SELECT
       p.pm_code, p.name, p.type,
-      p.hsn_code, p.uom, pmm.pm_id,
+      p.hsn_code, p.uom, pmm.pm_id, pmm.id AS rate_id,
       pmm.mfg_id, pmm.mfg_code, pmm.curr_rate,
       pmm.uom, pmm.status, pmm.effective_from
     FROM pm_mrm_fixed AS pmm
@@ -158,7 +158,7 @@ export const packingMaterials = {
   selectMfgAllFiltered: `
     SELECT
       p.pm_code, p.name, p.type,
-      p.hsn_code, p.uom, pmm.pm_id,
+      p.hsn_code, p.uom, pmm.pm_id, pmm.id AS rate_id,
       pmm.mfg_id, pmm.mfg_code, pmm.curr_rate,
       pmm.uom, pmm.status, pmm.effective_from
     FROM pm_mrm_fixed AS pmm
@@ -255,5 +255,52 @@ export const packingMaterials = {
   /** Find the first vendor_id linked to a PM in the vendor rate master. Parameters: [pm_id] */
   getVendorId: `
     SELECT vendor_id FROM pm_vrm_dynamic WHERE pm_id = ? AND vendor_id IS NOT NULL LIMIT 1
+  `,
+
+  // ── Approval-flow helpers ────────────────────────────────────────────────
+
+  /** Set status on a pm_mrm_fixed rate row (e.g. 'in_review', 'draft', 'active').
+   *  Parameters: [status, id]
+   */
+  setRateStatus: `UPDATE pm_mrm_fixed SET status = ? WHERE id = ?`,
+
+  /** Fetch a single pm_mrm_fixed rate row by its primary key.
+   *  Used by the approve handler to read current values before archiving.
+   *  Parameters: [id]
+   */
+  selectRateById: `
+    SELECT id, mfg_id, pm_id, curr_rate, uom, effective_from, status
+    FROM pm_mrm_fixed WHERE id = ? LIMIT 1
+  `,
+
+  // ── Base-record approval-flow helpers ───────────────────────────────────────
+
+  /** Fetch a single master_pm row by its primary key.
+   *  Used by the approve handler to read current values before applying changes.
+   *  Parameters: [id]
+   */
+  selectBaseById: `
+    SELECT id, pm_code, name, type, uom, status, hsn_code
+    FROM master_pm WHERE id = ? LIMIT 1
+  `,
+
+  /** Set status on a master_pm base record (e.g. 'in_review', 'draft', 'active').
+   *  Parameters: [status, id]
+   */
+  setBaseStatus: `UPDATE master_pm SET status = ? WHERE id = ?`,
+
+  // ── VRM Approval-flow helpers ─────────────────────────────────────────────
+
+  /** Set status on a pm_vrm_dynamic row (e.g. 'in_review', 'draft', 'active').
+   *  Parameters: [status, id]
+   */
+  setVendorRateStatus: `UPDATE pm_vrm_dynamic SET status = ? WHERE id = ?`,
+
+  /** Fetch a single pm_vrm_dynamic row by its primary key.
+   *  Parameters: [id]
+   */
+  selectVendorRateById: `
+    SELECT id, pm_id, vendor_id, curr_rate, moq, uom, effective_from, effective_to, status
+    FROM pm_vrm_dynamic WHERE id = ? LIMIT 1
   `,
 }

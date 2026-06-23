@@ -87,4 +87,11 @@ export const skus = {
     INSERT INTO sku_history (sku_id, sku_code, name, brand, category, status, changed_by)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `,
+
+  // ── Approval-flow helpers ────────────────────────────────────────────────
+
+  /** Set the status of a SKU (e.g. 'in_review', 'draft', 'active').
+   *  Parameters: [status, id]
+   */
+  setStatus: `UPDATE master_skus SET status = ? WHERE id = ?`,
 }
