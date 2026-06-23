@@ -25,6 +25,7 @@ import {
 } from "@/components/masters/MasterToolbar"
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
+import { DownloadButton } from "@/components/masters/DownloadButton"
 import type { MasterField } from "@/components/masters/field-config"
 import type { Mfg } from "@/types/masters"
 import { useState } from "react"
@@ -65,6 +66,10 @@ export default function ManufacturersClient({
           placeholder="Search by code or name…"
         />
         <MasterToolbarActions>
+          <DownloadButton
+            endpoint="/api/masters/manufacturers/export"
+            label="Manufacturers"
+          />
           <CsvImportDialog
             entityLabel="Manufacturer"
             endpoint="/api/masters/manufacturers"

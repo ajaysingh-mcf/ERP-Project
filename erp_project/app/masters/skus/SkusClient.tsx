@@ -33,6 +33,7 @@ import {
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
 import { EditRecordDialog } from "@/components/masters/EditRecordDialog"
+import { DownloadButton } from "@/components/masters/DownloadButton"
 import type { MasterField } from "@/components/masters/field-config"
 import type { Sku } from "@/types/masters"
 
@@ -125,6 +126,10 @@ export default function SkusClient({
 
 
         <MasterToolbarActions>
+          <DownloadButton
+            endpoint="/api/masters/skus/export"
+            label="SKUs"
+          />
           <CsvImportDialog
             entityLabel="SKU"
             endpoint="/api/masters/skus"

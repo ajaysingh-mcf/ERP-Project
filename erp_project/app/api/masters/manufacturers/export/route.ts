@@ -1,0 +1,82 @@
+/**
+ * GET /api/masters/manufacturers/export
+ *
+ * Exports all manufacturer records matching the current active filters.
+ *
+ * Query params (all optional):
+ *   format — "csv" (default) | "xlsx"
+ *   search — searches manufacturer code and name
+ *
+ * Responses:
+ *   200  — file attachment
+ *   401  — unauthenticated
+ *   413  — result set exceeds ROW_LIMIT
+ *   500  — server error
+ */
+
+import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@/lib/auth"
+import { query } from "@/lib/db"
+import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
+import { buildCsv, buildXlsx } from "@/lib/export"
+import { MFG_EXPORT_COLUMNS } from "@/lib/export-configs"
+
+const ROW_LIMIT = 50_000
+
+export async function GET(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const sp     = req.nextUrl.searchParams
+  const format = sp.get("format") === "xlsx" ? "xlsx" : "csv"
+  const search = sp.get("search") ?? ""
+
+  const like = search ? `%${search}%` : null
+
+  // Params match selectPaginated / countAll: [like×3]
+  const filterParams = [like, like, like]
+
+  try {
+    const [{ total }] = await query<{ total: number }>(
+      mfgSql.countAll,
+      filterParams
+    )
+    if (total > ROW_LIMIT) {
+      return NextResponse.json(
+        { error: `Export limited to ${ROW_LIMIT.toLocaleString()} rows. Query returned ${total.toLocaleString()}. Apply filters to narrow the result.` },
+        { status: 413 }
+      )
+    }
+
+    const rows = await query<Record<string, unknown>>(
+      mfgSql.selectAllFiltered,
+      filterParams
+    )
+
+    const date     = new Date().toISOString().split("T")[0]
+    const filename = `manufacturers_${date}.${format}`
+
+    if (format === "xlsx") {
+      const buffer = await buildXlsx("Manufacturers", MFG_EXPORT_COLUMNS, rows)
+      return new NextResponse(buffer, {
+        status: 200,
+        headers: {
+          "Content-Type":        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+        },
+      })
+    }
+
+    const csv = buildCsv(MFG_EXPORT_COLUMNS, rows)
+    return new NextResponse(csv, {
+      status: 200,
+      headers: {
+        "Content-Type":        "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      },
+    })
+  } catch (err) {
+    console.error("[/api/masters/manufacturers/export]", err)
+    return NextResponse.json({ error: "Export failed" }, { status: 500 })
+  }
+}

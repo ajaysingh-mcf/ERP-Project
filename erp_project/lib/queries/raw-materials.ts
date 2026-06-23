@@ -40,6 +40,19 @@ export const rawMaterials = {
   // ============ PAGINATED BASE TABLE QUERIES (material-master page) ============
 
   /**
+   * Fetch ALL matching base RM rows for export (no LIMIT/OFFSET).
+   * Same WHERE clause as selectPaginated.
+   * Params: [like, like, like, like, status, status]
+   */
+  selectBaseAllFiltered: `
+    SELECT id, rm_code, name, make, type, uom, status, hsn_code, inci_name
+    FROM master_rm
+    WHERE (? IS NULL OR rm_code LIKE ? OR name LIKE ? OR make LIKE ?)
+      AND (? IS NULL OR status = ?)
+    ORDER BY name ASC
+  `,
+
+  /**
    * Paginated base RM list with optional search + status filter.
    * Params: [like, like, like, like, status, status, LIMIT, OFFSET]
    *   like   — '%search%' or null (rm_code / name / make columns)
@@ -92,6 +105,23 @@ export const rawMaterials = {
     LIMIT ? OFFSET ?
   `,
 
+  /**
+   * Fetch ALL matching RM × vendor rate rows for export (no LIMIT/OFFSET).
+   * Same WHERE clause as selectVendorPaginated.
+   * Params: [like, like, like, status, status]
+   */
+  selectVendorAllFiltered: `
+    SELECT
+      r.hsn_code, r.inci_name, r.make, r.name, r.rm_code, r.status, r.type,
+      rmv.curr_rate, rmv.effective_from, rmv.effective_to,
+      rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id
+    FROM rm_vrm_dynamic AS rmv
+    INNER JOIN master_rm AS r ON r.id = rmv.rm_id
+    WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
+      AND (? IS NULL OR r.status = ?)
+    ORDER BY r.rm_code ASC
+  `,
+
   /** Matching COUNT for selectVendorPaginated. Params: [like, like, like, status, status] */
   countVendor: `
     SELECT COUNT(*) AS total
@@ -116,6 +146,23 @@ export const rawMaterials = {
       AND (? IS NULL OR r.status = ?)
     ORDER BY r.rm_code ASC
     LIMIT ? OFFSET ?
+  `,
+
+  /**
+   * Fetch ALL matching RM × manufacturer rate rows for export (no LIMIT/OFFSET).
+   * Same WHERE clause as selectMfgPaginated.
+   * Params: [like, like, like, status, status]
+   */
+  selectMfgAllFiltered: `
+    SELECT
+      rmm.rm_id, rmm.mfg_id, rmm.mfg_code, rmm.approved_vendor_id, rmm.approved_vendor_code,
+      rmm.curr_rate, rmm.effective_from, rmm.uom, r.status,
+      r.id, r.name, r.make, r.type, r.hsn_code, r.rm_code, r.inci_name
+    FROM rm_mrm_fixed AS rmm
+    INNER JOIN master_rm AS r ON r.id = rmm.rm_id
+    WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
+      AND (? IS NULL OR r.status = ?)
+    ORDER BY r.rm_code ASC
   `,
 
   /** Matching COUNT for selectMfgPaginated. Params: [like, like, like, status, status] */

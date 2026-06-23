@@ -47,6 +47,22 @@ export const vendors = {
   `,
 
   /**
+   * Fetch ALL matching vendors for export (no LIMIT/OFFSET).
+   * Same WHERE clause as selectPaginated.
+   * Params: [like, like, like, type, type]
+   */
+  selectAllFiltered: `
+    SELECT
+      vd.vendor_id, vd.gst_number, vd.location,
+      vd.status, v.code, v.name, v.type
+    FROM vendor_details vd
+    JOIN master_vendors v ON vd.vendor_id = v.id
+    WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
+      AND (? IS NULL OR v.type = ?)
+    ORDER BY v.code ASC
+  `,
+
+  /**
    * Matching COUNT for selectPaginated (same WHERE, no LIMIT/OFFSET).
    * Params: [like, like, like, type, type]
    */

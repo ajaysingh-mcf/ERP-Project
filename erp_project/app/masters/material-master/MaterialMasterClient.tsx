@@ -35,6 +35,7 @@ import {
   MasterToolbarActions,
 } from "@/components/masters/MasterToolbar"
 import { cn } from "@/lib/utils"
+import { DownloadButton } from "@/components/masters/DownloadButton"
 import AddMaterialDialog from "./AddMaterialDialog"
 import EditMaterialDialog, { EditButton } from "./EditMaterialDialog"
 
@@ -180,6 +181,10 @@ export default function MaterialMasterClient({
         </select>
 
         <MasterToolbarActions>
+          <DownloadButton
+            endpoint="/api/masters/material-master/export"
+            label="Materials"
+          />
           <AddMaterialDialog material={material} onSuccess={refresh} />
         </MasterToolbarActions>
       </MasterToolbar>

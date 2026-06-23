@@ -38,6 +38,7 @@ import {
 } from "@/components/masters/MasterToolbar"
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
+import { DownloadButton } from "@/components/masters/DownloadButton"
 import type { MasterField } from "@/components/masters/field-config"
 import type { Vendor } from "@/types/masters"
 import { useState } from "react"
@@ -127,6 +128,10 @@ export default function VendorsClient({
         </select>
 
         <MasterToolbarActions>
+          <DownloadButton
+            endpoint="/api/masters/vendors/export"
+            label="Vendors"
+          />
           <CsvImportDialog
             entityLabel="Vendor"
             endpoint="/api/masters/vendors"

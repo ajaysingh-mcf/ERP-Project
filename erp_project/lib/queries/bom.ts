@@ -54,6 +54,27 @@ export const bom = {
   `,
 
   /**
+   * Fetch ALL matching BOM rows for export (no LIMIT/OFFSET).
+   * Same WHERE clause as selectPaginated.
+   * Params: [like, like, like, type, type, status, status]
+   */
+  selectAllFiltered: `
+    SELECT
+      b.bom_code, bd.bom_id, s.sku_code,
+      bd.mtrl_id, bd.mtrl_type, bd.uom, bd.amount,
+      NULL AS mtrl_cost, bd.status AS material_status, b.status AS bom_status,
+      bd.effective_from, bd.effective_till, bd.last_updated,
+      b.created_by
+    FROM details_bom AS bd
+    INNER JOIN master_bom AS b ON b.id = bd.bom_id
+    LEFT JOIN master_skus AS s ON s.id = b.sku_id
+    WHERE (? IS NULL OR b.bom_code LIKE ? OR s.sku_code LIKE ?)
+      AND (? IS NULL OR bd.mtrl_type = ?)
+      AND (? IS NULL OR b.status = ?)
+    ORDER BY b.bom_code ASC
+  `,
+
+  /**
    * Matching COUNT for selectPaginated.
    * Params: [like, like, like, type, type, status, status]
    */

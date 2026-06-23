@@ -35,6 +35,19 @@ export const packingMaterials = {
   // ============ PAGINATED BASE TABLE QUERIES (material-master page) ============
 
   /**
+   * Fetch ALL matching base PM rows for export (no LIMIT/OFFSET).
+   * Same WHERE clause as selectPaginated.
+   * Params: [like, like, like, like, status, status]
+   */
+  selectBaseAllFiltered: `
+    SELECT id, pm_code, name, type, uom, status, hsn_code
+    FROM master_pm
+    WHERE (? IS NULL OR pm_code LIKE ? OR name LIKE ? OR type LIKE ?)
+      AND (? IS NULL OR status = ?)
+    ORDER BY name ASC
+  `,
+
+  /**
    * Paginated base PM list with optional search + status filter.
    * Params: [like, like, like, like, status, status, LIMIT, OFFSET]
    *   like   — '%search%' or null (pm_code / name / type columns)
@@ -90,6 +103,26 @@ export const packingMaterials = {
     LIMIT ? OFFSET ?
   `,
 
+  /**
+   * Fetch ALL matching PM × vendor rate rows for export (no LIMIT/OFFSET).
+   * Same WHERE clause as selectVendorPaginated.
+   * Params: [like, like, like, status, status]
+   */
+  selectVendorAllFiltered: `
+    SELECT
+      p.pm_code, p.name, p.type,
+      p.hsn_code, pmv.pm_id,
+      pmv.vendor_id, pmv.vendor_code,
+      pmv.curr_rate, pmv.moq,
+      pmv.uom, pmv.status,
+      pmv.effective_from, pmv.effective_to
+    FROM pm_vrm_dynamic AS pmv
+    INNER JOIN master_pm AS p ON pmv.pm_id = p.id
+    WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
+      AND (? IS NULL OR pmv.status = ?)
+    ORDER BY p.pm_code ASC
+  `,
+
   /** Matching COUNT for selectVendorPaginated. Params: [like, like, like, status, status] */
   countVendor: `
     SELECT COUNT(*) AS total
@@ -115,6 +148,24 @@ export const packingMaterials = {
       AND (? IS NULL OR pmm.status = ?)
     ORDER BY p.pm_code ASC
     LIMIT ? OFFSET ?
+  `,
+
+  /**
+   * Fetch ALL matching PM × manufacturer rate rows for export (no LIMIT/OFFSET).
+   * Same WHERE clause as selectMfgPaginated.
+   * Params: [like, like, like, status, status]
+   */
+  selectMfgAllFiltered: `
+    SELECT
+      p.pm_code, p.name, p.type,
+      p.hsn_code, p.uom, pmm.pm_id,
+      pmm.mfg_id, pmm.mfg_code, pmm.curr_rate,
+      pmm.uom, pmm.status, pmm.effective_from
+    FROM pm_mrm_fixed AS pmm
+    INNER JOIN master_pm AS p ON pmm.pm_id = p.id
+    WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
+      AND (? IS NULL OR pmm.status = ?)
+    ORDER BY p.pm_code ASC
   `,
 
   /** Matching COUNT for selectMfgPaginated. Params: [like, like, like, status, status] */

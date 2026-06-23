@@ -35,6 +35,7 @@ import {
   MasterToolbarActions,
 } from "@/components/masters/MasterToolbar"
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
+import { DownloadButton } from "@/components/masters/DownloadButton"
 import type { MasterField } from "@/components/masters/field-config"
 import { AddPackingMaterialWizard } from "./AddPackingMaterialWizard"
 import type { Vendor, Mfg } from "@/types/masters"
@@ -191,6 +192,10 @@ export function PmRateTable({
         </select>
 
         <MasterToolbarActions>
+          <DownloadButton
+            endpoint="/api/masters/packing-materials/export"
+            label="Packing Materials"
+          />
           <CsvImportDialog
             entityLabel="Packing Material"
             entityLabelPlural="Packing Materials"

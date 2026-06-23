@@ -30,6 +30,7 @@ import {
 } from "@/components/masters/MasterToolbar"
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
+import { DownloadButton } from "@/components/masters/DownloadButton"
 import type { MasterField } from "@/components/masters/field-config"
 import type { BOM } from "@/types/masters"
 
@@ -140,6 +141,10 @@ export default function BOMMasterComponent({
         </select>
 
         <MasterToolbarActions>
+          <DownloadButton
+            endpoint="/api/masters/bom-master/export"
+            label="BOM Master"
+          />
           <CsvImportDialog
             entityLabel="BOM"
             entityLabelPlural="BOM entries"

@@ -33,6 +33,21 @@ export const manufacturers = {
   `,
 
   /**
+   * Fetch ALL matching manufacturers for export (no LIMIT/OFFSET).
+   * Same WHERE clause as selectPaginated.
+   * Params: [like, like, like]
+   */
+  selectAllFiltered: `
+    SELECT
+      mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
+      mfgd.gst_number, mfg.code, mfg.name
+    FROM master_mfgs AS mfg
+    INNER JOIN mfg_details AS mfgd ON mfgd.mfg_id = mfg.id
+    WHERE (? IS NULL OR mfg.code LIKE ? OR mfg.name LIKE ?)
+    ORDER BY mfg.code ASC
+  `,
+
+  /**
    * Matching COUNT for selectPaginated.
    * Params: [like, like, like]
    */

@@ -41,6 +41,20 @@ export const skus = {
   `,
 
   /**
+   * Fetch ALL matching SKUs for export (no LIMIT/OFFSET).
+   * Same WHERE clause as selectPaginated; call countAll first to enforce the
+   * row cap before running this.
+   * Params: [like, like, like, like, status, status]
+   */
+  selectAllFiltered: `
+    SELECT id, sku_code, name, brand, category, status, created_at, created_by
+    FROM master_skus
+    WHERE (? IS NULL OR sku_code LIKE ? OR name LIKE ? OR brand LIKE ?)
+      AND (? IS NULL OR status = ?)
+    ORDER BY sku_code ASC
+  `,
+
+  /**
    * Matching COUNT for selectPaginated.
    * Params: [like, like, like, like, status, status]
    */

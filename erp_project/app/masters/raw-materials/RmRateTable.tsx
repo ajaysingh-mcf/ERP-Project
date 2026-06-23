@@ -35,6 +35,7 @@ import {
   MasterToolbarActions,
 } from "@/components/masters/MasterToolbar"
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
+import { DownloadButton } from "@/components/masters/DownloadButton"
 import type { MasterField } from "@/components/masters/field-config"
 import { AddRawMaterialWizard } from "./AddRawMaterialWizard"
 import type { Vendor, Mfg } from "@/types/masters"
@@ -195,6 +196,10 @@ export function RmRateTable({
         </select>
 
         <MasterToolbarActions>
+          <DownloadButton
+            endpoint="/api/masters/raw-materials/export"
+            label="Raw Materials"
+          />
           <CsvImportDialog
             entityLabel="Raw Material"
             entityLabelPlural="Raw Materials"
