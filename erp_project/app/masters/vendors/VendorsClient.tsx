@@ -47,8 +47,8 @@ import { Button } from "@/components/ui/button"
 import { EditVendorDialog } from "./EditVendorDialog"
 // Field definitions shared by the Add form and the CSV importer.
 const VENDOR_FIELDS: MasterField[] = [
-  { key: "code",       label: "Code",       required: true,  placeholder: "e.g. VEN-001",         sample: "VEN-001" },
-  { key: "name",       label: "Name",       required: true,  placeholder: "Vendor name",           sample: "Acme Pvt Ltd" },
+  { key: "code",            label: "Code",            required: true, placeholder: "e.g. VEN-001",    sample: "VEN-001" },
+  { key: "name",            label: "Name",            required: true, placeholder: "Vendor name",      sample: "Acme Pvt Ltd" },
   {
     key: "type", label: "Type", type: "select", required: true, default: "rm", colSpan: 2, sample: "rm",
     options: [
@@ -57,13 +57,16 @@ const VENDOR_FIELDS: MasterField[] = [
       { value: "both", label: "Both" },
     ],
   },
-  { key: "location",   label: "Location",   required: true  },
-  { key: "gst_number", label: "GST Number", required: true  },
+  { key: "registered_name", label: "Registered Name", placeholder: "Legal registered name", sample: "Acme Pvt Ltd" },
+  { key: "location",        label: "Location",        placeholder: "e.g. Mumbai",           sample: "Mumbai" },
+  { key: "zone",            label: "Zone",            placeholder: "e.g. West",             sample: "West" },
   {
     key: "status", label: "Status", type: "select", required: false, default: "active", colSpan: 2, sample: "active",
     options: [
-      { value: "active",   label: "Active"   },
-      { value: "inactive", label: "Inactive" },
+      { value: "active",       label: "Active"       },
+      { value: "inactive",     label: "Inactive"     },
+      { value: "blacklisted",  label: "Blacklisted"  },
+      { value: "discontinued", label: "Discontinued" },
     ],
   },
 ]
@@ -169,17 +172,18 @@ export default function VendorsClient({
               <TableRow>
                 <TableHead>Code</TableHead>
                 <TableHead>Name</TableHead>
+                <TableHead>Registered Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Location</TableHead>
-                <TableHead>GST Number</TableHead>
+                <TableHead>Zone</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-12" >Actions</TableHead>
+                <TableHead className="w-12">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
                     {hasFilters ? "No vendors match your filters." : "No records found."}
                   </TableCell>
                 </TableRow>
@@ -188,11 +192,12 @@ export default function VendorsClient({
                   <TableRow key={row.vendor_id}>
                     <TableCell className="font-mono text-xs font-medium">{row.code}</TableCell>
                     <TableCell className="font-medium">{row.name}</TableCell>
+                    <TableCell>{row.registered_name ?? "—"}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="capitalize">{row.type}</Badge>
                     </TableCell>
                     <TableCell>{row.location ?? "—"}</TableCell>
-                    <TableCell>{row.gst_number ?? "—"}</TableCell>
+                    <TableCell>{row.zone ?? "—"}</TableCell>
                     <TableCell>{row.status ?? "—"}</TableCell>
                     <TableCell>
                       <Button size="icon" variant="ghost" onClick={() => setEditVendor(row)}>

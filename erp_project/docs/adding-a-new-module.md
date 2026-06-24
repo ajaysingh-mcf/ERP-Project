@@ -151,7 +151,53 @@ try {
 }
 ```
 
-**2.2 Seed permissions for the new page slug**
+**2.2 Register the module in the approval handler (if it needs approvals)**
+
+If records in this module go through the edit-approval flow, add a handler object to `lib/approvals/module-handlers.ts`. Each handler implements two methods:
+
+| Method | Called when | What it does |
+|--------|------------|--------------|
+| `setStatus(conn, entityId, status)` | Approval **rejected** | Reverts the entity to `STATUS.DRAFT` so the submitter can re-edit |
+| `applyAndArchive(conn, entityId, items, approverId)` | Approval **approved** | Archives the old snapshot to the history table, applies the diff, restores status to `STATUS.ACTIVE` |
+
+Both methods receive the caller's open `PoolConnection` — **do not call `beginTransaction`, `commit`, or `rollback` inside them**; the route handler owns the transaction.
+
+```ts
+// lib/approvals/module-handlers.ts — add to MODULE_HANDLERS at the bottom
+
+import { inventory as inventorySql } from "@/lib/queries/inventory"
+
+const inventoryHandler: ModuleHandler = {
+  async setStatus(conn, entityId, status) {
+    await conn.execute(inventorySql.setStatus, [status, entityId])
+  },
+  async applyAndArchive(conn, entityId, items) {
+    const fieldMap = buildFieldMap(items)
+    const [rows] = await conn.execute(inventorySql.selectById, [entityId])
+    const cur = (rows as any[])[0]
+    if (!cur) throw new Error(`Inventory item ${entityId} not found`)
+
+    // Archive old snapshot if the module has a history table, then apply diff:
+    await conn.execute(inventorySql.update, [
+      fieldMap.name     ?? cur.name,
+      fieldMap.quantity ?? cur.quantity,
+      fieldMap.status   ?? STATUS.ACTIVE,
+      entityId,
+    ])
+  },
+}
+
+export const MODULE_HANDLERS: Record<string, ModuleHandler> = {
+  // existing entries …
+  INVENTORY: inventoryHandler,   // ← add this line
+}
+```
+
+Then in the API route that submits edits for approval, use the shared `approvalsSql.insertApproval` + `approvalsSql.insertApprovalItem` queries with your module code (`"INVENTORY"`), exactly like `app/api/masters/skus/route.ts` does with `"SKU"`. The approve/reject route (`app/api/approvals/[id]/route.ts`) picks up the new handler automatically.
+
+Also add the required SQL helpers (`setStatus`, `selectById`, `update`) to `lib/queries/<module>.ts` — the `RM_MAT` and `PM_MAT` entries in `module-handlers.ts` are the simplest reference implementations.
+
+**2.3 Seed permissions for the new page slug**
 
 Add entries to the `matrix` array in `scripts/seed-permissions.ts`:
 
@@ -338,6 +384,9 @@ Test the following scenarios in the browser:
 | Simple API route pattern | `app/api/masters/skus/route.ts` |
 | Transactional multi-table route | `app/api/masters/vendors/route.ts` |
 | Complex multi-action route | `app/api/masters/raw-materials/route.ts` |
+| Approval handler registry | `lib/approvals/module-handlers.ts` |
+| Approval route (approve / reject) | `app/api/approvals/[id]/route.ts` |
+| Status and approval status constants | `lib/constants.ts` |
 | Server page pattern | `app/masters/skus/page.tsx` |
 | Client component pattern | `app/masters/skus/SkusClient.tsx` |
 | SQL query file | `lib/queries/vendors.ts` |

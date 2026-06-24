@@ -119,22 +119,28 @@ export const PM_MFG_EXPORT_COLUMNS: ExportColumn[] = [
 // ── Vendors ───────────────────────────────────────────────────────────────────
 
 export const VENDOR_EXPORT_COLUMNS: ExportColumn[] = [
-  { key: "code",       label: "Vendor Code", type: "text" },
-  { key: "name",       label: "Name",        type: "text" },
-  { key: "type",       label: "Type",        type: "text" },
-  { key: "location",   label: "Location",    type: "text" },
-  { key: "gst_number", label: "GST Number",  type: "text" }, // text: preserve format
-  { key: "status",     label: "Status",      type: "text" },
+  { key: "code",            label: "Vendor Code",    type: "text" },
+  { key: "name",            label: "Name",           type: "text" },
+  { key: "registered_name", label: "Registered Name", type: "text" },
+  { key: "type",            label: "Type",           type: "text" },
+  { key: "location",        label: "Location",       type: "text" },
+  { key: "zone",            label: "Zone",           type: "text" },
+  { key: "status",          label: "Status",         type: "text" },
 ]
 
 // ── Manufacturers ─────────────────────────────────────────────────────────────
 
 export const MFG_EXPORT_COLUMNS: ExportColumn[] = [
-  { key: "code",       label: "Code",       type: "text" },
-  { key: "name",       label: "Name",       type: "text" },
-  { key: "location",   label: "Location",   type: "text" },
-  { key: "gst_number", label: "GST Number", type: "text" }, // text: preserve format
-  { key: "status",     label: "Status",     type: "text" },
+  { key: "code",            label: "Code",           type: "text" },
+  { key: "name",            label: "Name",           type: "text" },
+  { key: "registered_name", label: "Registered Name", type: "text" },
+  { key: "location",        label: "Location",       type: "text" },
+  { key: "zone",            label: "Zone",           type: "text" },
+  { key: "gst_number",      label: "GST Number",     type: "text" }, // text: preserve format
+  { key: "bank_name",       label: "Bank Name",      type: "text" },
+  { key: "ifsc_number",     label: "IFSC Number",    type: "text" },
+  { key: "account_number",  label: "Account Number", type: "text" },
+  { key: "status",          label: "Status",         type: "text" },
 ]
 
 // ── BOM Master ────────────────────────────────────────────────────────────────

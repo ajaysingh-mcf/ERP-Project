@@ -74,6 +74,11 @@ export function QuickCreateManufacturerModal({ open, onClose, onSuccess }: Props
         location: form.location.trim() || null,
         gst_number: form.gst_number.trim() || null,
         status: form.status,
+        registered_name: null,
+        zone: null,
+        bank_name: null,
+        ifsc_number: null,
+        account_number: null,
       }
       toast({ title: "Manufacturer created", description: newMfg.name, variant: "success" })
       onSuccess(newMfg)

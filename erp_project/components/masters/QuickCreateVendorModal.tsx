@@ -35,13 +35,13 @@ export function QuickCreateVendorModal({
     name: "",
     type: defaultType as string,
     location: "",
-    gst_number: "",
+    zone: "",
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   function reset() {
-    setForm({ code: "", name: "", type: defaultType, location: "", gst_number: "" })
+    setForm({ code: "", name: "", type: defaultType, location: "", zone: "" })
     setError(null)
     setLoading(false)
   }
@@ -75,7 +75,8 @@ export function QuickCreateVendorModal({
         name: form.name.trim(),
         type: form.type,
         location: form.location.trim() || null,
-        gst_number: form.gst_number.trim() || null,
+        zone: form.zone.trim() || null,
+        registered_name: null,
         status: "active",
       }
       toast({ title: "Vendor created", description: newVendor.name, variant: "success" })
@@ -139,12 +140,12 @@ export function QuickCreateVendorModal({
             </select>
           </div>
           <div>
-            <label className={labelCls}>GST Number</label>
+            <label className={labelCls}>Zone</label>
             <input
               className={inputCls}
-              placeholder="e.g. 27ABCDE1234F1Z5"
-              value={form.gst_number}
-              onChange={(e) => setForm((p) => ({ ...p, gst_number: e.target.value }))}
+              placeholder="e.g. West"
+              value={form.zone}
+              onChange={(e) => setForm((p) => ({ ...p, zone: e.target.value }))}
             />
           </div>
           <div className="col-span-2">

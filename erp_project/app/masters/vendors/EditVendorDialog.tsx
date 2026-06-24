@@ -19,8 +19,9 @@ export function EditVendorDialog({
   const [form, setForm] = useState({
     name: vendor?.name ?? "",
     type: vendor?.type ?? "rm",
+    registered_name: vendor?.registered_name ?? "",
     location: vendor?.location ?? "",
-    gst_number: vendor?.gst_number ?? "",
+    zone: vendor?.zone ?? "",
     status: vendor?.status ?? "active",
   })
   const [saving, setSaving] = useState(false)
@@ -31,8 +32,9 @@ export function EditVendorDialog({
       setForm({
         name: vendor.name ?? "",
         type: vendor.type ?? "rm",
+        registered_name: vendor.registered_name ?? "",
         location: vendor.location ?? "",
-        gst_number: vendor.gst_number ?? "",
+        zone: vendor.zone ?? "",
         status: vendor.status ?? "active",
       })
     }
@@ -89,12 +91,16 @@ export function EditVendorDialog({
             </select>
           </div>
           <div className="grid gap-1">
+            <Label>Registered Name</Label>
+            <Input value={form.registered_name} onChange={(e) => set("registered_name", e.target.value)} />
+          </div>
+          <div className="grid gap-1">
             <Label>Location</Label>
             <Input value={form.location} onChange={(e) => set("location", e.target.value)} />
           </div>
           <div className="grid gap-1">
-            <Label>GST Number</Label>
-            <Input value={form.gst_number} onChange={(e) => set("gst_number", e.target.value)} />
+            <Label>Zone</Label>
+            <Input value={form.zone} onChange={(e) => set("zone", e.target.value)} />
           </div>
           <div className="grid gap-1">
             <Label>Status</Label>

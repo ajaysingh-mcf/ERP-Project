@@ -5,18 +5,18 @@
 //
 // A vendor lives across TWO tables, linked only by id (no DB foreign key):
 //   vendors(id, code, name, type)
-//   vendor_details(vendor_id → vendors.id, location, gst_number, status)
+//   details_vendor(vendor_id → vendors.id, location, status, zone, registered_name)
 // So every insert is: INSERT the vendor, read its new id (result.insertId),
-// then INSERT the matching vendor_details row — both inside one transaction so
+// then INSERT the matching details_vendor row — both inside one transaction so
 // we never leave a vendor without its details (or vice-versa).
 //
 // POST /api/masters/vendors
-//   Request  { action: "create", code, name, type, location?, gst_number?, status? }
-//     Process → INSERT vendors → INSERT vendor_details(vendor_id = new id).
+//   Request  { action: "create", code, name, type, location?, status?, zone?, registered_name? }
+//     Process → INSERT vendors → INSERT details_vendor(vendor_id = new id).
 //     Response 200 { id } (the new vendors.id) · 400 (missing) · 409 (code exists)
 //
 //   Request  { action: "bulk", rows: [{ code, name, type, location?, ... }, ...] }
-//     Process → per row: INSERT vendor + vendor_details; existing codes skipped.
+//     Process → per row: INSERT vendor + details_vendor; existing codes skipped.
 //     Response 200 { inserted, skipped } · 400 { error } · 500 { error }
 //
 // Auth: any signed-in user (401 otherwise). `vendors.code` is UNIQUE, so
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   const { action } = body
 
   if (action === "create") {
-    const { code, name, type, location, gst_number, status } = body
+    const { code, name, type, location, status, zone, registered_name } = body
     if (!code?.trim() || !name?.trim() || !type?.trim()) {
       return NextResponse.json(
         { error: "code, name and type are required" },
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     await conn.beginTransaction()
     try {
       // Inserting the vendor returns an insertId we can use for the details row.
-      //  If the code already exists, the UNIQUE constraint triggers an error 
+      //  If the code already exists, the UNIQUE constraint triggers an error
       // and we skip the details insert.
       const [vendorResult] = await conn.execute(
         vendors.insertVendor,
@@ -61,8 +61,9 @@ export async function POST(req: NextRequest) {
         [
           vendorId,
           location?.trim() || null,
-          gst_number?.trim() || null,
           status || "active",
+          zone?.trim() || null,
+          registered_name?.trim() || null,
         ]
       )
 
@@ -109,8 +110,9 @@ export async function POST(req: NextRequest) {
             [
               vendorId,
               row.location?.trim() || null,
-              row.gst_number?.trim() || null,
               row.status || "active",
+              row.zone?.trim() || null,
+              row.registered_name?.trim() || null,
             ]
           )
           inserted++
@@ -134,7 +136,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === "update") {
-    const { vendor_id, name, type, location, gst_number, status } = body
+    const { vendor_id, name, type, location, status, zone, registered_name } = body
     if (!vendor_id || !name?.trim() || !type?.trim()) {
       return NextResponse.json({ error: "vendor_id, name and type are required" }, { status: 400 })
     }
@@ -145,12 +147,11 @@ export async function POST(req: NextRequest) {
       await conn.execute(vendors.updateVendor, [name.trim(), type.trim(), vendor_id])
       await conn.execute(vendors.updateVendorDetails, [
         location?.trim() || null,
-        gst_number?.trim() || null,
         status || "active",
+        zone?.trim() || null,
+        registered_name?.trim() || null,
         vendor_id,
       ])
-
-      // INSERT into your vendor
 
       await conn.commit()
       return NextResponse.json({ ok: true })

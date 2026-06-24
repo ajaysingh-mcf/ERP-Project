@@ -18,8 +18,13 @@ export function EditMfgDialog({
 }) {
   const [form, setForm] = useState({
     name: mfg?.name ?? "",
+    registered_name: mfg?.registered_name ?? "",
     location: mfg?.location ?? "",
+    zone: mfg?.zone ?? "",
     gst_number: mfg?.gst_number ?? "",
+    bank_name: mfg?.bank_name ?? "",
+    ifsc_number: mfg?.ifsc_number ?? "",
+    account_number: mfg?.account_number ?? "",
     status: mfg?.status ?? "active",
   })
   const [saving, setSaving] = useState(false)
@@ -29,8 +34,13 @@ export function EditMfgDialog({
     if (mfg) {
       setForm({
         name: mfg.name ?? "",
+        registered_name: mfg.registered_name ?? "",
         location: mfg.location ?? "",
+        zone: mfg.zone ?? "",
         gst_number: mfg.gst_number ?? "",
+        bank_name: mfg.bank_name ?? "",
+        ifsc_number: mfg.ifsc_number ?? "",
+        account_number: mfg.account_number ?? "",
         status: mfg.status ?? "active",
       })
     }
@@ -75,12 +85,32 @@ export function EditMfgDialog({
             <Input value={form.name} onChange={(e) => set("name", e.target.value)} />
           </div>
           <div className="grid gap-1">
+            <Label>Registered Name</Label>
+            <Input value={form.registered_name} onChange={(e) => set("registered_name", e.target.value)} />
+          </div>
+          <div className="grid gap-1">
             <Label>Location</Label>
             <Input value={form.location} onChange={(e) => set("location", e.target.value)} />
           </div>
           <div className="grid gap-1">
+            <Label>Zone</Label>
+            <Input value={form.zone} onChange={(e) => set("zone", e.target.value)} />
+          </div>
+          <div className="grid gap-1">
             <Label>GST Number</Label>
             <Input value={form.gst_number} onChange={(e) => set("gst_number", e.target.value)} />
+          </div>
+          <div className="grid gap-1">
+            <Label>Bank Name</Label>
+            <Input value={form.bank_name} onChange={(e) => set("bank_name", e.target.value)} />
+          </div>
+          <div className="grid gap-1">
+            <Label>IFSC Number</Label>
+            <Input value={form.ifsc_number} onChange={(e) => set("ifsc_number", e.target.value)} />
+          </div>
+          <div className="grid gap-1">
+            <Label>Account Number</Label>
+            <Input value={form.account_number} onChange={(e) => set("account_number", e.target.value)} />
           </div>
           <div className="grid gap-1">
             <Label>Status</Label>

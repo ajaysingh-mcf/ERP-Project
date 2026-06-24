@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const { action } = body
 
   if (action === "create") {
-    const { code, name, location, gst_number, status } = body
+    const { code, name, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number } = body
     if (!code?.trim() || !name?.trim()) {
       return NextResponse.json({ error: "code and name are required" }, { status: 400 })
     }
@@ -42,6 +42,11 @@ export async function POST(req: NextRequest) {
         location?.trim() || null,
         gst_number?.trim() || null,
         status || "active",
+        registered_name?.trim() || null,
+        zone?.trim() || null,
+        bank_name?.trim() || null,
+        ifsc_number?.trim() || null,
+        account_number?.trim() || null,
       ])
       await conn.commit()
       return NextResponse.json({ id: mfgId })
@@ -82,6 +87,11 @@ export async function POST(req: NextRequest) {
             row.location?.trim() || null,
             row.gst_number?.trim() || null,
             row.status || "active",
+            row.registered_name?.trim() || null,
+            row.zone?.trim() || null,
+            row.bank_name?.trim() || null,
+            row.ifsc_number?.trim() || null,
+            row.account_number?.trim() || null,
           ])
           inserted++
         } catch (err: any) {
@@ -103,7 +113,7 @@ export async function POST(req: NextRequest) {
     }
   }
   if (action === "update") {
-    const { mfg_id, name, location, gst_number, status } = body
+    const { mfg_id, name, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number } = body
     if (!mfg_id || !name?.trim()) {
       return NextResponse.json({ error: "mfg_id and name are required" }, { status: 400 })
     }
@@ -116,10 +126,13 @@ export async function POST(req: NextRequest) {
         location?.trim() || null,
         gst_number?.trim() || null,
         status || "active",
+        registered_name?.trim() || null,
+        zone?.trim() || null,
+        bank_name?.trim() || null,
+        ifsc_number?.trim() || null,
+        account_number?.trim() || null,
         mfg_id,
       ])
-
-      // INSERT into your mfg history table here
 
       await conn.commit()
       return NextResponse.json({ ok: true })

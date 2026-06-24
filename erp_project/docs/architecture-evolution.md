@@ -15,6 +15,12 @@ Today the ERP is a **synchronous monolith**:
 - Every side-effect runs **inline** inside the HTTP request: a masters insert, its audit trail, any future approval/notification logic all happen in one blocking transaction.
 - Cross-cutting concerns (auth, validation, rate limiting, logging, error shape) are **copy-pasted per route** (`app/api/masters/*`, `app/api/admin/*`). There is no Zod, no request ID, no central error format.
 
+> **Already addressed (June 2026):**
+> - The approval handler now uses a **Strategy pattern** — per-module logic lives in `lib/approvals/module-handlers.ts`; the route is a thin dispatcher. Adding a new module requires one new entry there, not a route edit.
+> - `lib/constants.ts` provides typed `STATUS` and `APPROVAL_STATUS` constants eliminating raw string literals.
+> - The approval route uses `PoolConnection` typing and structured error logging with full request context.
+> - Remaining gaps (Zod validation, request IDs, `withGateway` wrapper) are the focus of Steps 1–2 below.
+
 This is fine at today's size but creates two concrete problems as modules grow:
 
 1. **Coupling of side-effects.** When a PO is raised, we will eventually need to: write audit history, trigger an approval, notify a vendor, invalidate a cache, update a dashboard. Doing all of that inline makes routes fragile and slow, and every new side-effect means editing the core write path.

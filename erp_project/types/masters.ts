@@ -35,24 +35,30 @@ export type Sku = {
 
 /** `mfgs` table — Manufacturers (MFGs). Used by app/masters/manufacturers. */
 export type Mfg = {
-  id : number | null
+  id: number | null
   mfg_id: number
   code: string
   name: string
   location: string | null
   gst_number: string | null
   status: string | null
+  registered_name: string | null
+  zone: string | null
+  bank_name: string | null
+  ifsc_number: string | null
+  account_number: string | null
 }
 
 /** `vendors` table — Suppliers. `type` is one of: "rm" | "pm" | "both". Used by app/masters/vendors. */
 export type Vendor = {
-    vendor_id: number
-    code: string
-    name: string
-    type: string
-    location: string | null
-    gst_number: string | null
-    status: string | null
+  vendor_id: number
+  code: string
+  name: string
+  type: string
+  location: string | null
+  status: string | null
+  zone: string | null
+  registered_name: string | null
 }
 
 /** `rm` table — Raw Materials. Used by app/masters/raw-materials.

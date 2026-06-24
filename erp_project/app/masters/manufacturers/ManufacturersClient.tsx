@@ -33,11 +33,16 @@ import { Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EditMfgDialog } from "./EditMfgDialog"
 const MFG_FIELDS: MasterField[] = [
-  { key: "code",       label: "Code",       required: true,  placeholder: "e.g. MFG-001",         sample: "MFG-001" },
-  { key: "name",       label: "Name",       required: true,  colSpan: 2, placeholder: "Manufacturer name", sample: "Acme Manufacturing" },
-  { key: "location",   label: "Location",   placeholder: "e.g. Mumbai",           sample: "Mumbai" },
-  { key: "gst_number", label: "GST Number", placeholder: "e.g. 27AAEPM1234C1Z5",  sample: "27AAEPM1234C1Z5" },
-  { key: "status",     label: "Status",     placeholder: "e.g. active/inactive",  sample: "active" },
+  { key: "code",            label: "Code",            required: true, placeholder: "e.g. MFG-001",            sample: "MFG-001" },
+  { key: "name",            label: "Name",            required: true, colSpan: 2, placeholder: "Manufacturer name", sample: "Acme Manufacturing" },
+  { key: "registered_name", label: "Registered Name", placeholder: "Legal registered name",         sample: "Acme Manufacturing Pvt Ltd" },
+  { key: "location",        label: "Location",        placeholder: "e.g. Mumbai",                  sample: "Mumbai" },
+  { key: "zone",            label: "Zone",            placeholder: "e.g. West",                    sample: "West" },
+  { key: "gst_number",      label: "GST Number",      placeholder: "e.g. 27AAEPM1234C1Z5",         sample: "27AAEPM1234C1Z5" },
+  { key: "bank_name",       label: "Bank Name",       placeholder: "e.g. HDFC Bank",               sample: "HDFC Bank" },
+  { key: "ifsc_number",     label: "IFSC Number",     placeholder: "e.g. HDFC0001234",             sample: "HDFC0001234" },
+  { key: "account_number",  label: "Account Number",  placeholder: "e.g. 12345678901234",          sample: "12345678901234" },
+  { key: "status",          label: "Status",          placeholder: "e.g. active/inactive",         sample: "active" },
 ]
 
 export default function ManufacturersClient({
@@ -106,16 +111,19 @@ export default function ManufacturersClient({
               <TableRow>
                 <TableHead>Code</TableHead>
                 <TableHead>Name</TableHead>
+                <TableHead>Registered Name</TableHead>
                 <TableHead>Location</TableHead>
+                <TableHead>Zone</TableHead>
                 <TableHead>GST Number</TableHead>
+                <TableHead>Bank</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-12" >Actions</TableHead>
+                <TableHead className="w-12">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
                     {currentSearch
                       ? "No manufacturers match your search."
                       : "No records found."}
@@ -126,9 +134,12 @@ export default function ManufacturersClient({
                   <TableRow key={row.mfg_id}>
                     <TableCell className="font-mono text-xs font-medium">{row.code}</TableCell>
                     <TableCell className="font-medium">{row.name}</TableCell>
-                    <TableCell>{row.location}</TableCell>
-                    <TableCell>{row.gst_number}</TableCell>
-                    <TableCell>{row.status}</TableCell>
+                    <TableCell>{row.registered_name ?? "—"}</TableCell>
+                    <TableCell>{row.location ?? "—"}</TableCell>
+                    <TableCell>{row.zone ?? "—"}</TableCell>
+                    <TableCell>{row.gst_number ?? "—"}</TableCell>
+                    <TableCell>{row.bank_name ?? "—"}</TableCell>
+                    <TableCell>{row.status ?? "—"}</TableCell>
                     <TableCell>
                       <Button size="icon" variant="ghost" onClick={() => setEditMfg(row)}>
                         <Pencil className="h-4 w-4" />

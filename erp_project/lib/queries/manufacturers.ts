@@ -9,7 +9,9 @@ export const manufacturers = {
   /** Get all manufacturers with their details. */
   selectAll: `
     SELECT mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
-      mfgd.gst_number, mfg.code, mfg.name
+      mfgd.gst_number, mfgd.registered_name, mfgd.zone,
+      mfgd.bank_name, mfgd.ifsc_number, mfgd.account_number,
+      mfg.code, mfg.name
     FROM master_mfgs AS mfg
     INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     ORDER BY mfg.code ASC
@@ -24,7 +26,9 @@ export const manufacturers = {
   selectPaginated: `
     SELECT
       mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
-      mfgd.gst_number, mfg.code, mfg.name
+      mfgd.gst_number, mfgd.registered_name, mfgd.zone,
+      mfgd.bank_name, mfgd.ifsc_number, mfgd.account_number,
+      mfg.code, mfg.name
     FROM master_mfgs AS mfg
     INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     WHERE (? IS NULL OR mfg.code LIKE ? OR mfg.name LIKE ?)
@@ -40,7 +44,9 @@ export const manufacturers = {
   selectAllFiltered: `
     SELECT
       mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
-      mfgd.gst_number, mfg.code, mfg.name
+      mfgd.gst_number, mfgd.registered_name, mfgd.zone,
+      mfgd.bank_name, mfgd.ifsc_number, mfgd.account_number,
+      mfg.code, mfg.name
     FROM master_mfgs AS mfg
     INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     WHERE (? IS NULL OR mfg.code LIKE ? OR mfg.name LIKE ?)
@@ -70,11 +76,12 @@ export const manufacturers = {
 
   /**
    * Insert manufacturer details record.
-   * Parameters: [mfg_id, location, gst_number, status]
+   * Parameters: [mfg_id, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number]
    * Must be called after insert with the insertId.
    */
   insertDetails: `
-    INSERT INTO details_mfg (mfg_id, location, gst_number, status) VALUES (?, ?, ?, ?)
+    INSERT INTO details_mfg (mfg_id, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   // ============ UPDATE QUERIES ============
@@ -84,8 +91,12 @@ export const manufacturers = {
     UPDATE master_mfgs SET name = ? WHERE id = ?
   `,
 
-  /** Update manufacturer details. Parameters: [location, gst_number, status, mfg_id] */
+  /** Update manufacturer details. Parameters: [location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number, mfg_id] */
   updateMfgDetails: `
-    UPDATE details_mfg SET location = ?, gst_number = ?, status = ? WHERE mfg_id = ?
+    UPDATE details_mfg
+    SET location = ?, gst_number = ?, status = ?,
+        registered_name = ?, zone = ?, bank_name = ?,
+        ifsc_number = ?, account_number = ?
+    WHERE mfg_id = ?
   `,
 }

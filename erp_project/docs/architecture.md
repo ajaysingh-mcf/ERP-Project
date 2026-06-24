@@ -93,7 +93,9 @@ sequenceDiagram
 | `lib/auth.ts` | NextAuth configuration, callbacks, and session management |
 | `lib/permissions.ts` | `resolveAccess()` — the RBAC decision function |
 | `lib/utils.ts` | `cn()` — Tailwind class name utility |
+| `lib/constants.ts` | Typed `STATUS` and `APPROVAL_STATUS` const objects — use these instead of raw string literals across the codebase |
 | `lib/queries/` | SQL statement strings grouped by domain |
+| `lib/approvals/module-handlers.ts` | Strategy pattern registry — each approval module (`SKU`, `RM_RATE`, `PM_VRM`, etc.) owns its `setStatus` and `applyAndArchive` logic here; adding a new module requires adding one entry, the route never changes |
 | `types/` | TypeScript types for database row shapes and NextAuth session augmentation |
 | `prisma/` | `schema.prisma` (source of truth for DB models) + migration history |
 | `scripts/` | One-off utility scripts (seed, test-connection) |
