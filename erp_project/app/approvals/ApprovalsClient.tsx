@@ -45,6 +45,7 @@ const MODULE_LABEL: Record<string, string> = {
   PM_MAT:  "Packing Material",
   VENDOR:  "Vendor",
   MFG:     "Manufacturer",
+  PO:      "Impromptu PO",
 }
 
 const MODULE_COLOR: Record<string, string> = {
@@ -57,6 +58,7 @@ const MODULE_COLOR: Record<string, string> = {
   PM_MAT:  "bg-violet-50 text-violet-700 border-violet-200",
   VENDOR:  "bg-indigo-50 text-indigo-700 border-indigo-200",
   MFG:     "bg-amber-50 text-amber-700 border-amber-200",
+  PO:      "bg-yellow-50 text-yellow-700 border-yellow-200",
 }
 
 export default function ApprovalsClient({

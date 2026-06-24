@@ -19,6 +19,7 @@ import { rawMaterials as rmSql } from "@/lib/queries/raw-materials"
 import { packingMaterials as pmSql } from "@/lib/queries/packing-materials"
 import { vendors as vendorSql } from "@/lib/queries/vendors"
 import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
+import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { STATUS } from "@/lib/constants"
 
 export type DiffItem = { field_name: string; old_value: string; new_value: string }
@@ -280,6 +281,19 @@ const mfgHandler: ModuleHandler = {
   },
 }
 
+// ── PO (Impromptu purchase order — creation approval) ─────────────────────────
+// The PO is inserted as 'draft' before approval is submitted.
+// approve → set status to 'raised'   reject → keep as 'draft'
+
+const poHandler: ModuleHandler = {
+  async setStatus(conn, entityId, status) {
+    await conn.execute(purchaseOrdersSql.setStatus, [status, entityId])
+  },
+  async applyAndArchive(conn, entityId) {
+    await conn.execute(purchaseOrdersSql.setStatus, ["raised", entityId])
+  },
+}
+
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 export const MODULE_HANDLERS: Record<string, ModuleHandler> = {
@@ -292,4 +306,5 @@ export const MODULE_HANDLERS: Record<string, ModuleHandler> = {
   PM_MAT:  pmMatHandler,
   VENDOR:  vendorHandler,
   MFG:     mfgHandler,
+  PO:      poHandler,
 }

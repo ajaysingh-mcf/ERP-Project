@@ -195,9 +195,14 @@ model purchase_orders {
   unit_price   Decimal?                @db.Decimal(12, 4)
   total_amount Decimal?                @db.Decimal(14, 4)
   expected_on  DateTime?               @db.Date
-  received_qty Decimal?                @default(0.000) @db.Decimal(12, 3)
-  invoice_no   String?                 @db.VarChar(100)
-  status       purchase_orders_status? @default(draft)
+  received_qty     Decimal?                @default(0.000) @db.Decimal(12, 3)
+  invoice_no       String?                 @db.VarChar(100)
+  status           purchase_orders_status? @default(draft)
+  production_date  DateTime?               @db.Date
+  dispatched_qty   Decimal?                @default(0.000) @db.Decimal(12, 3)
+  destination      String?                 @db.VarChar(200)
+  is_impromptu     Boolean                 @default(false)
+  reason           String?                 @db.Text
   mfgs         mfgs                    @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "purchase_orders_ibfk_1")
   bom          bom?                    @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "purchase_orders_ibfk_2")
 
