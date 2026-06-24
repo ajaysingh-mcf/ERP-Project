@@ -34,6 +34,7 @@ export function EditMfgDialog({
     bank_name: mfg?.bank_name ?? "",
     ifsc_number: mfg?.ifsc_number ?? "",
     account_number: mfg?.account_number ?? "",
+    email: mfg?.email ?? "",
     status: mfg?.status ?? "active",
   })
   const [saving, setSaving] = useState(false)
@@ -54,6 +55,7 @@ export function EditMfgDialog({
         bank_name: mfg.bank_name ?? "",
         ifsc_number: mfg.ifsc_number ?? "",
         account_number: mfg.account_number ?? "",
+        email: mfg.email ?? "",
         status: mfg.status ?? "active",
       })
       setSubmitted(false)
@@ -185,8 +187,12 @@ export function EditMfgDialog({
             </div>
           </div>
 
-          {/* Row 4: Status (narrow) */}
+          {/* Row 4: Email | Status */}
           <div className="grid grid-cols-3 gap-3">
+            <div className="grid gap-1 col-span-2">
+              <Label>Email Address</Label>
+              <Input type="email" placeholder="vendor@manufacturer.com" value={form.email} onChange={(e) => set("email", e.target.value)} disabled={isInReview || !canEdit} />
+            </div>
             <div className="grid gap-1">
               <Label>Status</Label>
               <select

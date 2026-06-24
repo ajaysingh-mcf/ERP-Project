@@ -51,6 +51,7 @@ export type ImpromptuForm = {
   mfg_id: string
   qty: string
   expected_on: string
+  destination: string
   reason: string
 }
 
@@ -60,10 +61,11 @@ export type EditData = {
   sku_code: string
   qty: number | string
   expected_on: string | null
+  destination: string | null
 }
 
 export const EMPTY_FORM: ImpromptuForm = {
-  sku_code: "", mfg_id: "", qty: "", expected_on: "", reason: "",
+  sku_code: "", mfg_id: "", qty: "", expected_on: "", destination: "", reason: "",
 }
 
 export type SplitRow = { destination: string; qty: string }

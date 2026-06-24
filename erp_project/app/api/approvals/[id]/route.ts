@@ -16,6 +16,7 @@ import { query, pool } from "@/lib/db"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { MODULE_HANDLERS, type DiffItem } from "@/lib/approvals/module-handlers"
 import { APPROVAL_STATUS, STATUS } from "@/lib/constants"
+import { sendPoEmail } from "@/lib/mailer"
 
 export async function POST(
   req: NextRequest,
@@ -69,6 +70,13 @@ export async function POST(
       await conn.execute(approvalsSql.markRejected, [approverId, remarks!.trim(), approvalId])
     }
     await conn.commit()
+
+    if (action === "approve" && approval.module === "PO") {
+      sendPoEmail(approval.entity_id).catch((err) =>
+        console.error("[mailer] auto PO email failed:", err)
+      )
+    }
+
     return NextResponse.json({ ok: true })
   } catch (err: any) {
     await conn.rollback()

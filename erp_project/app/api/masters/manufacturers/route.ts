@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
     }
   }
   if (action === "update") {
-    const { mfg_id, name, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number } = body
+    const { mfg_id, name, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number, email } = body
     if (!mfg_id || !name?.trim()) {
       return NextResponse.json({ error: "mfg_id and name are required" }, { status: 400 })
     }
@@ -148,6 +148,7 @@ export async function POST(req: NextRequest) {
         bank_name:       bank_name?.trim() || "",
         ifsc_number:     ifsc_number?.trim() || "",
         account_number:  account_number?.trim() || "",
+        email:           email?.trim() || "",
         status:          status || "active",
       }
       const diff = Object.entries(proposed).filter(

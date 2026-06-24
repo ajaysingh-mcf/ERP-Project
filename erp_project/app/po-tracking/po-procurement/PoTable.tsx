@@ -1,6 +1,7 @@
 "use client"
 
-import { Pencil, Scissors } from "lucide-react"
+import { Eye, Loader2, Mail, Pencil, Scissors } from "lucide-react"
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -25,6 +26,72 @@ function ProgressCell({ value, total }: { value: string | number | null; total: 
   )
 }
 
+type SendState = "idle" | "sending" | "sent" | "error"
+
+function RaisedPoActions({ poId, poNo }: { poId: number; poNo: string }) {
+  const [sendState, setSendState] = useState<SendState>("idle")
+  const [errMsg, setErrMsg]       = useState("")
+
+  async function handleSend() {
+    setSendState("sending"); setErrMsg("")
+    try {
+      const res  = await fetch(`/api/purchase-orders/${poId}/send-email`, { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) { setSendState("error"); setErrMsg(data.error ?? "Send failed"); return }
+      setSendState("sent")
+    } catch {
+      setSendState("error"); setErrMsg("Network error — please try again")
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1.5">
+      <div className="flex items-center gap-1.5">
+        {/* Preview button — opens PDF in new tab */}
+        <a
+          href={`/api/purchase-orders/${poId}/preview-pdf`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Preview PO PDF"
+          className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-1 text-xs hover:bg-accent transition-colors"
+        >
+          <Eye className="h-3 w-3" /> Preview
+        </a>
+
+        {/* Send button */}
+        {sendState === "sent" ? (
+          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 font-medium">
+            <Mail className="h-3 w-3" /> Sent ✓
+          </span>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={sendState === "sending"}
+            title={`Send PO ${poNo} to manufacturer`}
+            className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+          >
+            {sendState === "sending"
+              ? <><Loader2 className="h-3 w-3 animate-spin" /> Sending…</>
+              : <><Mail className="h-3 w-3" /> Send PO</>
+            }
+          </button>
+        )}
+      </div>
+
+      {/* Error message below buttons */}
+      {sendState === "error" && (
+        <div className="flex items-center gap-1 text-[10px] text-destructive max-w-[180px] text-right leading-tight">
+          <span>{errMsg}</span>
+          <button
+            onClick={() => setSendState("idle")}
+            className="ml-1 shrink-0 underline hover:no-underline"
+          >dismiss</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function PoTable({
   rows,
   sessionUserId,
@@ -41,7 +108,7 @@ export default function PoTable({
       <CardContent className="p-0">
         <Table>
           <TableHeader>
-            <TableRow>
+            <TableRow className="bg-gray-200">
               <TableHead>PO Number</TableHead>
               <TableHead>Manufacturer</TableHead>
               <TableHead>PO Date</TableHead>
@@ -69,8 +136,9 @@ export default function PoTable({
               rows.map((r) => {
                 const status   = r.status ?? "draft"
                 const cfg      = STATUS_CONFIG[status] ?? { label: status, variant: "secondary" as BadgeVariant }
-                const canEdit  = ["draft", "raised", "punched"].includes(status) && r.po_raised_by === sessionUserId
+                const canEdit  = status === "draft" && r.po_raised_by === sessionUserId
                 const canSplit = ["draft", "raised", "punched", "partially_received"].includes(status)
+                const canSend  = status === "raised"
 
                 return (
                   <TableRow key={r.id}>
@@ -147,7 +215,8 @@ export default function PoTable({
                             <Scissors className="h-3 w-3" /> Split
                           </button>
                         )}
-                        {!canEdit && !canSplit && (
+                        {canSend && <RaisedPoActions poId={r.id} poNo={r.po_no} />}
+                        {!canEdit && !canSplit && !canSend && (
                           <span className="text-muted-foreground">—</span>
                         )}
                       </div>

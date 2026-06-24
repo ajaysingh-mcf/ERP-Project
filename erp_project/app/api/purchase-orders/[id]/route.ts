@@ -23,7 +23,7 @@ export async function PUT(
   if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
 
   const body = await req.json()
-  const { mfg_id, sku_code, qty, expected_on, reason } = body
+  const { mfg_id, sku_code, qty, expected_on, destination, reason } = body
 
   if (!mfg_id)                  return NextResponse.json({ error: "Manufacturer is required." }, { status: 400 })
   if (!sku_code)                 return NextResponse.json({ error: "SKU is required." }, { status: 400 })
@@ -47,8 +47,8 @@ export async function PUT(
   )
   const po = poRows[0]
   if (!po) return NextResponse.json({ error: "PO not found." }, { status: 404 })
-  if (!["draft", "raised", "punched"].includes(po.status)) {
-    return NextResponse.json({ error: "Only draft, raised, or punched POs can be edited." }, { status: 409 })
+  if (po.status !== "draft") {
+    return NextResponse.json({ error: "Only draft POs can be edited." }, { status: 409 })
   }
 
   // Block if there is already a pending approval (approval not yet reviewed)
@@ -75,7 +75,7 @@ export async function PUT(
   try {
     // Update PO fields
     await conn.execute(purchaseOrdersSql.updateDraft, [
-      Number(mfg_id), sku_code, Number(qty), expected_on || null, poId,
+      Number(mfg_id), sku_code, Number(qty), expected_on || null, destination || null, poId,
     ])
 
     // Fetch MFG details for readable diff
@@ -95,6 +95,7 @@ export async function PUT(
       ["sku_code",     "", sku_code],
       ["qty",          "", String(qty)],
       ["expected_on",  "", expected_on || ""],
+      ["destination",  "", destination || ""],
     ]
     if (reason?.trim()) {
       diffItems.push(["reason", "", reason.trim()])

@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server"
 import type { PoolConnection } from "mysql2/promise"
 import { auth } from "@/lib/auth"
 import { query, pool } from "@/lib/db"
+import { approvalsSql } from "@/lib/queries/approvals"
 
 const SPLITTABLE = new Set(["draft", "raised", "punched", "partially_received"])
 
@@ -53,17 +54,48 @@ export async function POST(
     )
   }
 
+  const userId = parseInt(session.user.id)
+
+  // Fetch MFG details once for readable approval diffs
+  const mfgRows = await query<any>(
+    "SELECT code, name FROM master_mfgs WHERE id = ? LIMIT 1", [po.mfg_id]
+  )
+  const mfg = mfgRows[0] ?? { code: po.mfg_id, name: String(po.mfg_id) }
+
   const conn: PoolConnection = await pool.getConnection()
   await conn.beginTransaction()
   try {
+    const isParentDraft = po.status === "draft"
+    const childStatus   = isParentDraft ? "draft" : "raised"
+
     for (let i = 0; i < splits.length; i++) {
       const { destination, qty } = splits[i]
       const childPoNo = `${po.po_no}-S${i + 1}`
-      await conn.execute(
+
+      const [childResult] = await conn.execute(
         `INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, destination)
-         VALUES (?, ?, CURDATE(), ?, ?, ?, 'raised', ?)`,
-        [childPoNo, po.mfg_id, po.sku_code, Number(qty), po.expected_on, destination || null]
+         VALUES (?, ?, CURDATE(), ?, ?, ?, ?, ?)`,
+        [childPoNo, po.mfg_id, po.sku_code, Number(qty), po.expected_on, childStatus, destination || null]
       )
+      const childId = (childResult as any).insertId
+
+      // If parent was draft, each child needs its own approval record
+      if (isParentDraft) {
+        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PO", childId])
+        const approvalId = (ar as any).insertId
+        const items: [string, string, string][] = [
+          ["po_no",        "", childPoNo],
+          ["manufacturer", "", `${mfg.code} — ${mfg.name}`],
+          ["sku_code",     "", po.sku_code],
+          ["qty",          "", String(qty)],
+          ["expected_on",  "", po.expected_on || ""],
+          ["destination",  "", destination || ""],
+          ["split_from",   "", po.po_no],
+        ]
+        for (const [field, oldVal, newVal] of items) {
+          await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, oldVal, newVal])
+        }
+      }
     }
 
     // Close the original

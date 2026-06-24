@@ -117,6 +117,7 @@ model mfg_details {
   location   String?             @db.VarChar(200)
   gst_number String?             @db.VarChar(20)
   status     mfg_details_status? @default(active)
+  email      String?             @db.VarChar(255)
   mfgs       mfgs                @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "mfg_details_ibfk_1")
 
   @@index([mfg_id], map: "mfg_id")

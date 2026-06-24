@@ -47,6 +47,7 @@ export type Mfg = {
   bank_name: string | null
   ifsc_number: string | null
   account_number: string | null
+  email: string | null
 }
 
 /** `vendors` table — Suppliers. `type` is one of: "rm" | "pm" | "both". Used by app/masters/vendors. */

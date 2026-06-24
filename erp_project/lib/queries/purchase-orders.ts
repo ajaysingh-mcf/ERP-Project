@@ -39,10 +39,10 @@ export const purchaseOrdersSql = {
     SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE 'IMP-%'
   `,
 
-  /** Insert a new impromptu PO as draft (pending approval). Parameters: [po_no, mfg_id, sku_code, qty, expected_on] */
+  /** Insert a new impromptu PO as draft (pending approval). Parameters: [po_no, mfg_id, sku_code, qty, expected_on, destination] */
   insert: `
-    INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status)
-    VALUES (?, ?, CURDATE(), ?, ?, ?, 'draft')
+    INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, destination)
+    VALUES (?, ?, CURDATE(), ?, ?, ?, 'draft', ?)
   `,
 
   /** Set status on a purchase_orders row. Parameters: [status, id] */
@@ -81,9 +81,9 @@ export const purchaseOrdersSql = {
     ORDER BY m.code ASC
   `,
 
-  /** Update editable fields on a PO (draft/raised/punched). Parameters: [mfg_id, sku_code, qty, expected_on, id] */
+  /** Update editable fields on a PO (draft/raised/punched). Parameters: [mfg_id, sku_code, qty, expected_on, destination, id] */
   updateDraft: `
-    UPDATE purchase_orders SET mfg_id = ?, sku_code = ?, qty = ?, expected_on = ?
+    UPDATE purchase_orders SET mfg_id = ?, sku_code = ?, qty = ?, expected_on = ?, destination = ?
     WHERE id = ?
   `,
 }

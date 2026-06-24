@@ -28,7 +28,7 @@ export const manufacturers = {
       mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
       mfgd.gst_number, mfgd.registered_name, mfgd.zone,
       mfgd.bank_name, mfgd.ifsc_number, mfgd.account_number,
-      mfg.code, mfg.name
+      mfgd.email, mfg.code, mfg.name
     FROM master_mfgs AS mfg
     INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     WHERE (? IS NULL OR mfg.code LIKE ? OR mfg.name LIKE ?)
@@ -46,7 +46,7 @@ export const manufacturers = {
       mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
       mfgd.gst_number, mfgd.registered_name, mfgd.zone,
       mfgd.bank_name, mfgd.ifsc_number, mfgd.account_number,
-      mfg.code, mfg.name
+      mfgd.email, mfg.code, mfg.name
     FROM master_mfgs AS mfg
     INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     WHERE (? IS NULL OR mfg.code LIKE ? OR mfg.name LIKE ?)
@@ -91,12 +91,12 @@ export const manufacturers = {
     UPDATE master_mfgs SET name = ? WHERE id = ?
   `,
 
-  /** Update manufacturer details. Parameters: [location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number, mfg_id] */
+  /** Update manufacturer details. Parameters: [location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number, email, mfg_id] */
   updateMfgDetails: `
     UPDATE details_mfg
     SET location = ?, gst_number = ?, status = ?,
         registered_name = ?, zone = ?, bank_name = ?,
-        ifsc_number = ?, account_number = ?
+        ifsc_number = ?, account_number = ?, email = ?
     WHERE mfg_id = ?
   `,
 
@@ -110,7 +110,7 @@ export const manufacturers = {
       mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
       mfgd.gst_number, mfgd.registered_name, mfgd.zone,
       mfgd.bank_name, mfgd.ifsc_number, mfgd.account_number,
-      mfg.code, mfg.name
+      mfgd.email, mfg.code, mfg.name
     FROM master_mfgs AS mfg
     INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     WHERE mfg.id = ? LIMIT 1

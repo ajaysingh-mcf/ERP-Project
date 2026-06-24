@@ -8,16 +8,17 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import type { EditData, ImpromptuForm, MfgOption, SkuOption } from "./po-types"
+import type { EditData, ImpromptuForm, MfgOption, SkuOption, WarehouseOption } from "./po-types"
 import { EMPTY_FORM } from "./po-types"
 
 export default function ImpromptuPODialog({
-  open, onClose, skuOptions, mfgOptions, onCreated, editData,
+  open, onClose, skuOptions, mfgOptions, warehouseOptions, onCreated, editData,
 }: {
   open: boolean
   onClose: () => void
   skuOptions: SkuOption[]
   mfgOptions: MfgOption[]
+  warehouseOptions: WarehouseOption[]
   onCreated: () => void
   editData?: EditData | null
 }) {
@@ -38,6 +39,7 @@ export default function ImpromptuPODialog({
         expected_on: editData.expected_on
           ? new Date(editData.expected_on).toISOString().slice(0, 10)
           : "",
+        destination: editData.destination ?? "",
         reason: "",
       })
     } else {
@@ -73,6 +75,7 @@ export default function ImpromptuPODialog({
         sku_code: form.sku_code,
         qty: Number(form.qty),
         expected_on: form.expected_on,
+        destination: form.destination || undefined,
         reason: form.reason.trim() || undefined,
       }
       const res = isEdit
@@ -168,6 +171,19 @@ export default function ImpromptuPODialog({
               />
               {errors.expected_on && <p className="text-xs text-destructive">{errors.expected_on}</p>}
             </div>
+          </div>
+
+          {/* Destination */}
+          <div className="grid gap-1.5">
+            <Label htmlFor="ipo-dest">Destination Warehouse</Label>
+            <select id="ipo-dest" value={form.destination} onChange={(e) => set("destination", e.target.value)} className={selectCls}>
+              <option value="">— Select Warehouse (optional) —</option>
+              {warehouseOptions.map((w) => (
+                <option key={w.id} value={w.name}>
+                  {w.name}{w.zone ? ` — ${w.zone}` : ""} ({w.type})
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Reason */}

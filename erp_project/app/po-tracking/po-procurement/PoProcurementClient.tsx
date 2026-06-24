@@ -242,6 +242,7 @@ export default function PoProcurementClient({
         onClose={() => setShowImpromptu(false)}
         skuOptions={skuOptions}
         mfgOptions={mfgOptions}
+        warehouseOptions={warehouseOptions}
         onCreated={afterAction}
       />
 
@@ -250,6 +251,7 @@ export default function PoProcurementClient({
         onClose={() => setEditTarget(null)}
         skuOptions={skuOptions}
         mfgOptions={mfgOptions}
+        warehouseOptions={warehouseOptions}
         onCreated={afterAction}
         editData={editTarget ? {
           id: editTarget.id,
@@ -257,6 +259,7 @@ export default function PoProcurementClient({
           sku_code: editTarget.sku_code ?? "",
           qty: editTarget.qty,
           expected_on: editTarget.expected_on,
+          destination: editTarget.destination,
         } : null}
       />
 

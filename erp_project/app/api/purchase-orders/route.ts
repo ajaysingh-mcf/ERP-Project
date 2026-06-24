@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   const userId = parseInt(session.user.id)
 
   const body = await req.json()
-  const { mfg_id, sku_code, qty, expected_on, reason } = body
+  const { mfg_id, sku_code, qty, expected_on, destination, reason } = body
 
   if (!mfg_id)                   return NextResponse.json({ error: "Manufacturer is required." }, { status: 400 })
   if (!sku_code)                  return NextResponse.json({ error: "SKU is required." }, { status: 400 })
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   try {
     // 1. Insert PO as draft
     const [poResult] = await conn.execute(purchaseOrdersSql.insert, [
-      po_no, Number(mfg_id), sku_code, Number(qty), expected_on || null,
+      po_no, Number(mfg_id), sku_code, Number(qty), expected_on || null, destination || null,
     ])
     const poId = (poResult as any).insertId
 
@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
       ["sku_code",     "", sku_code],
       ["qty",          "", String(qty)],
       ["expected_on",  "", expected_on || ""],
+      ["destination",  "", destination || ""],
     ]
     if (reason?.trim()) {
       diffItems.push(["reason", "", reason.trim()])
