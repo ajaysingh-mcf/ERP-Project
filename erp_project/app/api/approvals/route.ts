@@ -5,7 +5,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { query } from "@/lib/db"
-import { approvalsSql } from "@/lib/queries/approvals"
+import { approvalsSql, entityLabelSql } from "@/lib/queries/approvals"
 
 export async function GET() {
   const session = await auth()
@@ -13,10 +13,23 @@ export async function GET() {
 
   const rows = await query<any>(approvalsSql.listPending, [])
   const approvals = await Promise.all(
-    rows.map(async (a) => ({
-      ...a,
-      items: await query<any>(approvalsSql.getItems, [a.id]),
-    }))
+    rows.map(async (a) => {
+      const [items, labelRows] = await Promise.all([
+        query<any>(approvalsSql.getItems, [a.id]),
+        entityLabelSql[a.module]
+          ? query<any>(entityLabelSql[a.module], [a.entity_id])
+          : Promise.resolve([]),
+      ])
+      const label = labelRows[0] ?? {}
+      return {
+        ...a,
+        items,
+        entity_code:           label.code           ?? null,
+        entity_name:           label.name           ?? null,
+        entity_secondary_code: label.secondary_code ?? null,
+        entity_secondary_name: label.secondary_name ?? null,
+      }
+    })
   )
 
   return NextResponse.json(approvals)

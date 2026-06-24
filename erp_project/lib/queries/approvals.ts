@@ -9,6 +9,62 @@
  * for each changed field within one approval.
  */
 
+/**
+ * Per-module SQL to fetch the human-readable label for the entity being approved.
+ * Each query returns: { code, name, secondary_code?, secondary_name? }
+ * Parameters: [entity_id]
+ */
+export const entityLabelSql: Record<string, string> = {
+  SKU: `
+    SELECT sku_code AS code, name, NULL AS secondary_code, NULL AS secondary_name
+    FROM master_skus WHERE id = ? LIMIT 1
+  `,
+  RM_MAT: `
+    SELECT COALESCE(rm_code, CONCAT('RM#', id)) AS code, name, NULL AS secondary_code, NULL AS secondary_name
+    FROM master_rm WHERE id = ? LIMIT 1
+  `,
+  PM_MAT: `
+    SELECT COALESCE(pm_code, CONCAT('PM#', id)) AS code, name, NULL AS secondary_code, NULL AS secondary_name
+    FROM master_pm WHERE id = ? LIMIT 1
+  `,
+  VENDOR: `
+    SELECT v.code, v.name, NULL AS secondary_code, NULL AS secondary_name
+    FROM master_vendors v WHERE v.id = ? LIMIT 1
+  `,
+  MFG: `
+    SELECT code, name, NULL AS secondary_code, NULL AS secondary_name
+    FROM master_mfgs WHERE id = ? LIMIT 1
+  `,
+  RM_RATE: `
+    SELECT r.rm_code AS code, r.name, m.code AS secondary_code, m.name AS secondary_name
+    FROM rm_mrm_fixed rmm
+    JOIN master_rm r ON r.id = rmm.rm_id
+    JOIN master_mfgs m ON m.id = rmm.mfg_id
+    WHERE rmm.id = ? LIMIT 1
+  `,
+  PM_RATE: `
+    SELECT p.pm_code AS code, p.name, m.code AS secondary_code, m.name AS secondary_name
+    FROM pm_mrm_fixed pmm
+    JOIN master_pm p ON p.id = pmm.pm_id
+    JOIN master_mfgs m ON m.id = pmm.mfg_id
+    WHERE pmm.id = ? LIMIT 1
+  `,
+  RM_VRM: `
+    SELECT r.rm_code AS code, r.name, v.code AS secondary_code, v.name AS secondary_name
+    FROM rm_vrm_dynamic rmv
+    JOIN master_rm r ON r.id = rmv.rm_id
+    JOIN master_vendors v ON v.id = rmv.vendor_id
+    WHERE rmv.id = ? LIMIT 1
+  `,
+  PM_VRM: `
+    SELECT p.pm_code AS code, p.name, v.code AS secondary_code, v.name AS secondary_name
+    FROM pm_vrm_dynamic pmv
+    JOIN master_pm p ON p.id = pmv.pm_id
+    JOIN master_vendors v ON v.id = pmv.vendor_id
+    WHERE pmv.id = ? LIMIT 1
+  `,
+}
+
 export const approvalsSql = {
   // ── Write ───────────────────────────────────────────────────────────────
 

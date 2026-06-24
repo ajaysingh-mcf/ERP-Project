@@ -29,6 +29,10 @@ type Approval = {
   raised_on: string
   raised_by_name: string
   items: ApprovalItem[]
+  entity_code: string | null
+  entity_name: string | null
+  entity_secondary_code: string | null
+  entity_secondary_name: string | null
 }
 
 const MODULE_LABEL: Record<string, string> = {
@@ -39,6 +43,8 @@ const MODULE_LABEL: Record<string, string> = {
   PM_VRM:  "PM Rate (Vendor)",
   RM_MAT:  "Raw Material",
   PM_MAT:  "Packing Material",
+  VENDOR:  "Vendor",
+  MFG:     "Manufacturer",
 }
 
 const MODULE_COLOR: Record<string, string> = {
@@ -49,6 +55,8 @@ const MODULE_COLOR: Record<string, string> = {
   PM_VRM:  "bg-teal-50 text-teal-700 border-teal-200",
   RM_MAT:  "bg-rose-50 text-rose-700 border-rose-200",
   PM_MAT:  "bg-violet-50 text-violet-700 border-violet-200",
+  VENDOR:  "bg-indigo-50 text-indigo-700 border-indigo-200",
+  MFG:     "bg-amber-50 text-amber-700 border-amber-200",
 }
 
 export default function ApprovalsClient({
@@ -148,7 +156,7 @@ export default function ApprovalsClient({
 
       {/* ── Empty state ── */}
       {approvals.length === 0 ? (
-        <Card className="p-3">
+        <Card className="p-3 m-4">
           <CardContent className="flex flex-col items-center justify-center gap-3 py-20 text-center">
             <div className="rounded-full bg-emerald-50 p-4">
               <Check className="h-6 w-6 text-emerald-600" />
@@ -158,7 +166,7 @@ export default function ApprovalsClient({
           </CardContent>
         </Card>
       ) : (
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden ml-2">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
 
@@ -210,12 +218,45 @@ export default function ApprovalsClient({
 
                         {/* Module */}
                         <td className="px-4 py-4">
-                          <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${moduleColor}`}>
-                            {MODULE_LABEL[approval.module] ?? approval.module}
-                          </span>
-                          <span className="ml-2 font-mono text-xs text-muted-foreground">
-                            #{approval.entity_id}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold w-fit ${moduleColor}`}>
+                              {MODULE_LABEL[approval.module] ?? approval.module}
+                            </span>
+                            {(approval.entity_code || approval.entity_name) ? (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-xs text-foreground">
+                                  {approval.entity_code && (
+                                    <span className="font-mono font-semibold">
+                                      {approval.entity_code}
+                                    </span>
+                                  )}
+                                  {approval.entity_name && (
+                                    <span className={`font-sans ${approval.entity_code ? "ml-1.5 text-muted-foreground" : "font-medium"}`}>
+                                      {approval.entity_name}
+                                    </span>
+                                  )}
+                                </span>
+                                {(approval.entity_secondary_code || approval.entity_secondary_name) && (
+                                  <span className="text-xs text-foreground">
+                                    {approval.entity_secondary_code && (
+                                      <span className="font-mono font-semibold">
+                                        {approval.entity_secondary_code}
+                                      </span>
+                                    )}
+                                    {approval.entity_secondary_name && (
+                                      <span className={`font-sans ${approval.entity_secondary_code ? "ml-1.5 text-muted-foreground" : "font-medium"}`}>
+                                        {approval.entity_secondary_name}
+                                      </span>
+                                    )}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="font-mono text-xs text-muted-foreground">
+                                #{approval.entity_id}
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Submitted by */}

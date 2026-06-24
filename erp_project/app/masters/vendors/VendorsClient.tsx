@@ -213,7 +213,13 @@ export default function VendorsClient({
                       )}
                     </TableCell>
                     <TableCell>
-                      <Button size="icon" variant="ghost" onClick={() => setEditVendor(row)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setEditVendor(row)}
+                        disabled={row.status === "in_review"}
+                        title={row.status === "in_review" ? "Pending approval — cannot edit" : "Edit"}
+                      >
                         <Pencil className="h-4 w-4" />
                       </Button>
                     </TableCell>

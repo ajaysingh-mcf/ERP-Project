@@ -155,7 +155,13 @@ export default function ManufacturersClient({
                       )}
                     </TableCell>
                     <TableCell>
-                      <Button size="icon" variant="ghost" onClick={() => setEditMfg(row)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setEditMfg(row)}
+                        disabled={row.status === "in_review"}
+                        title={row.status === "in_review" ? "Pending approval — cannot edit" : "Edit"}
+                      >
                         <Pencil className="h-4 w-4" />
                       </Button>
                     </TableCell>

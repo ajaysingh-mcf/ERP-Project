@@ -4,7 +4,7 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { query } from "@/lib/db"
-import { approvalsSql } from "@/lib/queries/approvals"
+import { approvalsSql, entityLabelSql } from "@/lib/queries/approvals"
 import ApprovalsClient from "./ApprovalsClient"
 
 export const dynamic = "force-dynamic"
@@ -15,10 +15,23 @@ export default async function ApprovalsPage() {
 
   const rows = await query<any>(approvalsSql.listPending, [])
   const approvals = await Promise.all(
-    rows.map(async (a) => ({
-      ...a,
-      items: await query<any>(approvalsSql.getItems, [a.id]),
-    }))
+    rows.map(async (a) => {
+      const [items, labelRows] = await Promise.all([
+        query<any>(approvalsSql.getItems, [a.id]),
+        entityLabelSql[a.module]
+          ? query<any>(entityLabelSql[a.module], [a.entity_id])
+          : Promise.resolve([]),
+      ])
+      const label = labelRows[0] ?? {}
+      return {
+        ...a,
+        items,
+        entity_code:           label.code           ?? null,
+        entity_name:           label.name           ?? null,
+        entity_secondary_code: label.secondary_code ?? null,
+        entity_secondary_name: label.secondary_name ?? null,
+      }
+    })
   )
 
   const isApprover = session.user.roles?.some((r) => ["admin", "manager"].includes(r)) ?? false
