@@ -20,6 +20,7 @@ export const purchaseOrdersSql = {
       po.expected_on,
       po.received_qty,
       po.invoice_no,
+      po.destination,
       po.status,
       m.id   AS mfg_id,
       m.code AS mfg_code,

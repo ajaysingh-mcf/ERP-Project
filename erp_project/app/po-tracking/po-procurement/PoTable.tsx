@@ -38,7 +38,7 @@ export default function PoTable({
 }) {
   return (
     <Card>
-      <CardContent className="p-0 overflow-x-auto">
+      <CardContent className="p-0">
         <Table>
           <TableHeader>
             <TableRow>
@@ -51,6 +51,8 @@ export default function PoTable({
               <TableHead className="text-right">PO Qty</TableHead>
               <TableHead>Received</TableHead>
               <TableHead>Amount</TableHead>
+              <TableHead>Invoice No</TableHead>
+              <TableHead>Destination</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -59,7 +61,7 @@ export default function PoTable({
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center text-muted-foreground py-10">
+                <TableCell colSpan={13} className="text-center text-muted-foreground py-10">
                   No purchase orders match your filters.
                 </TableCell>
               </TableRow>
@@ -112,6 +114,14 @@ export default function PoTable({
                     <TableCell><ProgressCell value={r.received_qty} total={r.qty} /></TableCell>
 
                     <TableCell className="text-xs tabular-nums">{fmtMoney(r.total_amount)}</TableCell>
+
+                    <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                      {r.invoice_no ?? "—"}
+                    </TableCell>
+
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {r.destination ?? "—"}
+                    </TableCell>
 
                     {/* Status badge */}
                     <TableCell>

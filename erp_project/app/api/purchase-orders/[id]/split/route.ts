@@ -1,7 +1,6 @@
 // POST /api/purchase-orders/[id]/split
 // Split a raised PO into N child POs, one per destination.
 // The original PO is set to 'short_closed'; child POs inherit status 'raised'.
-// Destination is stored in invoice_no until the schema gains a dedicated column.
 
 import { NextRequest, NextResponse } from "next/server"
 import type { PoolConnection } from "mysql2/promise"
@@ -61,7 +60,7 @@ export async function POST(
       const { destination, qty } = splits[i]
       const childPoNo = `${po.po_no}-S${i + 1}`
       await conn.execute(
-        `INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, invoice_no)
+        `INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, destination)
          VALUES (?, ?, CURDATE(), ?, ?, ?, 'raised', ?)`,
         [childPoNo, po.mfg_id, po.sku_code, Number(qty), po.expected_on, destination || null]
       )

@@ -15,6 +15,7 @@ export type PoRow = {
   expected_on: string | null
   received_qty: string | number | null
   invoice_no: string | null
+  destination: string | null
   status: PoStatus | null
   mfg_id: number
   mfg_code: string
