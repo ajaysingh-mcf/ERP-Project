@@ -17,8 +17,9 @@
 // skip-on-duplicate works via ER_DUP_ENTRY.
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { pool } from "@/lib/db"
+import { pool, query } from "@/lib/db"
 import { manufacturers } from "@/lib/queries/manufacturers"
+import { approvalsSql } from "@/lib/queries/approvals"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -118,27 +119,64 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "mfg_id and name are required" }, { status: 400 })
     }
 
+    const userId = parseInt(session.user.id)
+
+    const pending = await query(approvalsSql.hasPending, ["MFG", mfg_id])
+    if (pending.length > 0) {
+      return NextResponse.json(
+        { error: "This manufacturer has a pending approval. Wait for it to be resolved before editing again." },
+        { status: 409 }
+      )
+    }
+
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     try {
-      await conn.execute(manufacturers.updateMfg, [name.trim(), mfg_id])
-      await conn.execute(manufacturers.updateMfgDetails, [
-        location?.trim() || null,
-        gst_number?.trim() || null,
-        status || "active",
-        registered_name?.trim() || null,
-        zone?.trim() || null,
-        bank_name?.trim() || null,
-        ifsc_number?.trim() || null,
-        account_number?.trim() || null,
-        mfg_id,
-      ])
+      const [rows] = await conn.execute(manufacturers.selectById, [mfg_id])
+      const current = (rows as any[])[0]
+      if (!current) {
+        await conn.rollback()
+        return NextResponse.json({ error: "Manufacturer not found" }, { status: 404 })
+      }
+
+      const proposed: Record<string, string> = {
+        name:            name.trim(),
+        location:        location?.trim() || "",
+        gst_number:      gst_number?.trim() || "",
+        registered_name: registered_name?.trim() || "",
+        zone:            zone?.trim() || "",
+        bank_name:       bank_name?.trim() || "",
+        ifsc_number:     ifsc_number?.trim() || "",
+        account_number:  account_number?.trim() || "",
+        status:          status || "active",
+      }
+      const diff = Object.entries(proposed).filter(
+        ([k, v]) => String(current[k] ?? "") !== String(v ?? "")
+      )
+      if (diff.length === 0) {
+        await conn.rollback()
+        return NextResponse.json({ ok: true, message: "No changes detected" })
+      }
+
+      const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "MFG", mfg_id])
+      const approvalId = (approvalResult as any).insertId
+
+      for (const [field, newVal] of diff) {
+        await conn.execute(approvalsSql.insertApprovalItem, [
+          approvalId,
+          field,
+          String(current[field] ?? ""),
+          String(newVal ?? ""),
+        ])
+      }
+
+      await conn.execute(manufacturers.setStatus, ["in_review", mfg_id])
 
       await conn.commit()
-      return NextResponse.json({ ok: true })
+      return NextResponse.json({ ok: true, approval_id: approvalId })
     } catch (err: any) {
       await conn.rollback()
-      console.error("Mfg update error:", err)
+      console.error("[Mfg] update (approval) mfg_id=%d error=%s", mfg_id, err.message)
       return NextResponse.json({ error: "Database error" }, { status: 500 })
     } finally {
       conn.release()

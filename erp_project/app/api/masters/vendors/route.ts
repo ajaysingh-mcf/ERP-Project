@@ -23,8 +23,9 @@
 // skip-on-duplicate works. `type` is a NOT NULL enum, so it is required.
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { pool } from "@/lib/db"
+import { pool, query } from "@/lib/db"
 import { vendors } from "@/lib/queries/vendors"
+import { approvalsSql } from "@/lib/queries/approvals"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -141,23 +142,61 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "vendor_id, name and type are required" }, { status: 400 })
     }
 
+    const userId = parseInt(session.user.id)
+
+    const pending = await query(approvalsSql.hasPending, ["VENDOR", vendor_id])
+    if (pending.length > 0) {
+      return NextResponse.json(
+        { error: "This vendor has a pending approval. Wait for it to be resolved before editing again." },
+        { status: 409 }
+      )
+    }
+
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     try {
-      await conn.execute(vendors.updateVendor, [name.trim(), type.trim(), vendor_id])
-      await conn.execute(vendors.updateVendorDetails, [
-        location?.trim() || null,
-        status || "active",
-        zone?.trim() || null,
-        registered_name?.trim() || null,
-        vendor_id,
-      ])
+      const [rows] = await conn.execute(vendors.selectById, [vendor_id])
+      const current = (rows as any[])[0]
+      if (!current) {
+        await conn.rollback()
+        return NextResponse.json({ error: "Vendor not found" }, { status: 404 })
+      }
+
+      const proposed: Record<string, string> = {
+        name:            name.trim(),
+        type:            type.trim(),
+        location:        location?.trim() || "",
+        zone:            zone?.trim() || "",
+        registered_name: registered_name?.trim() || "",
+        status:          status || "active",
+      }
+      const diff = Object.entries(proposed).filter(
+        ([k, v]) => String(current[k] ?? "") !== String(v ?? "")
+      )
+      if (diff.length === 0) {
+        await conn.rollback()
+        return NextResponse.json({ ok: true, message: "No changes detected" })
+      }
+
+      const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "VENDOR", vendor_id])
+      const approvalId = (approvalResult as any).insertId
+
+      for (const [field, newVal] of diff) {
+        await conn.execute(approvalsSql.insertApprovalItem, [
+          approvalId,
+          field,
+          String(current[field] ?? ""),
+          String(newVal ?? ""),
+        ])
+      }
+
+      await conn.execute(vendors.setStatus, ["in_review", vendor_id])
 
       await conn.commit()
-      return NextResponse.json({ ok: true })
+      return NextResponse.json({ ok: true, approval_id: approvalId })
     } catch (err: any) {
       await conn.rollback()
-      console.error("Vendor update error:", err)
+      console.error("[Vendor] update (approval) vendor_id=%d error=%s", vendor_id, err.message)
       return NextResponse.json({ error: "Database error" }, { status: 500 })
     } finally {
       conn.release()

@@ -494,6 +494,8 @@ enum vendors_type {
 enum mfg_details_status {
   active
   inactive
+  in_review
+  draft
 }
 
 enum vendor_details_status {
@@ -501,6 +503,8 @@ enum vendor_details_status {
   inactive
   blacklisted
   discontinued
+  in_review
+  draft
 }
 
 enum pm_status {

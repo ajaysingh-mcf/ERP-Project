@@ -106,4 +106,23 @@ export const vendors = {
     UPDATE details_vendor SET location = ?, status = ?, zone = ?, registered_name = ? WHERE vendor_id = ?
   `,
 
+  // ── Approval-flow helpers ────────────────────────────────────────────────
+
+  /** Fetch a single vendor by vendor_id (JOIN base + details).
+   *  Parameters: [vendor_id]
+   */
+  selectById: `
+    SELECT
+      vd.vendor_id, vd.location, vd.status,
+      vd.zone, vd.registered_name, v.code, v.name, v.type
+    FROM details_vendor vd
+    JOIN master_vendors v ON vd.vendor_id = v.id
+    WHERE vd.vendor_id = ? LIMIT 1
+  `,
+
+  /** Set status on the details_vendor row (e.g. 'in_review', 'draft', 'active').
+   *  Parameters: [status, vendor_id]
+   */
+  setStatus: `UPDATE details_vendor SET status = ? WHERE vendor_id = ?`,
+
 }

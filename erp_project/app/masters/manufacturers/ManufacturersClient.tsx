@@ -8,6 +8,7 @@
  */
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -139,7 +140,20 @@ export default function ManufacturersClient({
                     <TableCell>{row.zone ?? "—"}</TableCell>
                     <TableCell>{row.gst_number ?? "—"}</TableCell>
                     <TableCell>{row.bank_name ?? "—"}</TableCell>
-                    <TableCell>{row.status ?? "—"}</TableCell>
+                    <TableCell>
+                      {row.status === "in_review" ? (
+                        <Badge variant="warning" className="capitalize">In Review</Badge>
+                      ) : row.status === "draft" ? (
+                        <Badge variant="secondary" className="capitalize">Draft</Badge>
+                      ) : (
+                        <Badge
+                          variant={row.status === "active" ? "success" : "secondary"}
+                          className="capitalize"
+                        >
+                          {row.status ?? "—"}
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Button size="icon" variant="ghost" onClick={() => setEditMfg(row)}>
                         <Pencil className="h-4 w-4" />

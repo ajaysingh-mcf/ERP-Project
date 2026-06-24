@@ -99,4 +99,25 @@ export const manufacturers = {
         ifsc_number = ?, account_number = ?
     WHERE mfg_id = ?
   `,
+
+  // ── Approval-flow helpers ────────────────────────────────────────────────
+
+  /** Fetch a single manufacturer by id (JOIN base + details).
+   *  Parameters: [mfg_id]
+   */
+  selectById: `
+    SELECT
+      mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
+      mfgd.gst_number, mfgd.registered_name, mfgd.zone,
+      mfgd.bank_name, mfgd.ifsc_number, mfgd.account_number,
+      mfg.code, mfg.name
+    FROM master_mfgs AS mfg
+    INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
+    WHERE mfg.id = ? LIMIT 1
+  `,
+
+  /** Set status on the details_mfg row (e.g. 'in_review', 'draft', 'active').
+   *  Parameters: [status, mfg_id]
+   */
+  setStatus: `UPDATE details_mfg SET status = ? WHERE mfg_id = ?`,
 }

@@ -17,6 +17,8 @@ import type { PoolConnection } from "mysql2/promise"
 import { skus as skuSql } from "@/lib/queries/skus"
 import { rawMaterials as rmSql } from "@/lib/queries/raw-materials"
 import { packingMaterials as pmSql } from "@/lib/queries/packing-materials"
+import { vendors as vendorSql } from "@/lib/queries/vendors"
+import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
 import { STATUS } from "@/lib/constants"
 
 export type DiffItem = { field_name: string; old_value: string; new_value: string }
@@ -221,6 +223,63 @@ const pmMatHandler: ModuleHandler = {
   },
 }
 
+// ── VENDOR (vendor master — spans master_vendors + details_vendor) ────────────
+
+const vendorHandler: ModuleHandler = {
+  async setStatus(conn, entityId, status) {
+    await conn.execute(vendorSql.setStatus, [status, entityId])
+  },
+  async applyAndArchive(conn, entityId, items) {
+    const fieldMap = buildFieldMap(items)
+    const [rows] = await conn.execute(vendorSql.selectById, [entityId])
+    const cur = (rows as any[])[0]
+    if (!cur) throw new Error(`Vendor ${entityId} not found`)
+
+    await conn.execute(vendorSql.updateVendor, [
+      fieldMap.name ?? cur.name,
+      fieldMap.type ?? cur.type,
+      entityId,
+    ])
+    await conn.execute(vendorSql.updateVendorDetails, [
+      fieldMap.location        ?? cur.location        ?? null,
+      STATUS.ACTIVE,
+      fieldMap.zone            ?? cur.zone            ?? null,
+      fieldMap.registered_name ?? cur.registered_name ?? null,
+      entityId,
+    ])
+  },
+}
+
+// ── MFG (manufacturer master — spans master_mfgs + details_mfg) ───────────────
+
+const mfgHandler: ModuleHandler = {
+  async setStatus(conn, entityId, status) {
+    await conn.execute(mfgSql.setStatus, [status, entityId])
+  },
+  async applyAndArchive(conn, entityId, items) {
+    const fieldMap = buildFieldMap(items)
+    const [rows] = await conn.execute(mfgSql.selectById, [entityId])
+    const cur = (rows as any[])[0]
+    if (!cur) throw new Error(`Manufacturer ${entityId} not found`)
+
+    await conn.execute(mfgSql.updateMfg, [
+      fieldMap.name ?? cur.name,
+      entityId,
+    ])
+    await conn.execute(mfgSql.updateMfgDetails, [
+      fieldMap.location        ?? cur.location        ?? null,
+      fieldMap.gst_number      ?? cur.gst_number      ?? null,
+      STATUS.ACTIVE,
+      fieldMap.registered_name ?? cur.registered_name ?? null,
+      fieldMap.zone            ?? cur.zone            ?? null,
+      fieldMap.bank_name       ?? cur.bank_name       ?? null,
+      fieldMap.ifsc_number     ?? cur.ifsc_number     ?? null,
+      fieldMap.account_number  ?? cur.account_number  ?? null,
+      entityId,
+    ])
+  },
+}
+
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 export const MODULE_HANDLERS: Record<string, ModuleHandler> = {
@@ -231,4 +290,6 @@ export const MODULE_HANDLERS: Record<string, ModuleHandler> = {
   PM_VRM:  pmVrmHandler,
   RM_MAT:  rmMatHandler,
   PM_MAT:  pmMatHandler,
+  VENDOR:  vendorHandler,
+  MFG:     mfgHandler,
 }
