@@ -88,6 +88,16 @@ export const skus = {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `,
 
+  // ============ INSERT QUERIES ============
+
+  /** Insert a new SKU row.
+   *  Parameters: [sku_code, name, brand, category, status, created_by]
+   */
+  insertSku: `
+    INSERT INTO master_skus (sku_code, name, brand, category, status, created_by)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `,
+
   // ── Approval-flow helpers ────────────────────────────────────────────────
 
   /** Set the status of a SKU (e.g. 'in_review', 'draft', 'active').

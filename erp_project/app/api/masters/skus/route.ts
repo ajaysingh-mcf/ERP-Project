@@ -40,17 +40,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "sku_code and name are required" }, { status: 400 })
     }
     try {
-      const result = await execute(
-        "INSERT INTO skus (sku_code, name, brand, category, status, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-        [
-          sku_code.trim(),
-          name.trim(),
-          brand?.trim() || null,
-          category?.trim() || null,
-          status || "active",
-          parseInt(session.user.id),
-        ]
-      )
+      const result = await execute(skuSql.insertSku, [
+        sku_code.trim(),
+        name.trim(),
+        brand?.trim() || null,
+        category?.trim() || null,
+        status || "active",
+        parseInt(session.user.id),
+      ])
       return NextResponse.json({ id: result.insertId })
     } catch (err: any) {
       if (err.code === "ER_DUP_ENTRY") {
@@ -79,17 +76,14 @@ export async function POST(req: NextRequest) {
       for (const row of rows) {
         if (!row.sku_code?.trim() || !row.name?.trim()) continue
         try {
-          await conn.execute(
-            "INSERT INTO skus (sku_code, name, brand, category, status, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-            [
-              row.sku_code.trim(),
-              row.name.trim(),
-              row.brand?.trim() || null,
-              row.category?.trim() || null,
-              row.status || "active",
-              parseInt(session.user.id),
-            ]
-          )
+          await conn.execute(skuSql.insertSku, [
+            row.sku_code.trim(),
+            row.name.trim(),
+            row.brand?.trim() || null,
+            row.category?.trim() || null,
+            row.status || "active",
+            parseInt(session.user.id),
+          ])
           inserted++
         } catch (err: any) {
           if (err.code === "ER_DUP_ENTRY") {

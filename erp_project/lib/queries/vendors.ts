@@ -4,7 +4,7 @@
  *
  * Note: Vendors span two tables linked only by ID (no DB foreign key):
  *   vendors(id, code, name, type)
- *   vendor_details(vendor_id → vendors.id, location, gst_number, status)
+ *   details_vendor(vendor_id → vendors.id, location, status, zone, registered_name)
  */
 
 export const vendors = {
@@ -16,9 +16,9 @@ export const vendors = {
    */
   selectAll: `
     SELECT
-      vd.vendor_id, vd.gst_number, vd.location,
-      vd.status, v.code, v.name, v.type
-    FROM vendor_details vd
+      vd.vendor_id, vd.location, vd.status,
+      vd.zone, vd.registered_name, v.code, v.name, v.type
+    FROM details_vendor vd
     JOIN master_vendors v ON vd.vendor_id = v.id
   `,
 
@@ -36,9 +36,9 @@ export const vendors = {
    */
   selectPaginated: `
     SELECT
-      vd.vendor_id, vd.gst_number, vd.location,
-      vd.status, v.code, v.name, v.type
-    FROM vendor_details vd
+      vd.vendor_id, vd.location, vd.status,
+      vd.zone, vd.registered_name, v.code, v.name, v.type
+    FROM details_vendor vd
     JOIN master_vendors v ON vd.vendor_id = v.id
     WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
       AND (? IS NULL OR v.type = ?)
@@ -53,9 +53,9 @@ export const vendors = {
    */
   selectAllFiltered: `
     SELECT
-      vd.vendor_id, vd.gst_number, vd.location,
-      vd.status, v.code, v.name, v.type
-    FROM vendor_details vd
+      vd.vendor_id, vd.location, vd.status,
+      vd.zone, vd.registered_name, v.code, v.name, v.type
+    FROM details_vendor vd
     JOIN master_vendors v ON vd.vendor_id = v.id
     WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
       AND (? IS NULL OR v.type = ?)
@@ -68,7 +68,7 @@ export const vendors = {
    */
   countAll: `
     SELECT COUNT(*) AS total
-    FROM vendor_details vd
+    FROM details_vendor vd
     JOIN master_vendors v ON vd.vendor_id = v.id
     WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
       AND (? IS NULL OR v.type = ?)
@@ -79,7 +79,7 @@ export const vendors = {
   /**
    * Insert vendor base record
    * Parameters: [code, name, type]
-   * Returns insertId that should be used for vendor_details
+   * Returns insertId that should be used for details_vendor
    */
   insertVendor: `
     INSERT INTO master_vendors (code, name, type) VALUES (?, ?, ?)
@@ -87,11 +87,11 @@ export const vendors = {
 
   /**
    * Insert vendor details record
-   * Parameters: [vendor_id, location, gst_number, status]
+   * Parameters: [vendor_id, location, status, zone, registered_name]
    * Must be called after insertVendor with the insertId
    */
   insertVendorDetails: `
-    INSERT INTO vendor_details (vendor_id, location, gst_number, status) VALUES (?, ?, ?, ?)
+    INSERT INTO details_vendor (vendor_id, location, status, zone, registered_name) VALUES (?, ?, ?, ?, ?)
   `,
 
   // ============ UPDATE QUERIES ============
@@ -101,9 +101,9 @@ export const vendors = {
     UPDATE master_vendors SET name = ?, type = ? WHERE id = ?
   `,
 
-  /** Update vendor details record. Parameters: [location, gst_number, status, vendor_id] */
+  /** Update vendor details record. Parameters: [location, status, zone, registered_name, vendor_id] */
   updateVendorDetails: `
-    UPDATE vendor_details SET location = ?, gst_number = ?, status = ? WHERE vendor_id = ?
+    UPDATE details_vendor SET location = ?, status = ?, zone = ?, registered_name = ? WHERE vendor_id = ?
   `,
 
 }
