@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { execute, query, pool } from "@/lib/db"
 import { rawMaterials } from "@/lib/queries/raw-materials"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { parseS3Import } from "@/lib/import-s3"
 
 // Parameters for the rm table insert (base material).
 function toRmParams(r: any) {
@@ -434,6 +435,44 @@ export async function POST(req: NextRequest) {
       await conn.rollback()
       console.error("Raw material bulk insert error:", err)
       return NextResponse.json({ error: "Bulk insert failed: " + err.message }, { status: 500 })
+    } finally {
+      conn.release()
+    }
+  }
+
+  if (action === "bulk_from_s3") {
+    const { key } = body
+    if (!key?.trim()) return NextResponse.json({ error: "key is required" }, { status: 400 })
+
+    let rawRows
+    try {
+      rawRows = await parseS3Import(key)
+    } catch (err: any) {
+      return NextResponse.json({ error: "Failed to parse file: " + err.message }, { status: 400 })
+    }
+
+    if (rawRows.length === 0) return NextResponse.json({ error: "File is empty or has no data rows" }, { status: 400 })
+
+    const conn = await pool.getConnection()
+    await conn.beginTransaction()
+    let inserted = 0
+    let skipped  = 0
+
+    try {
+      for (const row of rawRows) {
+        if (!row["name"]?.trim()) continue
+        try {
+          await conn.execute(rawMaterials.insert, toRmParams(row))
+          inserted++
+        } catch (err: any) {
+          if (err.code === "ER_DUP_ENTRY") { skipped++ } else { throw err }
+        }
+      }
+      await conn.commit()
+      return NextResponse.json({ inserted, skipped })
+    } catch (err: any) {
+      await conn.rollback()
+      return NextResponse.json({ error: "Import failed: " + err.message }, { status: 500 })
     } finally {
       conn.release()
     }

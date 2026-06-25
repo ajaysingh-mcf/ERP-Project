@@ -20,6 +20,7 @@ import { auth } from "@/lib/auth"
 import { pool, query } from "@/lib/db"
 import { manufacturers } from "@/lib/queries/manufacturers"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { parseS3Import } from "@/lib/import-s3"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -212,6 +213,59 @@ export async function POST(req: NextRequest) {
       await conn.rollback()
       console.error("[Mfg] update (approval) mfg_id=%d error=%s", mfg_id, err.message)
       return NextResponse.json({ error: "Database error" }, { status: 500 })
+    } finally {
+      conn.release()
+    }
+  }
+
+  if (action === "bulk_from_s3") {
+    const { key } = body
+    if (!key?.trim()) return NextResponse.json({ error: "key is required" }, { status: 400 })
+
+    let rawRows
+    try {
+      rawRows = await parseS3Import(key)
+    } catch (err: any) {
+      return NextResponse.json({ error: "Failed to parse file: " + err.message }, { status: 400 })
+    }
+
+    if (rawRows.length === 0) return NextResponse.json({ error: "File is empty or has no data rows" }, { status: 400 })
+
+    const conn = await pool.getConnection()
+    await conn.beginTransaction()
+    let inserted = 0
+    let skipped  = 0
+
+    try {
+      for (const row of rawRows) {
+        const code = row["code"]?.trim()
+        const name = row["name"]?.trim()
+        if (!code || !name) continue
+        try {
+          const [result] = await conn.execute(manufacturers.insert, [code, name])
+          const mfgId = (result as any).insertId
+          await conn.execute(manufacturers.insertDetails, [
+            mfgId,
+            row["location"]?.trim()        || null,
+            row["gst_number"]?.trim()      || null,
+            row["status"]?.trim()          || "active",
+            row["registered_name"]?.trim() || null,
+            row["zone"]?.trim()            || null,
+            row["bank_name"]?.trim()       || null,
+            row["ifsc_number"]?.trim()     || null,
+            row["account_number"]?.trim()  || null,
+            row["email"]?.trim()           || null,
+          ])
+          inserted++
+        } catch (err: any) {
+          if (err.code === "ER_DUP_ENTRY") { skipped++ } else { throw err }
+        }
+      }
+      await conn.commit()
+      return NextResponse.json({ inserted, skipped })
+    } catch (err: any) {
+      await conn.rollback()
+      return NextResponse.json({ error: "Import failed: " + err.message }, { status: 500 })
     } finally {
       conn.release()
     }

@@ -26,6 +26,7 @@ import { auth } from "@/lib/auth"
 import { execute, pool, query } from "@/lib/db"
 import { skus as skuSql } from "@/lib/queries/skus"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { parseS3Import } from "@/lib/import-s3"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -170,6 +171,53 @@ export async function POST(req: NextRequest) {
       await conn.rollback()
       console.error("SKU update (approval) error:", err)
       return NextResponse.json({ error: "Database error" }, { status: 500 })
+    } finally {
+      conn.release()
+    }
+  }
+
+  if (action === "bulk_from_s3") {
+    const { key } = body
+    if (!key?.trim()) return NextResponse.json({ error: "key is required" }, { status: 400 })
+
+    let rawRows
+    try {
+      rawRows = await parseS3Import(key)
+    } catch (err: any) {
+      return NextResponse.json({ error: "Failed to parse file: " + err.message }, { status: 400 })
+    }
+
+    if (rawRows.length === 0) return NextResponse.json({ error: "File is empty or has no data rows" }, { status: 400 })
+
+    const conn = await pool.getConnection()
+    await conn.beginTransaction()
+    let inserted = 0
+    let skipped  = 0
+
+    try {
+      for (const row of rawRows) {
+        const sku_code = row["sku_code"]?.trim()
+        const name     = row["name"]?.trim()
+        if (!sku_code || !name) continue
+        try {
+          await conn.execute(skuSql.insertSku, [
+            sku_code,
+            name,
+            row["brand"]?.trim()    || null,
+            row["category"]?.trim() || null,
+            row["status"]?.trim()   || "active",
+            parseInt(session.user.id),
+          ])
+          inserted++
+        } catch (err: any) {
+          if (err.code === "ER_DUP_ENTRY") { skipped++ } else { throw err }
+        }
+      }
+      await conn.commit()
+      return NextResponse.json({ inserted, skipped })
+    } catch (err: any) {
+      await conn.rollback()
+      return NextResponse.json({ error: "Import failed: " + err.message }, { status: 500 })
     } finally {
       conn.release()
     }

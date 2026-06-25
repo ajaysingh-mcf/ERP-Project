@@ -292,7 +292,7 @@ function PurchaseOrderDoc({ d }: { d: PoEmailData }) {
         <View style={S.decl}>
           <Text style={S.declTitle}>Declaration</Text>
           <Text style={S.declTxt}>
-            We declare that this invoice shows the actual price of the goods described
+            We declare that this purchase order the actual price of the goods described
             and that all particulars are true and correct.
           </Text>
         </View>

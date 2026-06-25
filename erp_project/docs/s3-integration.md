@@ -250,8 +250,8 @@ Extended to support `.xlsx` files:
 
 | Prefix | Usage |
 |--------|-------|
-| `attachments/purchase-orders/{po_id}/` | PO attachment files |
-| `imports/` | CSV/Excel files uploaded for bulk imports |
+| `purchase-orders/{mfg_name}/{yyyy-mm}/PO-{po_no}.pdf` | Auto-generated PO PDF on approval |
+| `imports/{module}/{yyyy-mm}/{filename}_{ts}.{ext}` | CSV/Excel files uploaded for bulk imports |
 | `raw-events/{module}/YYYY-MM-DD/` | Events bucket — pre-DB-write payloads |
 | `processed-events/{module}/YYYY-MM-DD/` | Events bucket — successful DB writes |
 | `failed-events/{module}/YYYY-MM-DD/` | Events bucket — failed DB writes |

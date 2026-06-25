@@ -83,9 +83,11 @@ export function CsvImportDialog({
     if (excel) {
       // Excel: upload to S3 first, then process server-side (no client-side preview)
       setLoading(true)
+      const module = endpoint.split('/').pop() ?? "imports"
+      const yyyymm = new Date().toISOString().slice(0, 7)
       const form = new FormData()
       form.append("file",   file)
-      form.append("folder", "imports")
+      form.append("folder", `imports/${module}/${yyyymm}`)
       form.append("field",  `${templateFilename.replace(/\.[^.]+$/, "")}_${Date.now()}`)
       fetch("/api/upload", { method: "POST", body: form })
         .then((r) => r.json())

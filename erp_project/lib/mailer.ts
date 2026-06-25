@@ -84,7 +84,9 @@ export async function sendPoEmail(poId: number): Promise<void> {
   }
 
   // Store PDF in S3 and save key to DB (non-blocking — email still sends if this fails)
-  const s3Key = `purchase-orders/${poId}/PO-${data.po_no}.pdf`
+  const safeMfgName = data.mfg_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  const poMonth = data.date ? new Date(data.date).toISOString().slice(0, 7) : new Date().toISOString().slice(0, 7)
+  const s3Key = `purchase-orders/${safeMfgName}/${poMonth}/PO-${data.po_no}.pdf`
   try {
     await uploadFile(pdfBuffer as unknown as Buffer, s3Key, "application/pdf")
     await execute(s3FilesSql.updatePoAttachment, [s3Key, poId])

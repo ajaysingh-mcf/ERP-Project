@@ -14,9 +14,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Invalid key" }, { status: 400 })
   }
 
+  const expiresInParam = req.nextUrl.searchParams.get("expiresIn")
+  const expiresIn = expiresInParam ? Math.min(Math.max(parseInt(expiresInParam), 60), 3600) : 300
+
   try {
-    const url = await getPresignedDownloadUrl(key, 3600)
-    return NextResponse.json({ url })
+    const url = await getPresignedDownloadUrl(key, expiresIn)
+    return NextResponse.json({ url, expiresIn })
   } catch (err: any) {
     console.error("[presign] failed key=%s", key, err)
     return NextResponse.json({ error: "Could not generate URL" }, { status: 500 })

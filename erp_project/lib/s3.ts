@@ -38,7 +38,7 @@ export async function getPresignedUploadUrl(key: string, mimeType: string, expir
   )
 }
 
-export async function getPresignedDownloadUrl(key: string, expiresIn = 3600): Promise<string> {
+export async function getPresignedDownloadUrl(key: string, expiresIn = 900): Promise<string> {
   return getSignedUrl(
     s3,
     new GetObjectCommand({ Bucket: FILES_BUCKET, Key: key }),

@@ -1,6 +1,6 @@
 "use client"
 
-import { Eye, FileText, Loader2, Mail, Pencil, Scissors } from "lucide-react"
+import { FileText, Loader2, Mail, Pencil, Scissors } from "lucide-react"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -77,17 +77,6 @@ function RaisedPoActions({ poId, poNo }: { poId: number; poNo: string }) {
   return (
     <div className="flex flex-col items-end gap-1.5">
       <div className="flex items-center gap-1.5">
-        {/* Preview button — opens PDF in new tab */}
-        <a
-          href={`/api/purchase-orders/${poId}/preview-pdf`}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Preview PO PDF"
-          className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-1 text-xs hover:bg-accent transition-colors"
-        >
-          <Eye className="h-3 w-3" /> Preview
-        </a>
-
         {/* Send button */}
         {sendState === "sent" ? (
           <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 font-medium">
