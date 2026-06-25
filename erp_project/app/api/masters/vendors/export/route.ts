@@ -33,11 +33,7 @@ export async function GET(req: NextRequest) {
   const search = sp.get("search") ?? ""
   const type   = sp.get("type")   ?? ""
 
-  const like      = search ? `%${search}%` : null
-  const typeParam = type || null
-
-  // Params match selectPaginated / countAll: [like×3, type×2]
-  const filterParams = [like, like, like, typeParam, typeParam]
+  const filterParams = vendorSql.filterParams(search || null, type || null)
 
   try {
     const [{ total }] = await query<{ total: number }>(

@@ -240,7 +240,7 @@ export function RmRateTable({
                 {columns.map((col) => {
                   const active = sortKey === col.key
                   return (
-                    <TableHead key={col.key} className="bg-gray-200 font-medium text-muted-foreground">
+                    <TableHead key={col.key} className="bg-muted/50 font-medium text-muted-foreground">
                       {/* Whole header is a button so clicking anywhere sorts it. */}
                       <button
                         onClick={() => toggleSort(col.key)}
@@ -261,7 +261,7 @@ export function RmRateTable({
                     </TableHead>
                   )
                 })}
-                {actionColumn && <TableHead className="bg-gray-200 w-10" />}
+                {actionColumn && <TableHead className="bg-muted/50 w-10" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -280,7 +280,7 @@ export function RmRateTable({
                 sorted.map((row, index) => (
                   <TableRow
                     key={index}
-                    className={index % 2 === 0 ? "bg-white" : "bg-gray-200"}
+                    className={index % 2 === 0 ? "bg-background" : "bg-muted/40"}
                   >
                     {columns.map((col) => (
                       <TableCell

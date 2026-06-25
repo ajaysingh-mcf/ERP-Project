@@ -120,4 +120,20 @@ export const manufacturers = {
    *  Parameters: [status, mfg_id]
    */
   setStatus: `UPDATE details_mfg SET status = ? WHERE mfg_id = ?`,
+
+  /** Lightweight fetch of code + name — used when building readable approval diffs. Parameters: [id] */
+  selectNameById: `SELECT code, name FROM master_mfgs WHERE id = ? LIMIT 1`,
+
+  /**
+   * Build the filter parameter array for selectPaginated, selectAllFiltered, and countAll.
+   * Centralises the repeated-param pattern so callers never have to count repetitions.
+   *
+   * Usage:
+   *   const fp = manufacturers.filterParams(search)
+   *   paginate(manufacturers.selectPaginated, [...fp, limit, offset], manufacturers.countAll, fp, ...)
+   */
+  filterParams(search: string | null): unknown[] {
+    const like = search ? `%${search}%` : null
+    return [like, like, like]
+  },
 }

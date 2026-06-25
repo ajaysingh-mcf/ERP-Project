@@ -1,44 +1,21 @@
 import nodemailer from "nodemailer"
+import { GMAIL_USER, GMAIL_APP_PASSWORD } from "@/lib/env"
 import { query, execute } from "@/lib/db"
 import { generatePoPdf, type PoEmailData } from "@/lib/pdf/po-document"
 import { uploadFile } from "@/lib/s3"
 import { s3FilesSql } from "@/lib/queries/s3-files"
+import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
+    user: GMAIL_USER,
+    pass: GMAIL_APP_PASSWORD,
   },
 })
 
-const PO_DATA_SQL = `
-  SELECT
-    po.po_no, po.date, po.expected_on, po.destination,
-    po.sku_code, po.qty, po.unit_price, po.total_amount,
-    sk.name           AS sku_name,
-    m.code            AS mfg_code,
-    m.name            AS mfg_name,
-    d.registered_name, d.gst_number, d.location, d.email AS mfg_email,
-    wh.location       AS dest_location,
-    u.name            AS raised_by_name
-  FROM purchase_orders po
-  INNER JOIN master_mfgs     m  ON m.id          = po.mfg_id
-  INNER JOIN details_mfg     d  ON d.mfg_id      = m.id
-  LEFT  JOIN master_skus     sk ON sk.sku_code    = po.sku_code
-  LEFT  JOIN master_warehouse wh ON wh.name       = po.destination
-  LEFT  JOIN (
-    SELECT entity_id, raised_by FROM approvals
-    WHERE module = 'PO'
-    ORDER BY id DESC
-  ) latest ON latest.entity_id = po.id
-  LEFT  JOIN users u ON u.id = latest.raised_by
-  WHERE po.id = ?
-  LIMIT 1
-`
-
 export async function fetchPoData(poId: number): Promise<PoEmailData | null> {
-  const rows = await query<any>(PO_DATA_SQL, [poId])
+  const rows = await query<any>(purchaseOrdersSql.selectForEmail, [poId])
   const po = rows[0]
   if (!po) return null
   return {
@@ -95,7 +72,7 @@ export async function sendPoEmail(poId: number): Promise<void> {
     console.error("[mailer] S3 store failed (email will still send):", s3Err)
   }
 
-  const from = process.env.GMAIL_USER
+  const from = GMAIL_USER
   const dispatchDate = data.expected_on
     ? new Date(data.expected_on).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
     : "TBD"

@@ -104,4 +104,7 @@ export const skus = {
    *  Parameters: [status, id]
    */
   setStatus: `UPDATE master_skus SET status = ? WHERE id = ?`,
+
+  /** Fetch SKU status by sku_code — used to gate PO creation. Parameters: [sku_code] */
+  selectStatusByCode: `SELECT status FROM master_skus WHERE sku_code = ? LIMIT 1`,
 }

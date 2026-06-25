@@ -7,6 +7,7 @@ export const runtime = "nodejs"
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { query } from "@/lib/db"
+import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { sendPoEmail } from "@/lib/mailer"
 
 export async function POST(
@@ -20,9 +21,7 @@ export async function POST(
   const poId = parseInt(id)
   if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
 
-  const rows = await query<{ status: string }>(
-    "SELECT status FROM purchase_orders WHERE id = ? LIMIT 1", [poId]
-  )
+  const rows = await query<{ status: string }>(purchaseOrdersSql.selectForEdit, [poId])
   if (!rows[0]) return NextResponse.json({ error: "PO not found" }, { status: 404 })
   if (rows[0].status !== "raised") {
     return NextResponse.json(

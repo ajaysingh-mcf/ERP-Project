@@ -31,10 +31,7 @@ export async function GET(req: NextRequest) {
   const format = sp.get("format") === "xlsx" ? "xlsx" : "csv"
   const search = sp.get("search") ?? ""
 
-  const like = search ? `%${search}%` : null
-
-  // Params match selectPaginated / countAll: [like×3]
-  const filterParams = [like, like, like]
+  const filterParams = mfgSql.filterParams(search || null)
 
   try {
     const [{ total }] = await query<{ total: number }>(

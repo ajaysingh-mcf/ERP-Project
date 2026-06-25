@@ -29,15 +29,13 @@ export default async function ManufacturersPage({
   const sp     = await searchParams
   const { page, size, offset } = parsePaginationParams(sp)
   const search = String(sp.search ?? "")
-  const like   = search ? `%${search}%` : null
+  const fp     = manufacturers.filterParams(search || null)
 
-  // ── DB query (paginated) ───────────────────────────────────────────────────
-  // Param order: [like, like, like, LIMIT, OFFSET] (data) / [like, like, like] (count)
   const { rows, total } = await paginate<Mfg>(
     manufacturers.selectPaginated,
-    [like, like, like, size, offset],
+    [...fp, size, offset],
     manufacturers.countAll,
-    [like, like, like],
+    fp,
     page,
     size
   )

@@ -38,21 +38,13 @@ export default async function VendorsPage({
   const search     = String(sp.search ?? "")
   const typeFilter = String(sp.type   ?? "")
 
-  // Build the SQL params.
-  // like = '%term%' → enables LIKE search; null → IS NULL check short-circuits,
-  // returning all rows without a table scan for the LIKE pattern.
-  const like = search     ? `%${search}%` : null
-  const type = typeFilter ? typeFilter    : null
+  const fp = vendors.filterParams(search || null, typeFilter || null)
 
-  // ── DB query (paginated) ───────────────────────────────────────────────────
-  // Param order matches vendors.selectPaginated / countAll:
-  //   [like, like, like, type, type, LIMIT, OFFSET]  (data)
-  //   [like, like, like, type, type]                 (count)
   const { rows, total } = await paginate<Vendor>(
     vendors.selectPaginated,
-    [like, like, like, type, type, size, offset],
+    [...fp, size, offset],
     vendors.countAll,
-    [like, like, like, type, type],
+    fp,
     page,
     size
   )

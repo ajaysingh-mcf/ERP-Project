@@ -6,7 +6,9 @@ import { NextRequest, NextResponse } from "next/server"
 import type { PoolConnection } from "mysql2/promise"
 import { auth } from "@/lib/auth"
 import { query, pool } from "@/lib/db"
+import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { manufacturers as mfgsSql } from "@/lib/queries/manufacturers"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 
 const SPLITTABLE = new Set(["draft", "raised", "punched", "partially_received"])
@@ -33,10 +35,7 @@ export async function POST(
   }
 
   // Fetch the original PO
-  const poRows = await query<any>(
-    "SELECT id, po_no, mfg_id, sku_code, qty, received_qty, expected_on, status FROM purchase_orders WHERE id = ? LIMIT 1",
-    [poId]
-  )
+  const poRows = await query<any>(purchaseOrdersSql.selectForSplit, [poId])
   const po = poRows[0]
   if (!po) return NextResponse.json({ error: "PO not found." }, { status: 404 })
   if (!SPLITTABLE.has(po.status)) {
@@ -58,9 +57,7 @@ export async function POST(
   const userId = parseInt(session.user.id)
 
   // Fetch MFG details once for readable approval diffs
-  const mfgRows = await query<any>(
-    "SELECT code, name FROM master_mfgs WHERE id = ? LIMIT 1", [po.mfg_id]
-  )
+  const mfgRows = await query<any>(mfgsSql.selectNameById, [po.mfg_id])
   const mfg = mfgRows[0] ?? { code: po.mfg_id, name: String(po.mfg_id) }
 
   const eventId = `po-split-${poId}-${Date.now()}`
@@ -78,8 +75,7 @@ export async function POST(
       const childPoNo = `${po.po_no}-S${i + 1}`
 
       const [childResult] = await conn.execute(
-        `INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, destination)
-         VALUES (?, ?, CURDATE(), ?, ?, ?, ?, ?)`,
+        purchaseOrdersSql.insertSplit,
         [childPoNo, po.mfg_id, po.sku_code, Number(qty), po.expected_on, childStatus, destination || null]
       )
       const childId = (childResult as any).insertId
@@ -104,7 +100,7 @@ export async function POST(
     }
 
     // Close the original
-    await conn.execute("UPDATE purchase_orders SET status = 'short_closed' WHERE id = ?", [poId])
+    await conn.execute(purchaseOrdersSql.setStatus, ["short_closed", poId])
 
     await conn.commit()
     recordProcessedEvent("PO_SPLIT", eventId, { parentPoId: poId, splitsCreated: splits.length })

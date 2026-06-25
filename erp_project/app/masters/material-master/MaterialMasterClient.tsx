@@ -215,7 +215,7 @@ export default function MaterialMasterClient({
                   return (
                     <TableHead
                       key={col.key}
-                      className="bg-gray-200 font-medium text-muted-foreground"
+                      className="bg-muted/50 font-medium text-muted-foreground"
                     >
                       <button
                         onClick={() => toggleSort(col.key)}
@@ -235,7 +235,7 @@ export default function MaterialMasterClient({
                     </TableHead>
                   )
                 })}
-                <TableHead className="bg-gray-200 w-10 font-medium text-muted-foreground">Action</TableHead>
+                <TableHead className="bg-muted/50 w-10 font-medium text-muted-foreground">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -254,7 +254,7 @@ export default function MaterialMasterClient({
                 sorted.map((row, index) => (
                   <TableRow
                     key={index}
-                    className={cn(index % 2 === 0 ? "bg-white" : "bg-gray-200")}
+                    className={cn(index % 2 === 0 ? "bg-background" : "bg-muted/40")}
                   >
                     {columns.map((col) => (
                       <TableCell

@@ -125,4 +125,17 @@ export const vendors = {
    */
   setStatus: `UPDATE details_vendor SET status = ? WHERE vendor_id = ?`,
 
+  /**
+   * Build the filter parameter array for selectPaginated, selectAllFiltered, and countAll.
+   * Centralises the repeated-param pattern so callers never have to count repetitions.
+   *
+   * Usage:
+   *   const fp = vendors.filterParams(search, type)
+   *   paginate(vendors.selectPaginated, [...fp, limit, offset], vendors.countAll, fp, ...)
+   */
+  filterParams(search: string | null, type: string | null): unknown[] {
+    const like = search ? `%${search}%` : null
+    return [like, like, like, type, type]
+  },
+
 }

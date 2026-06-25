@@ -1,10 +1,11 @@
 import { putEvent } from "@/lib/s3"
-
+import { v4 as uuidv4 } from "uuid"
 type EventStatus = "raw" | "processed" | "failed"
 
+
 function eventKey(status: EventStatus, module: string, eventId: string): string {
-  const date = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
-  return `${status}-events/${module}/${date}/${eventId}.json`
+  // const date = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+  return `${status}-events/${module}/${uuidv4}/${eventId}.json`
 }
 
 /**

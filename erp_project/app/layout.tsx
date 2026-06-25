@@ -4,6 +4,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { auth } from "@/lib/auth";
 import ClientLayout from "@/components/ClientLayout";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 const merriweatherHeading = Merriweather({ subsets: ["latin"], variable: "--font-heading" });
 const roboto = Roboto({ subsets: ["latin"], variable: "--font-sans" });
@@ -15,6 +16,8 @@ export const metadata: Metadata = {
   description: "Enterprise Resource Planning System",
 };
 
+const themeScript = `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}})();`
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   const user = session?.user
@@ -24,6 +27,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={cn(
         "h-full antialiased",
         geistSans.variable,
@@ -33,8 +37,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         "font-sans"
       )}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className="h-full">
-        <ClientLayout user={user}>{children}</ClientLayout>
+        <ThemeProvider>
+          <ClientLayout user={user}>{children}</ClientLayout>
+        </ThemeProvider>
       </body>
     </html>
   );

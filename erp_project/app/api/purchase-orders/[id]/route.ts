@@ -8,6 +8,8 @@ import { query, execute, pool } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { s3FilesSql } from "@/lib/queries/s3-files"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { skus as skusSql } from "@/lib/queries/skus"
+import { manufacturers as mfgsSql } from "@/lib/queries/manufacturers"
 import { deleteFile } from "@/lib/s3"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 
@@ -31,9 +33,7 @@ export async function PUT(
   if (!qty || Number(qty) <= 0) return NextResponse.json({ error: "Quantity must be greater than 0." }, { status: 400 })
 
   // Verify SKU is active
-  const skuRows = await query<{ status: string }>(
-    "SELECT status FROM master_skus WHERE sku_code = ? LIMIT 1", [sku_code]
-  )
+  const skuRows = await query<{ status: string }>(skusSql.selectStatusByCode, [sku_code])
   if (!skuRows[0]) return NextResponse.json({ error: "SKU not found." }, { status: 400 })
   if (skuRows[0].status !== "active") {
     return NextResponse.json(
@@ -43,9 +43,7 @@ export async function PUT(
   }
 
   // Verify PO exists and is draft
-  const poRows = await query<any>(
-    "SELECT id, po_no, status FROM purchase_orders WHERE id = ? LIMIT 1", [poId]
-  )
+  const poRows = await query<any>(purchaseOrdersSql.selectForEdit, [poId])
   const po = poRows[0]
   if (!po) return NextResponse.json({ error: "PO not found." }, { status: 404 })
   if (po.status !== "draft") {
@@ -62,10 +60,7 @@ export async function PUT(
   }
 
   // Verify current user is the original submitter
-  const raisedRows = await query<any>(
-    "SELECT raised_by FROM approvals WHERE module = 'PO' AND entity_id = ? ORDER BY id DESC LIMIT 1",
-    [poId]
-  )
+  const raisedRows = await query<any>(purchaseOrdersSql.selectRaisedBy, [poId])
   const raisedBy = raisedRows[0]?.raised_by
   if (raisedBy && raisedBy !== userId) {
     return NextResponse.json({ error: "Only the original submitter can re-edit this PO." }, { status: 403 })
@@ -84,9 +79,7 @@ export async function PUT(
     ])
 
     // Fetch MFG details for readable diff
-    const [mfgRows] = await conn.execute(
-      "SELECT code, name FROM master_mfgs WHERE id = ? LIMIT 1", [Number(mfg_id)]
-    )
+    const [mfgRows] = await conn.execute(mfgsSql.selectNameById, [Number(mfg_id)])
     const mfg = (mfgRows as any[])[0] ?? { code: mfg_id, name: String(mfg_id) }
 
     // Insert new approval record
@@ -131,12 +124,20 @@ export async function PATCH(
 ) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
+  const userId = parseInt(session.user.id)
 
   const { id } = await params
   const poId = parseInt(id)
   if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
 
   const { attachment_key } = await req.json()
+
+  // Verify current user is the original submitter
+  const raisedRows = await query<any>(purchaseOrdersSql.selectRaisedBy, [poId])
+  const raisedBy = raisedRows[0]?.raised_by
+  if (raisedBy && raisedBy !== userId) {
+    return NextResponse.json({ error: "Only the original submitter can update this PO." }, { status: 403 })
+  }
 
   // Fetch existing key so we can delete the old S3 object
   const existing = await query<{ attachment_key: string | null }>(s3FilesSql.getPoAttachment, [poId])

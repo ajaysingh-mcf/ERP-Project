@@ -6,6 +6,7 @@ export const runtime = "nodejs"
 import { NextRequest } from "next/server"
 import { auth } from "@/lib/auth"
 import { query } from "@/lib/db"
+import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { fetchPoData } from "@/lib/mailer"
 import { generatePoPdf } from "@/lib/pdf/po-document"
 
@@ -22,9 +23,7 @@ export async function GET(
   const poId = parseInt(id)
   if (isNaN(poId)) return new Response("Invalid PO id", { status: 400 })
 
-  const rows = await query<{ po_no: string }>(
-    "SELECT po_no FROM purchase_orders WHERE id = ? LIMIT 1", [poId]
-  )
+  const rows = await query<{ po_no: string }>(purchaseOrdersSql.selectForEdit, [poId])
   if (!rows[0]) return new Response("PO not found", { status: 404 })
 
   const data = await fetchPoData(poId)
@@ -32,7 +31,7 @@ export async function GET(
 
   const pdf = await generatePoPdf(data)
 
-  return new Response(pdf, {
+  return new Response(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="PO-${rows[0].po_no}.pdf"`,

@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth"
 import { query, pool } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { skus as skusSql } from "@/lib/queries/skus"
+import { manufacturers as mfgsSql } from "@/lib/queries/manufacturers"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 import type { PoolConnection } from "mysql2/promise"
 
@@ -30,9 +32,7 @@ export async function POST(req: NextRequest) {
   if (!qty || Number(qty) <= 0)  return NextResponse.json({ error: "Quantity must be greater than 0." }, { status: 400 })
 
   // Verify SKU is active
-  const skuRows = await query<{ status: string }>(
-    "SELECT status FROM master_skus WHERE sku_code = ? LIMIT 1", [sku_code]
-  )
+  const skuRows = await query<{ status: string }>(skusSql.selectStatusByCode, [sku_code])
   if (!skuRows[0]) return NextResponse.json({ error: "SKU not found." }, { status: 400 })
   if (skuRows[0].status !== "active") {
     return NextResponse.json(
@@ -60,9 +60,7 @@ export async function POST(req: NextRequest) {
     const poId = (poResult as any).insertId
 
     // 2. Fetch MFG details for a readable diff
-    const [mfgRows] = await conn.execute(
-      "SELECT code, name FROM master_mfgs WHERE id = ? LIMIT 1", [Number(mfg_id)]
-    )
+    const [mfgRows] = await conn.execute(mfgsSql.selectNameById, [Number(mfg_id)])
     const mfg = (mfgRows as any[])[0] ?? { code: mfg_id, name: mfg_id }
 
     // 3. Insert approval record
