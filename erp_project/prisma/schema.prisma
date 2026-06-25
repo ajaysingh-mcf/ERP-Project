@@ -7,7 +7,6 @@ datasource db {
   provider = "mysql"
 }
 
-
 model approval_items {
   id          Int       @id @default(autoincrement())
   approval_id Int
@@ -38,62 +37,6 @@ model approvals {
   @@index([raised_by], map: "raised_by")
 }
 
-model bom {
-  id              Int               @id @default(autoincrement())
-  bom_code        String            @db.VarChar(50)
-  sku_code        String            @db.VarChar(50)
-  mfg_id          Int
-  created_by      Int?
-  created_at      DateTime?         @default(now()) @db.Timestamp(0)
-  status          bom_status?       @default(draft)
-  mfgs            mfgs              @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bom_ibfk_1")
-  skus            skus              @relation(fields: [sku_code], references: [sku_code], onDelete: NoAction, onUpdate: NoAction, map: "bom_ibfk_2")
-  users           users?            @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bom_ibfk_3")
-  bom_details     bom_details[]
-  bom_history     bom_history[]
-  bom_misc        bom_misc[]
-  purchase_orders purchase_orders[]
-  sku_details     sku_details[]
-
-  @@index([created_by], map: "created_by")
-  @@index([mfg_id], map: "mfg_id")
-  @@index([sku_code], map: "sku_code")
-}
-
-model bom_details {
-  id             Int                   @id @default(autoincrement())
-  bom_id         Int
-  mtrl_type      bom_details_mtrl_type
-  mtrl_id        Int
-  amount         Decimal               @db.Decimal(12, 4)
-  uom            String?               @db.VarChar(20)
-  mtrl_cost      Decimal?              @db.Decimal(12, 4)
-  effective_from DateTime?             @db.Date
-  effective_till DateTime?             @db.Date
-  last_updated   DateTime?             @default(now()) @db.Timestamp(0)
-  status         bom_details_status?   @default(active)
-  bom            bom                   @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bom_details_ibfk_1")
-
-  @@index([bom_id], map: "bom_id")
-}
-
-model bom_history {
-  id             Int                   @id @default(autoincrement())
-  bom_id         Int
-  mtrl_type      bom_history_mtrl_type
-  mtrl_id        Int
-  amount         Decimal?              @db.Decimal(12, 4)
-  uom            String?               @db.VarChar(20)
-  mtrl_cost      Decimal?              @db.Decimal(12, 4)
-  effective_from DateTime?             @db.Date
-  effective_till DateTime?             @db.Date
-  last_updated   DateTime?             @default(now()) @db.Timestamp(0)
-  status         bom_history_status?
-  bom            bom                   @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bom_history_ibfk_1")
-
-  @@index([bom_id], map: "bom_id")
-}
-
 model bom_misc {
   id             Int              @id @default(autoincrement())
   bom_id         Int
@@ -104,168 +47,34 @@ model bom_misc {
   effective_till DateTime?        @db.Date
   last_updated   DateTime?        @default(now()) @db.Timestamp(0)
   status         bom_misc_status? @default(active)
-  bom            bom              @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bom_misc_ibfk_1")
-  mfgs           mfgs             @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bom_misc_ibfk_2")
+  bom            master_bom       @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bom_misc_ibfk_1")
+  mfgs           master_mfgs      @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bom_misc_ibfk_2")
 
   @@index([bom_id], map: "bom_id")
   @@index([mfg_id], map: "mfg_id")
-}
-
-model mfg_details {
-  id         Int                 @id @default(autoincrement())
-  mfg_id     Int
-  location   String?             @db.VarChar(200)
-  gst_number String?             @db.VarChar(20)
-  status     mfg_details_status? @default(active)
-  email      String?             @db.VarChar(255)
-  mfgs       mfgs                @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "mfg_details_ibfk_1")
-
-  @@index([mfg_id], map: "mfg_id")
-}
-
-model mfgs {
-  id              Int               @id @default(autoincrement())
-  name            String            @db.VarChar(200)
-  code            String            @unique(map: "code") @db.VarChar(50)
-  bom             bom[]
-  bom_misc        bom_misc[]
-  mfg_details     mfg_details[]
-  pm_mrm          pm_mrm[]
-  purchase_orders purchase_orders[]
-  rm_mrm          rm_mrm[]
-}
-
-model pm {
-  id       Int        @id @default(autoincrement())
-  name     String     @db.VarChar(200)
-  type     String?    @db.VarChar(200)
-  hsn_code String?    @db.VarChar(20)
-  uom      String?    @db.VarChar(20)
-  status   pm_status? @default(active)
-  pm_code  String?    @db.VarChar(50)
-  pm_mrm   pm_mrm[]
-  pm_vrm   pm_vrm[]
-}
-
-model pm_mrm {
-  id             Int            @id @default(autoincrement())
-  pm_id          Int
-  pm_code        String?        @db.VarChar(50)
-  mfg_id         Int
-  mfg_code       String?        @db.VarChar(50)
-  curr_rate      Decimal        @db.Decimal(12, 4)
-  effective_from DateTime       @db.Date
-  updated_on     DateTime?      @default(now()) @db.Timestamp(0)
-  uom            String?        @db.VarChar(20)
-  status         pm_mrm_status? @default(active)
-  pm             pm             @relation(fields: [pm_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pm_mrm_ibfk_1")
-  mfgs           mfgs           @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pm_mrm_ibfk_2")
-
-  @@index([mfg_id], map: "mfg_id")
-  @@index([pm_id], map: "pm_id")
-}
-
-model pm_vrm {
-  id             Int            @id @default(autoincrement())
-  pm_id          Int
-  pm_code        String?        @db.VarChar(50)
-  vendor_id      Int
-  vendor_code    String?        @db.VarChar(50)
-  curr_rate      Decimal        @db.Decimal(12, 4)
-  effective_from DateTime       @db.Date
-  effective_to   DateTime?      @db.Date
-  updated_on     DateTime?      @default(now()) @db.Timestamp(0)
-  moq            Decimal?       @db.Decimal(12, 3)
-  uom            String?        @db.VarChar(20)
-  status         pm_vrm_status? @default(active)
-  pm             pm             @relation(fields: [pm_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pm_vrm_ibfk_1")
-  vendors        vendors        @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pm_vrm_ibfk_2")
-
-  @@index([pm_id], map: "pm_id")
-  @@index([vendor_id], map: "vendor_id")
 }
 
 model purchase_orders {
-  id           Int                     @id @default(autoincrement())
-  po_no        String                  @unique(map: "po_no") @db.VarChar(50)
-  mfg_id       Int
-  date         DateTime                @db.Date
-  sku_code     String?                 @db.VarChar(50)
-  bom_id       Int?
-  qty          Decimal                 @db.Decimal(12, 3)
-  unit_price   Decimal?                @db.Decimal(12, 4)
-  total_amount Decimal?                @db.Decimal(14, 4)
-  expected_on  DateTime?               @db.Date
-  received_qty     Decimal?                @default(0.000) @db.Decimal(12, 3)
-  invoice_no       String?                 @db.VarChar(100)
-  status           purchase_orders_status? @default(draft)
-  production_date  DateTime?               @db.Date
-  dispatched_qty   Decimal?                @default(0.000) @db.Decimal(12, 3)
-  destination      String?                 @db.VarChar(200)
-  is_impromptu     Boolean                 @default(false)
-  reason           String?                 @db.Text
-  attachment_key   String?                 @db.Text
-  mfgs         mfgs                    @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "purchase_orders_ibfk_1")
-  bom          bom?                    @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "purchase_orders_ibfk_2")
+  id             Int                     @id @default(autoincrement())
+  po_no          String                  @unique(map: "po_no") @db.VarChar(50)
+  mfg_id         Int
+  date           DateTime                @db.Date
+  sku_code       String?                 @db.VarChar(50)
+  bom_id         Int?
+  qty            Decimal                 @db.Decimal(12, 3)
+  unit_price     Decimal?                @db.Decimal(12, 4)
+  total_amount   Decimal?                @db.Decimal(14, 4)
+  expected_on    DateTime?               @db.Date
+  received_qty   Decimal?                @default(0.000) @db.Decimal(12, 3)
+  invoice_no     String?                 @db.VarChar(100)
+  destination    String?                 @db.VarChar(100)
+  status         purchase_orders_status? @default(draft)
+  attachment_key String?                 @db.Text
+  mfgs           master_mfgs             @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "purchase_orders_ibfk_1")
+  bom            master_bom?             @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "purchase_orders_ibfk_2")
 
   @@index([bom_id], map: "bom_id")
   @@index([mfg_id], map: "mfg_id")
-}
-
-model rm {
-  id        Int        @id @default(autoincrement())
-  name      String     @db.VarChar(200)
-  make      String?    @db.VarChar(100)
-  type      String?    @db.VarChar(100)
-  hsn_code  String?    @db.VarChar(20)
-  uom       String?    @db.VarChar(20)
-  status    rm_status? @default(active)
-  rm_code   String?    @db.VarChar(50)
-  inci_name String?    @db.VarChar(50)
-  rm_mrm    rm_mrm[]
-  rm_vrm    rm_vrm[]
-}
-
-model rm_mrm {
-  id                   Int            @id @default(autoincrement())
-  rm_id                Int
-  rm_code              String?        @db.VarChar(50)
-  mfg_id               Int
-  mfg_code             String?        @db.VarChar(50)
-  approved_vendor_id   Int?
-  approved_vendor_code String?        @db.VarChar(50)
-  curr_rate            Decimal        @db.Decimal(12, 4)
-  effective_from       DateTime       @db.Date
-  updated_on           DateTime?      @default(now()) @db.Timestamp(0)
-  uom                  String?        @db.VarChar(20)
-  status               rm_mrm_status? @default(active)
-  rm                   rm             @relation(fields: [rm_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "rm_mrm_ibfk_1")
-  mfgs                 mfgs           @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "rm_mrm_ibfk_2")
-  vendors              vendors?       @relation(fields: [approved_vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "rm_mrm_ibfk_3")
-
-  @@index([approved_vendor_id], map: "approved_vendor_id")
-  @@index([mfg_id], map: "mfg_id")
-  @@index([rm_id], map: "rm_id")
-}
-
-model rm_vrm {
-  id             Int            @id @default(autoincrement())
-  rm_id          Int
-  rm_code        String?        @db.VarChar(50)
-  vendor_id      Int
-  vendor_code    String?        @db.VarChar(50)
-  curr_rate      Decimal        @db.Decimal(12, 4)
-  effective_from DateTime       @db.Date
-  effective_to   DateTime?      @db.Date
-  updated_on     DateTime?      @default(now()) @db.Timestamp(0)
-  moq            Decimal?       @db.Decimal(12, 3)
-  uom            String?        @db.VarChar(20)
-  status         rm_vrm_status? @default(active)
-  rm             rm             @relation(fields: [rm_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "rm_vrm_ibfk_1")
-  vendors        vendors        @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "rm_vrm_ibfk_2")
-
-  @@index([rm_id], map: "rm_id")
-  @@index([vendor_id], map: "vendor_id")
 }
 
 model session_history {
@@ -299,69 +108,27 @@ model sessions {
   @@index([user_id], map: "user_id")
 }
 
-model sku_details {
-  id           Int                      @id @default(autoincrement())
-  sku_id       Int                      @unique(map: "sku_id")
-  sku_type     String                   @db.VarChar(100)
-  demand_type  sku_details_demand_type?
-  filling      Decimal?                 @db.Decimal(10, 3)
-  filling_uom  sku_details_filling_uom?
-  mrp          Decimal?                 @db.Decimal(10, 2)
-  ean_code     String?                  @unique(map: "ean_code") @db.VarChar(20)
-  weight       Decimal?                 @db.Decimal(10, 3)
-  weight_uom   sku_details_weight_uom?  @default(g)
-  length       Decimal?                 @db.Decimal(8, 2)
-  breadth      Decimal?                 @db.Decimal(8, 2)
-  height       Decimal?                 @db.Decimal(8, 2)
-  hsn_code     String?                  @db.VarChar(20)
-  gst_pct      Decimal?                 @db.Decimal(5, 2)
-  curr_bom_id  Int?
-  last_updated DateTime?                @default(now()) @db.Timestamp(0)
-  skus         skus                     @relation(fields: [sku_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "sku_details_ibfk_1")
-  bom          bom?                     @relation(fields: [curr_bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "sku_details_ibfk_2")
-
-  @@index([curr_bom_id], map: "curr_bom_id")
-}
-
 model sku_variants {
-  id                                     Int       @id @default(autoincrement())
+  id                                     Int         @id @default(autoincrement())
   parent_sku_id                          Int
   variant_sku_id                         Int
-  sku_code                               String?   @db.VarChar(50)
-  size                                   String?   @db.VarChar(50)
-  created_at                             DateTime? @default(now()) @db.Timestamp(0)
-  skus_sku_variants_parent_sku_idToskus  skus      @relation("sku_variants_parent_sku_idToskus", fields: [parent_sku_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "sku_variants_ibfk_1")
-  skus_sku_variants_variant_sku_idToskus skus      @relation("sku_variants_variant_sku_idToskus", fields: [variant_sku_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "sku_variants_ibfk_2")
+  sku_code                               String?     @db.VarChar(50)
+  size                                   String?     @db.VarChar(50)
+  created_at                             DateTime?   @default(now()) @db.Timestamp(0)
+  skus_sku_variants_parent_sku_idToskus  master_skus @relation("sku_variants_parent_sku_idToskus", fields: [parent_sku_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "sku_variants_ibfk_1")
+  skus_sku_variants_variant_sku_idToskus master_skus @relation("sku_variants_variant_sku_idToskus", fields: [variant_sku_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "sku_variants_ibfk_2")
 
   @@unique([parent_sku_id, variant_sku_id], map: "parent_sku_id")
   @@index([variant_sku_id], map: "variant_sku_id")
 }
 
-model skus {
-  id                                             Int            @id @default(autoincrement())
-  sku_code                                       String         @unique(map: "sku_code") @db.VarChar(50)
-  name                                           String         @db.VarChar(200)
-  brand                                          String?        @db.VarChar(100)
-  category                                       String?        @db.VarChar(100)
-  status                                         skus_status?   @default(active)
-  created_at                                     DateTime?      @default(now()) @db.Timestamp(0)
-  created_by                                     Int?
-  bom                                            bom[]
-  sku_details                                    sku_details?
-  sku_variants_sku_variants_parent_sku_idToskus  sku_variants[] @relation("sku_variants_parent_sku_idToskus")
-  sku_variants_sku_variants_variant_sku_idToskus sku_variants[] @relation("sku_variants_variant_sku_idToskus")
-  users                                          users?         @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "skus_ibfk_1")
-
-  @@index([created_by], map: "created_by")
-}
-
 model user_roles {
   user_id Int
   role    String @db.VarChar(100)
-  users   users  @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_roles_ibfk_1")
 
   @@id([user_id, role])
 }
+
 model page_permissions {
   id           Int                     @id @default(autoincrement())
   role         String                  @db.VarChar(100)
@@ -372,87 +139,461 @@ model page_permissions {
   @@unique([role, page_slug], map: "role_page_slug")
   @@index([role], map: "role")
 }
+
 model user_page_permissions {
   id           Int                     @id @default(autoincrement())
   user_id      Int
   page_slug    String                  @db.VarChar(100)
   access_level page_permissions_access
   created_at   DateTime?               @default(now()) @db.Timestamp(0)
-  users        users                   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_page_permissions_ibfk_1")
 
   @@unique([user_id, page_slug], map: "user_id_page_slug")
   @@index([user_id], map: "user_id")
 }
+
 model users {
-  id                                     Int                     @id @default(autoincrement())
-  name                                   String                  @db.VarChar(100)
-  email                                  String                  @unique(map: "email") @db.VarChar(100)
-  google_id                              String?                 @unique(map: "google_id") @db.VarChar(255)   // ADD THIS
-  status                                 users_status?           @default(active)
-  created_at                             DateTime?               @default(now()) @db.Timestamp(0)
-  approvals_approvals_raised_byTousers   approvals[]             @relation("approvals_raised_byTousers")
-  approvals_approvals_approved_byTousers approvals[]             @relation("approvals_approved_byTousers")
-  bom                                    bom[]
+  id                                     Int                       @id @default(autoincrement())
+  name                                   String                    @db.VarChar(100)
+  email                                  String                    @unique(map: "email") @db.VarChar(100)
+  status                                 users_status?             @default(active)
+  created_at                             DateTime?                 @default(now()) @db.Timestamp(0)
+  google_id                              String?                   @db.VarChar(255)
+  approvals_approvals_raised_byTousers   approvals[]               @relation("approvals_raised_byTousers")
+  approvals_approvals_approved_byTousers approvals[]               @relation("approvals_approved_byTousers")
+  master_bom                             master_bom[]
+  master_bom_mfg                         master_bom_mfg[]
+  master_cost_ext_fixed                  master_cost_ext_fixed[]
+  master_cost_int_dynamic                master_cost_int_dynamic[]
+  master_skus                            master_skus[]
+  master_vendors                         master_vendors[]
   session_history                        session_history[]
   sessions                               sessions[]
-  skus                                   skus[]
-  user_roles                             user_roles[]
-  user_page_permissions                  user_page_permissions[] // ADD THIS
 }
 
-model vendor_details {
-  id         Int                    @id @default(autoincrement())
-  vendor_id  Int
-  location   String?                @db.VarChar(200)
-  gst_number String?                @db.VarChar(20)
-  status     vendor_details_status? @default(active)
-  vendors    vendors                @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "vendor_details_ibfk_1")
+model details_bom {
+  id                        Int                         @id @default(autoincrement())
+  bom_id                    Int
+  mtrl_type                 details_bom_mtrl_type
+  mtrl_id                   Int
+  amount                    Decimal                     @db.Decimal(12, 4)
+  uom                       String?                     @db.VarChar(20)
+  effective_from            DateTime?                   @db.Date
+  effective_till            DateTime?                   @db.Date
+  last_updated              DateTime?                   @default(now()) @db.Timestamp(0)
+  status                    details_bom_status?         @default(active)
+  updated_by                Int?
+  master_bom                master_bom                  @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "details_bom_ibfk_1")
+  details_cost__int_dynamic details_cost__int_dynamic[]
+  details_cost_ext_fixed    details_cost_ext_fixed[]
+
+  @@index([bom_id], map: "bom_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model details_cost__int_dynamic {
+  id                      Int                                 @id @default(autoincrement())
+  cost_id                 Int
+  bom_detail_id           Int
+  mtrl_type               details_cost__int_dynamic_mtrl_type
+  mtrl_id                 Int
+  qty                     Decimal                             @db.Decimal(10, 3)
+  uom                     String                              @db.VarChar(20)
+  rate                    Decimal                             @db.Decimal(12, 4)
+  rm_vrm_id               Int
+  pm_vrm_id               Int
+  line_cost               Decimal?                            @db.Decimal(12, 4)
+  details_bom             details_bom                         @relation(fields: [bom_detail_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_dci_bomdet")
+  master_cost_int_dynamic master_cost_int_dynamic             @relation(fields: [cost_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_dci_cost")
+  rm_vrm_dynamic          rm_vrm_dynamic                      @relation(fields: [rm_vrm_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_dci_rmvrm")
+
+  @@index([bom_detail_id], map: "fk_dci_bomdet")
+  @@index([cost_id], map: "fk_dci_cost")
+  @@index([rm_vrm_id], map: "fk_dci_rmvrm")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model details_cost_ext_fixed {
+  id                    Int                              @id @default(autoincrement())
+  cost_id               Int
+  bom_detail_id         Int
+  mtrl_type             details_cost_ext_fixed_mtrl_type
+  mtrl_id               Int
+  qty                   Decimal                          @db.Decimal(10, 3)
+  uom                   String                           @db.VarChar(20)
+  rate                  Decimal                          @db.Decimal(12, 4)
+  rm_mrm_id             Int?
+  pm_mrm_id             Int?
+  line_cost             Decimal?                         @db.Decimal(12, 4)
+  details_bom           details_bom                      @relation(fields: [bom_detail_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_dce_bomdet")
+  master_cost_ext_fixed master_cost_ext_fixed            @relation(fields: [cost_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_dce_cost")
+  rm_mrm_fixed          rm_mrm_fixed?                    @relation(fields: [rm_mrm_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_dci_rmmrm")
+
+  @@index([bom_detail_id], map: "fk_dce_bomdet")
+  @@index([cost_id], map: "fk_dce_cost")
+  @@index([rm_mrm_id], map: "fk_dci_rmmrm")
+}
+
+model details_mfg {
+  id              Int                 @id @default(autoincrement())
+  mfg_id          Int
+  location        String?             @db.VarChar(200)
+  gst_number      String?             @db.VarChar(20)
+  status          details_mfg_status? @default(active)
+  registered_name String?             @db.VarChar(255)
+  zone            String?             @db.VarChar(100)
+  bank_name       String?             @db.VarChar(255)
+  ifsc_number     String?             @db.VarChar(11)
+  account_number  String?             @db.VarChar(50)
+  email           String?             @db.VarChar(255)
+  master_mfgs     master_mfgs         @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "details_mfg_ibfk_1")
+
+  @@index([mfg_id], map: "mfg_id")
+}
+
+model details_sku {
+  id           Int                      @id @default(autoincrement())
+  sku_id       Int                      @unique(map: "sku_id")
+  sku_type     String                   @db.VarChar(100)
+  demand_type  details_sku_demand_type?
+  filling      Decimal?                 @db.Decimal(10, 3)
+  filling_uom  details_sku_filling_uom?
+  mrp          Decimal?                 @db.Decimal(10, 2)
+  ean_code     String?                  @unique(map: "ean_code") @db.VarChar(20)
+  weight       Decimal?                 @db.Decimal(10, 3)
+  weight_uom   details_sku_weight_uom?  @default(g)
+  length       Decimal?                 @db.Decimal(8, 2)
+  breadth      Decimal?                 @db.Decimal(8, 2)
+  height       Decimal?                 @db.Decimal(8, 2)
+  hsn_code     String?                  @db.VarChar(20)
+  gst_pct      Decimal?                 @db.Decimal(5, 2)
+  curr_bom_id  Int?
+  last_updated DateTime?                @default(now()) @db.Timestamp(0)
+  master_skus  master_skus              @relation(fields: [sku_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "details_sku_ibfk_1")
+  master_bom   master_bom?              @relation(fields: [curr_bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "details_sku_ibfk_2")
+
+  @@index([curr_bom_id], map: "curr_bom_id")
+}
+
+model details_vendor {
+  id              Int                    @id @default(autoincrement())
+  vendor_id       Int
+  location        String?                @db.VarChar(200)
+  status          details_vendor_status? @default(active)
+  zone            String?                @db.VarChar(50)
+  registered_name String?                @db.VarChar(100)
+  master_vendors  master_vendors         @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "details_vendor_ibfk_1")
 
   @@index([vendor_id], map: "vendor_id")
 }
 
-model vendors {
-  id             Int              @id @default(autoincrement())
-  name           String           @db.VarChar(200)
-  code           String           @unique(map: "code") @db.VarChar(50)
-  type           vendors_type
-  pm_vrm         pm_vrm[]
-  rm_mrm         rm_mrm[]
-  rm_vrm         rm_vrm[]
-  vendor_details vendor_details[]
-  vrm_history    vrm_history[]
+model history_bom {
+  id             Int                   @id @default(autoincrement())
+  bom_id         Int
+  mtrl_type      history_bom_mtrl_type
+  mtrl_id        Int
+  amount         Decimal?              @db.Decimal(12, 4)
+  uom            String?               @db.VarChar(20)
+  mtrl_cost      Decimal?              @db.Decimal(12, 4)
+  effective_from DateTime?             @db.Date
+  effective_till DateTime?             @db.Date
+  last_updated   DateTime?             @default(now()) @db.Timestamp(0)
+  status         history_bom_status?
+  updated_by     Int?
+  master_bom     master_bom            @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "history_bom_ibfk_1")
+
+  @@index([bom_id], map: "bom_id")
 }
 
-model vrm_history {
+model history_mrm {
+  id             Int       @id @default(autoincrement())
+  mfg_id         Int
+  mtrl_type      String    @db.VarChar(50)
+  mtrl_id        Int
+  vendor_id      Int
+  rate           Decimal   @db.Decimal(10, 2)
+  effective_from DateTime  @db.Date
+  effective_to   DateTime? @db.Date
+  updated_on     DateTime? @default(now()) @db.DateTime(0)
+  status         Boolean?  @default(true)
+}
+
+model history_vrm {
   id             Int                   @id @default(autoincrement())
-  mtrl_type      vrm_history_mtrl_type
+  mtrl_type      history_vrm_mtrl_type
   mtrl_id        Int
   vendor_id      Int?
   rate           Decimal?              @db.Decimal(12, 4)
   effective_from DateTime?             @db.Date
   effective_to   DateTime?             @db.Date
   updated_on     DateTime?             @default(now()) @db.Timestamp(0)
-  moq            Decimal?              @db.Decimal(12, 3)
-  uom            String?               @db.VarChar(20)
-  status         vrm_history_status?
-  vendors        vendors?              @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "vrm_history_ibfk_1")
+  status         history_vrm_status?
+  master_vendors master_vendors?       @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "history_vrm_ibfk_1")
 
   @@index([vendor_id], map: "vendor_id")
 }
 
-enum vrm_history_mtrl_type {
-  rm
-  pm
+model master_bom {
+  id                      Int                       @id @default(autoincrement())
+  bom_code                String                    @db.VarChar(50)
+  created_by              Int?
+  created_at              DateTime?                 @default(now()) @db.Timestamp(0)
+  status                  master_bom_status?        @default(draft)
+  sku_id                  Int?
+  updated_at              DateTime?                 @db.DateTime(0)
+  updated_by              Int?
+  bom_misc                bom_misc[]
+  details_bom             details_bom[]
+  details_sku             details_sku[]
+  history_bom             history_bom[]
+  master_skus             master_skus?              @relation(fields: [sku_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bom_sku")
+  users                   users?                    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "master_bom_ibfk_3")
+  master_bom_mfg          master_bom_mfg[]
+  master_cost_ext_fixed   master_cost_ext_fixed[]
+  master_cost_int_dynamic master_cost_int_dynamic[]
+  purchase_orders         purchase_orders[]
+
+  @@index([created_by], map: "created_by")
+  @@index([sku_id], map: "fk_bom_sku")
 }
 
-enum bom_details_mtrl_type {
-  rm
-  pm
+model master_bom_mfg {
+  id             Int         @id @default(autoincrement())
+  bom_id         Int
+  mfg_id         Int
+  status         String      @db.VarChar(50)
+  effective_from DateTime    @db.Date
+  effective_to   DateTime?   @db.Date
+  created_on     DateTime?   @default(now()) @db.DateTime(0)
+  created_by     Int?
+  master_bom     master_bom  @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bomfg_bom")
+  users          users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bomfg_creator")
+  master_mfgs    master_mfgs @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bomfg_mfg")
+
+  @@unique([bom_id, mfg_id], map: "uq_bom_mfg")
+  @@index([created_by], map: "fk_bomfg_creator")
+  @@index([mfg_id], map: "fk_bomfg_mfg")
 }
 
-enum bom_history_mtrl_type {
-  rm
-  pm
+model master_cost_ext_fixed {
+  id                     Int                      @id @default(autoincrement())
+  cost_code              String                   @db.VarChar(100)
+  bom_id                 Int
+  mfg_id                 Int
+  sku_id                 Int
+  total_rm_cost          Decimal?                 @db.Decimal(12, 4)
+  total_pm_cost          Decimal?                 @db.Decimal(12, 4)
+  total_cost             Decimal?                 @db.Decimal(12, 4)
+  version                Int?                     @default(1)
+  status                 Boolean?                 @default(true)
+  effective_from         DateTime                 @db.Date
+  effective_to           DateTime?                @db.Date
+  created_on             DateTime?                @default(now()) @db.DateTime(0)
+  created_by             Int?
+  details_cost_ext_fixed details_cost_ext_fixed[]
+  master_bom             master_bom               @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_mce_bom")
+  users                  users?                   @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_mce_creator")
+  master_mfgs            master_mfgs              @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_mce_mfg")
+  master_skus            master_skus              @relation(fields: [sku_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_mce_sku")
+
+  @@index([bom_id], map: "fk_mce_bom")
+  @@index([created_by], map: "fk_mce_creator")
+  @@index([mfg_id], map: "fk_mce_mfg")
+  @@index([sku_id], map: "fk_mce_sku")
+}
+
+model master_cost_int_dynamic {
+  id                        Int                         @id @default(autoincrement())
+  cost_code                 String                      @db.VarChar(100)
+  bom_id                    Int
+  mfg_id                    Int
+  sku_id                    Int
+  total_rm_cost             Decimal?                    @db.Decimal(12, 4)
+  total_pm_cost             Decimal?                    @db.Decimal(12, 4)
+  total_misc_cost           Decimal?                    @db.Decimal(12, 4)
+  total_cost                Decimal?                    @db.Decimal(12, 4)
+  version                   Int?                        @default(1)
+  status                    Boolean?                    @default(true)
+  effective_from            DateTime                    @db.Date
+  effective_to              DateTime?                   @db.Date
+  created_on                DateTime?                   @db.DateTime(0)
+  created_by                Int?
+  details_cost__int_dynamic details_cost__int_dynamic[]
+  master_bom                master_bom                  @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_mci_bom")
+  users                     users?                      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_mci_creator")
+  master_mfgs               master_mfgs                 @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_mci_mfg")
+  master_skus               master_skus                 @relation(fields: [sku_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_mci_sku")
+
+  @@index([bom_id], map: "fk_mci_bom")
+  @@index([created_by], map: "fk_mci_creator")
+  @@index([mfg_id], map: "fk_mci_mfg")
+  @@index([sku_id], map: "fk_mci_sku")
+}
+
+model master_mfgs {
+  id                      Int                       @id @default(autoincrement())
+  name                    String                    @db.VarChar(200)
+  code                    String                    @unique(map: "code") @db.VarChar(50)
+  bom_misc                bom_misc[]
+  details_mfg             details_mfg[]
+  master_bom_mfg          master_bom_mfg[]
+  master_cost_ext_fixed   master_cost_ext_fixed[]
+  master_cost_int_dynamic master_cost_int_dynamic[]
+  pm_mrm_fixed            pm_mrm_fixed[]
+  purchase_orders         purchase_orders[]
+  rm_mrm_fixed            rm_mrm_fixed[]
+}
+
+model master_pm {
+  id             Int               @id @default(autoincrement())
+  name           String            @db.VarChar(200)
+  type           String?           @db.VarChar(200)
+  hsn_code       String?           @db.VarChar(20)
+  uom            String?           @db.VarChar(20)
+  status         master_pm_status?
+  pm_code        String?           @db.VarChar(50)
+  pm_mrm_fixed   pm_mrm_fixed[]
+  pm_vrm_dynamic pm_vrm_dynamic[]
+}
+
+model master_rm {
+  id             Int               @id @default(autoincrement())
+  name           String            @db.VarChar(200)
+  make           String?           @db.VarChar(100)
+  type           String?           @db.VarChar(100)
+  hsn_code       String?           @db.VarChar(20)
+  uom            String?           @db.VarChar(20)
+  status         master_rm_status?
+  rm_code        String?           @db.VarChar(50)
+  inci_name      String?           @db.VarChar(50)
+  rm_mrm_fixed   rm_mrm_fixed[]
+  rm_vrm_dynamic rm_vrm_dynamic[]
+}
+
+model master_skus {
+  id                                             Int                       @id @default(autoincrement())
+  sku_code                                       String                    @unique(map: "sku_code") @db.VarChar(50)
+  name                                           String                    @db.VarChar(200)
+  brand                                          String?                   @db.VarChar(100)
+  category                                       String?                   @db.VarChar(100)
+  status                                         master_skus_status?       @default(active)
+  created_at                                     DateTime?                 @default(now()) @db.Timestamp(0)
+  created_by                                     Int?
+  details_sku                                    details_sku?
+  master_bom                                     master_bom[]
+  master_cost_ext_fixed                          master_cost_ext_fixed[]
+  master_cost_int_dynamic                        master_cost_int_dynamic[]
+  users                                          users?                    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "master_skus_ibfk_1")
+  sku_variants_sku_variants_parent_sku_idToskus  sku_variants[]            @relation("sku_variants_parent_sku_idToskus")
+  sku_variants_sku_variants_variant_sku_idToskus sku_variants[]            @relation("sku_variants_variant_sku_idToskus")
+
+  @@index([created_by], map: "created_by")
+}
+
+model master_vendors {
+  id             Int                 @id @default(autoincrement())
+  name           String              @db.VarChar(200)
+  code           String              @unique(map: "code") @db.VarChar(50)
+  type           master_vendors_type
+  added_by       Int?
+  details_vendor details_vendor[]
+  history_vrm    history_vrm[]
+  users          users?              @relation(fields: [added_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_vendors_added_by")
+  pm_vrm_dynamic pm_vrm_dynamic[]
+  rm_mrm_fixed   rm_mrm_fixed[]
+  rm_vrm_dynamic rm_vrm_dynamic[]
+
+  @@index([added_by], map: "fk_vendors_added_by")
+}
+
+model master_warehouse {
+  id         Int                   @id @default(autoincrement())
+  name       String                @db.VarChar(100)
+  location   String                @db.VarChar(150)
+  zone       String                @db.VarChar(50)
+  type       master_warehouse_type
+  created_at DateTime?             @default(now()) @db.Timestamp(0)
+}
+
+model pm_mrm_fixed {
+  id             Int                 @id @default(autoincrement())
+  pm_id          Int
+  pm_code        String?             @db.VarChar(50)
+  mfg_id         Int
+  mfg_code       String?             @db.VarChar(50)
+  curr_rate      Decimal             @db.Decimal(12, 4)
+  effective_from DateTime            @db.Date
+  updated_on     DateTime?           @default(now()) @db.Timestamp(0)
+  uom            String?             @db.VarChar(20)
+  status         pm_mrm_fixed_status @default(draft)
+  effective_to   DateTime?           @db.Date
+  master_pm      master_pm           @relation(fields: [pm_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pm_mrm_fixed_ibfk_1")
+  master_mfgs    master_mfgs         @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pm_mrm_fixed_ibfk_2")
+
+  @@index([mfg_id], map: "mfg_id")
+  @@index([pm_id], map: "pm_id")
+}
+
+model pm_vrm_dynamic {
+  id             Int                   @id @default(autoincrement())
+  pm_id          Int
+  vendor_id      Int
+  vendor_code    String?               @db.VarChar(50)
+  curr_rate      Decimal               @db.Decimal(12, 4)
+  effective_from DateTime              @db.Date
+  effective_to   DateTime?             @db.Date
+  updated_on     DateTime?             @default(now()) @db.Timestamp(0)
+  moq            Decimal?              @db.Decimal(12, 3)
+  uom            String?               @db.VarChar(20)
+  status         pm_vrm_dynamic_status @default(draft)
+  master_pm      master_pm             @relation(fields: [pm_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pm_vrm_dynamic_ibfk_1")
+  master_vendors master_vendors        @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pm_vrm_dynamic_ibfk_2")
+
+  @@index([pm_id], map: "pm_id")
+  @@index([vendor_id], map: "vendor_id")
+}
+
+model rm_mrm_fixed {
+  id                     Int                      @id @default(autoincrement())
+  rm_id                  Int
+  rm_code                String?                  @db.VarChar(50)
+  mfg_id                 Int
+  mfg_code               String?                  @db.VarChar(50)
+  approved_vendor_id     Int?
+  approved_vendor_code   String?                  @db.VarChar(50)
+  curr_rate              Decimal                  @db.Decimal(12, 4)
+  effective_from         DateTime                 @db.Date
+  updated_on             DateTime?                @default(now()) @db.Timestamp(0)
+  uom                    String?                  @db.VarChar(20)
+  status                 rm_mrm_fixed_status      @default(draft)
+  details_cost_ext_fixed details_cost_ext_fixed[]
+  master_rm              master_rm                @relation(fields: [rm_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "rm_mrm_fixed_ibfk_1")
+  master_mfgs            master_mfgs              @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "rm_mrm_fixed_ibfk_2")
+  master_vendors         master_vendors?          @relation(fields: [approved_vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "rm_mrm_fixed_ibfk_3")
+
+  @@index([approved_vendor_id], map: "approved_vendor_id")
+  @@index([mfg_id], map: "mfg_id")
+  @@index([rm_id], map: "rm_id")
+}
+
+model rm_vrm_dynamic {
+  id                        Int                         @id @default(autoincrement())
+  rm_id                     Int
+  vendor_id                 Int
+  vendor_code               String?                     @db.VarChar(50)
+  curr_rate                 Decimal                     @db.Decimal(12, 4)
+  effective_from            DateTime                    @db.Date
+  effective_to              DateTime?                   @db.Date
+  updated_on                DateTime?                   @default(now()) @db.Timestamp(0)
+  moq                       Decimal?                    @db.Decimal(12, 3)
+  uom                       String?                     @db.VarChar(20)
+  status                    rm_vrm_dynamic_status       @default(draft)
+  mfg_id                    Int?
+  details_cost__int_dynamic details_cost__int_dynamic[]
+  master_rm                 master_rm                   @relation(fields: [rm_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "rm_vrm_dynamic_ibfk_1")
+  master_vendors            master_vendors              @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "rm_vrm_dynamic_ibfk_2")
+
+  @@index([rm_id], map: "rm_id")
+  @@index([vendor_id], map: "vendor_id")
 }
 
 enum approvals_status {
@@ -480,70 +621,9 @@ enum session_history_event {
   token_refreshed
 }
 
-enum sku_details_demand_type {
-  A
-  B
-  C
-  NPL
-}
-
 enum users_status {
   active
   inactive
-}
-
-enum vendors_type {
-  rm
-  pm
-  both
-}
-
-enum mfg_details_status {
-  active
-  inactive
-  in_review
-  draft
-}
-
-enum vendor_details_status {
-  active
-  inactive
-  blacklisted
-  discontinued
-  in_review
-  draft
-}
-
-enum pm_status {
-  active
-  discontinued
-}
-
-enum sku_details_filling_uom {
-  ml
-  g
-}
-
-enum skus_status {
-  active
-  discontinued
-  new_launch   @map("new launch")
-  inactive
-  in_review
-  draft
-}
-
-enum bom_status {
-  draft
-  active
-  inactive
-  in_review    @map("in review")
-  discontinued
-}
-
-enum rm_status {
-  active
-  discontinued
 }
 
 enum sessions_device_type {
@@ -554,57 +634,6 @@ enum sessions_device_type {
 }
 
 enum bom_misc_status {
-  active
-  inactive
-  discontinued
-}
-
-enum pm_mrm_status {
-  active
-  inactive
-  discontinued
-  in_review
-  draft
-}
-
-enum sku_details_weight_uom {
-  g
-  kg
-}
-
-enum bom_details_status {
-  active
-  inactive
-  discontinued
-}
-
-enum bom_history_status {
-  active
-  inactive
-  discontinued
-}
-
-enum vrm_history_status {
-  active
-  inactive
-  discontinued
-}
-
-enum pm_vrm_status {
-  active
-  inactive
-  discontinued
-}
-
-enum rm_mrm_status {
-  active
-  inactive
-  discontinued
-  in_review
-  draft
-}
-
-enum rm_vrm_status {
   active
   inactive
   discontinued
@@ -624,4 +653,154 @@ enum page_permissions_access {
   none
   viewer
   editor
+}
+
+enum history_vrm_mtrl_type {
+  rm
+  pm
+}
+
+enum details_bom_mtrl_type {
+  rm
+  pm
+}
+
+enum history_bom_mtrl_type {
+  rm
+  pm
+}
+
+enum details_cost__int_dynamic_mtrl_type {
+  RM
+  PM
+}
+
+enum details_cost_ext_fixed_mtrl_type {
+  RM
+  PM
+}
+
+enum details_sku_demand_type {
+  A
+  B
+  C
+  NPL
+}
+
+enum details_vendor_status {
+  active
+  inactive
+  in_review
+  draft
+}
+
+enum master_vendors_type {
+  rm
+  pm
+  both
+}
+
+enum details_mfg_status {
+  active
+  inactive
+  in_review
+  draft
+}
+
+enum master_bom_status {
+  draft
+  active
+  inactive
+  in_review    @map("in review")
+  discontinued
+}
+
+enum master_warehouse_type {
+  CWH
+  MWH
+}
+
+enum details_sku_filling_uom {
+  ml
+  g
+}
+
+enum master_pm_status {
+  active
+  inactive
+  discontinued
+  in_review
+  draft
+}
+
+enum master_skus_status {
+  active
+  inactive
+  discontinued
+  new_launch   @map("new launch")
+  in_review
+  draft
+}
+
+enum master_rm_status {
+  active
+  inactive
+  discontinued
+  in_review
+  draft
+}
+
+enum history_vrm_status {
+  active
+  inactive
+  discontinued
+}
+
+enum details_bom_status {
+  active
+  inactive
+  discontinued
+}
+
+enum details_sku_weight_uom {
+  g
+  kg
+}
+
+enum pm_mrm_fixed_status {
+  active
+  inactive
+  discontinued
+  in_review
+  draft
+}
+
+enum history_bom_status {
+  active
+  inactive
+  discontinued
+}
+
+enum pm_vrm_dynamic_status {
+  active
+  inactive
+  discontinued
+  in_review
+  draft
+}
+
+enum rm_vrm_dynamic_status {
+  active
+  inactive
+  discontinued
+  in_review
+  draft
+}
+
+enum rm_mrm_fixed_status {
+  active
+  inactive
+  discontinued
+  in_review
+  draft
 }
