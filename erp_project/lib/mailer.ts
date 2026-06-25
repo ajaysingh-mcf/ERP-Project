@@ -1,6 +1,8 @@
 import nodemailer from "nodemailer"
-import { query } from "@/lib/db"
+import { query, execute } from "@/lib/db"
 import { generatePoPdf, type PoEmailData } from "@/lib/pdf/po-document"
+import { uploadFile } from "@/lib/s3"
+import { s3FilesSql } from "@/lib/queries/s3-files"
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -79,6 +81,16 @@ export async function sendPoEmail(poId: number): Promise<void> {
   } catch (pdfErr: any) {
     console.error("[mailer] PDF generation failed:", pdfErr)
     throw new Error("PDF generation failed: " + pdfErr.message)
+  }
+
+  // Store PDF in S3 and save key to DB (non-blocking — email still sends if this fails)
+  const s3Key = `purchase-orders/${poId}/PO-${data.po_no}.pdf`
+  try {
+    await uploadFile(pdfBuffer as unknown as Buffer, s3Key, "application/pdf")
+    await execute(s3FilesSql.updatePoAttachment, [s3Key, poId])
+    console.log(`[mailer] PO PDF stored at key=${s3Key}`)
+  } catch (s3Err: any) {
+    console.error("[mailer] S3 store failed (email will still send):", s3Err)
   }
 
   const from = process.env.GMAIL_USER

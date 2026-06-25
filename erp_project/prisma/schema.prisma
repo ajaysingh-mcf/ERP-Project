@@ -204,6 +204,7 @@ model purchase_orders {
   destination      String?                 @db.VarChar(200)
   is_impromptu     Boolean                 @default(false)
   reason           String?                 @db.Text
+  attachment_key   String?                 @db.Text
   mfgs         mfgs                    @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "purchase_orders_ibfk_1")
   bom          bom?                    @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "purchase_orders_ibfk_2")
 

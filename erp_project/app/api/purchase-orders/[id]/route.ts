@@ -1,14 +1,14 @@
-// PUT /api/purchase-orders/[id]
-// Re-edit a draft PO and re-submit for approval.
-// Only the original submitter may call this, and only when status = 'draft'
-// with no currently pending approval.
+// PUT /api/purchase-orders/[id]  — re-edit a draft PO and re-submit for approval
+// PATCH /api/purchase-orders/[id] — update attachment key (S3 file reference)
 
 import { NextRequest, NextResponse } from "next/server"
 import type { PoolConnection } from "mysql2/promise"
 import { auth } from "@/lib/auth"
-import { query, pool } from "@/lib/db"
+import { query, execute, pool } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
+import { s3FilesSql } from "@/lib/queries/s3-files"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { deleteFile } from "@/lib/s3"
 
 export async function PUT(
   req: NextRequest,
@@ -113,4 +113,34 @@ export async function PUT(
   } finally {
     conn.release()
   }
+}
+
+// PATCH /api/purchase-orders/[id]
+// Body: { attachment_key: string | null }
+// Sets or clears the S3 attachment on a PO. Deletes the old S3 object when replacing.
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
+
+  const { id } = await params
+  const poId = parseInt(id)
+  if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
+
+  const { attachment_key } = await req.json()
+
+  // Fetch existing key so we can delete the old S3 object
+  const existing = await query<{ attachment_key: string | null }>(s3FilesSql.getPoAttachment, [poId])
+  const oldKey = existing[0]?.attachment_key ?? null
+
+  await execute(s3FilesSql.updatePoAttachment, [attachment_key ?? null, poId])
+
+  // Eager cleanup: delete replaced file from S3 (fire-and-forget, don't block response)
+  if (oldKey && oldKey !== attachment_key) {
+    deleteFile(oldKey).catch((err) => console.error("[s3] delete old attachment failed:", err))
+  }
+
+  return NextResponse.json({ ok: true })
 }

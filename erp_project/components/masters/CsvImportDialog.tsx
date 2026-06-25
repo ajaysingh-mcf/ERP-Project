@@ -64,37 +64,73 @@ export function CsvImportDialog({
     setOpen(true)
   }
 
+  // Track whether the chosen file is Excel (needs S3 server-side processing)
+  const [isExcel, setIsExcel] = useState(false)
+  const [s3Key,   setS3Key]   = useState<string | null>(null)
+
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setFilename(file.name)
     setError("")
     setSuccess("")
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        setRows(parseCSV(ev.target?.result as string, fields))
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to parse CSV")
-        setRows([])
+    setRows([])
+    setS3Key(null)
+
+    const excel = file.name.toLowerCase().endsWith(".xlsx")
+    setIsExcel(excel)
+
+    if (excel) {
+      // Excel: upload to S3 first, then process server-side (no client-side preview)
+      setLoading(true)
+      const form = new FormData()
+      form.append("file",   file)
+      form.append("folder", "imports")
+      form.append("field",  `${templateFilename.replace(/\.[^.]+$/, "")}_${Date.now()}`)
+      fetch("/api/upload", { method: "POST", body: form })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.key) { setS3Key(data.key) }
+          else { setError(data.error ?? "Upload to S3 failed") }
+        })
+        .catch(() => setError("Upload to S3 failed"))
+        .finally(() => setLoading(false))
+    } else {
+      // CSV: parse client-side for immediate preview
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        try {
+          setRows(parseCSV(ev.target?.result as string, fields))
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to parse CSV")
+          setRows([])
+        }
       }
+      reader.readAsText(file)
     }
-    reader.readAsText(file)
   }
 
   async function handleUpload() {
-    if (valid.length === 0) {
-      setError("No valid rows to upload.")
-      return
-    }
     setLoading(true)
     setError("")
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "bulk", rows: valid }),
-      })
+      let res: Response
+      if (isExcel && s3Key) {
+        // Excel path: server fetches from S3, parses, inserts
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "bulk_from_s3", key: s3Key }),
+        })
+      } else {
+        // CSV path: send parsed rows as JSON
+        if (valid.length === 0) { setError("No valid rows to upload."); setLoading(false); return }
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "bulk", rows: valid }),
+        })
+      }
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Upload failed")
       setSuccess(
@@ -153,7 +189,7 @@ export function CsvImportDialog({
                 <label className="cursor-pointer">
                   <input
                     type="file"
-                    accept=".csv,text/csv"
+                    accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     onChange={handleFile}
                     className="sr-only"
                   />
@@ -171,7 +207,15 @@ export function CsvImportDialog({
                   Download template
                 </button>
               </div>
-              {filename && rows.length > 0 && (
+              {filename && isExcel && s3Key && (
+                <p className="text-xs text-emerald-600">
+                  Excel file uploaded — ready to import
+                </p>
+              )}
+              {filename && isExcel && !s3Key && !loading && (
+                <p className="text-xs text-destructive">S3 upload failed — try again</p>
+              )}
+              {filename && !isExcel && rows.length > 0 && (
                 <p className="text-xs text-muted-foreground">
                   {rows.length} rows parsed
                   {invalid.length > 0 && (
@@ -266,15 +310,15 @@ export function CsvImportDialog({
               Cancel
             </Button>
             <Button
-              disabled={valid.length === 0 || loading}
+              disabled={(isExcel ? !s3Key : valid.length === 0) || loading}
               onClick={handleUpload}
             >
               {loading
                 ? "Uploading…"
+                : isExcel && s3Key
+                ? `Import Excel`
                 : valid.length > 0
-                ? `Upload ${valid.length} ${
-                    valid.length !== 1 ? plural : entityLabel
-                  }`
+                ? `Upload ${valid.length} ${valid.length !== 1 ? plural : entityLabel}`
                 : "Upload"}
             </Button>
           </DialogFooter>

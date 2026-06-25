@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["mysql2", "@react-pdf/renderer", "fontkit", "pdfkit", "nodemailer"],
+  serverExternalPackages: ["mysql2", "@react-pdf/renderer", "fontkit", "pdfkit", "nodemailer", "@aws-sdk/client-s3", "@aws-sdk/s3-request-presigner"],
 };
 
 export default nextConfig;

@@ -76,12 +76,12 @@ export const manufacturers = {
 
   /**
    * Insert manufacturer details record.
-   * Parameters: [mfg_id, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number]
+   * Parameters: [mfg_id, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number, email]
    * Must be called after insert with the insertId.
    */
   insertDetails: `
-    INSERT INTO details_mfg (mfg_id, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO details_mfg (mfg_id, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number, email)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   // ============ UPDATE QUERIES ============

@@ -26,6 +26,7 @@ import { auth } from "@/lib/auth"
 import { pool, query } from "@/lib/db"
 import { vendors } from "@/lib/queries/vendors"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { parseS3Import } from "@/lib/import-s3"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -35,22 +36,17 @@ export async function POST(req: NextRequest) {
   const { action } = body
 
   if (action === "create") {
-    const { code, name, type, location, status, zone, registered_name } = body
+    const { code, name, type, location, zone, registered_name } = body
     if (!code?.trim() || !name?.trim() || !type?.trim()) {
       return NextResponse.json(
         { error: "code, name and type are required" },
         { status: 400 }
       )
     }
-
-    // Two inserts in one transaction: vendor first, then its details using the
-    // id the DB just generated. If either fails, both roll back.
+    const userId = parseInt(session.user.id)
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     try {
-      // Inserting the vendor returns an insertId we can use for the details row.
-      //  If the code already exists, the UNIQUE constraint triggers an error
-      // and we skip the details insert.
       const [vendorResult] = await conn.execute(
         vendors.insertVendor,
         [code.trim(), name.trim(), type.trim()]
@@ -61,15 +57,32 @@ export async function POST(req: NextRequest) {
         vendors.insertVendorDetails,
         [
           vendorId,
-          location?.trim() || null,
-          status || "active",
-          zone?.trim() || null,
+          location?.trim()        || null,
+          "in_review",
+          zone?.trim()            || null,
           registered_name?.trim() || null,
         ]
       )
 
+      const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "VENDOR", vendorId])
+      const approvalId = (ar as any).insertId
+
+      const newFields: [string, string][] = [
+        ["code",            code.trim()],
+        ["name",            name.trim()],
+        ["type",            type.trim()],
+        ["location",        location?.trim()        || ""],
+        ["zone",            zone?.trim()            || ""],
+        ["registered_name", registered_name?.trim() || ""],
+      ]
+      for (const [field, newVal] of newFields) {
+        if (newVal) {
+          await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, "", newVal])
+        }
+      }
+
       await conn.commit()
-      return NextResponse.json({ id: vendorId })
+      return NextResponse.json({ ok: true, approval_id: approvalId })
     } catch (err: any) {
       await conn.rollback()
       if (err.code === "ER_DUP_ENTRY") {
@@ -173,7 +186,9 @@ export async function POST(req: NextRequest) {
       const diff = Object.entries(proposed).filter(
         ([k, v]) => String(current[k] ?? "") !== String(v ?? "")
       )
-      if (diff.length === 0) {
+
+      const isDraftResubmit = diff.length === 0 && current.status === "draft"
+      if (diff.length === 0 && !isDraftResubmit) {
         await conn.rollback()
         return NextResponse.json({ ok: true, message: "No changes detected" })
       }
@@ -181,11 +196,14 @@ export async function POST(req: NextRequest) {
       const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "VENDOR", vendor_id])
       const approvalId = (approvalResult as any).insertId
 
-      for (const [field, newVal] of diff) {
+      const itemsToRecord = isDraftResubmit
+        ? Object.entries(proposed).filter(([, v]) => v !== "")
+        : diff
+      for (const [field, newVal] of itemsToRecord) {
         await conn.execute(approvalsSql.insertApprovalItem, [
           approvalId,
           field,
-          String(current[field] ?? ""),
+          isDraftResubmit ? "" : String(current[field] ?? ""),
           String(newVal ?? ""),
         ])
       }
@@ -202,5 +220,54 @@ export async function POST(req: NextRequest) {
       conn.release()
     }
   }
+  if (action === "bulk_from_s3") {
+    const { key } = body
+    if (!key?.trim()) return NextResponse.json({ error: "key is required" }, { status: 400 })
+
+    let rawRows
+    try {
+      rawRows = await parseS3Import(key)
+    } catch (err: any) {
+      return NextResponse.json({ error: "Failed to parse file: " + err.message }, { status: 400 })
+    }
+
+    if (rawRows.length === 0) return NextResponse.json({ error: "File is empty or has no data rows" }, { status: 400 })
+
+    const conn = await pool.getConnection()
+    await conn.beginTransaction()
+    let inserted = 0
+    let skipped  = 0
+
+    try {
+      for (const row of rawRows) {
+        const code = row["code"]?.trim()
+        const name = row["name"]?.trim()
+        const type = row["type"]?.trim()
+        if (!code || !name || !type) continue
+        try {
+          const [vendorResult] = await conn.execute(vendors.insertVendor, [code, name, type])
+          const vendorId = (vendorResult as any).insertId
+          await conn.execute(vendors.insertVendorDetails, [
+            vendorId,
+            row["location"]?.trim()        || null,
+            row["status"]?.trim()          || "active",
+            row["zone"]?.trim()            || null,
+            row["registered_name"]?.trim() || null,
+          ])
+          inserted++
+        } catch (err: any) {
+          if (err.code === "ER_DUP_ENTRY") { skipped++ } else { throw err }
+        }
+      }
+      await conn.commit()
+      return NextResponse.json({ inserted, skipped })
+    } catch (err: any) {
+      await conn.rollback()
+      return NextResponse.json({ error: "Import failed: " + err.message }, { status: 500 })
+    } finally {
+      conn.release()
+    }
+  }
+
   return NextResponse.json({ error: "Invalid action" }, { status: 400 })
 }

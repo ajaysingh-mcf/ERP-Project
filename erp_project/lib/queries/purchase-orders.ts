@@ -22,6 +22,7 @@ export const purchaseOrdersSql = {
       po.invoice_no,
       po.destination,
       po.status,
+      po.attachment_key,
       m.id   AS mfg_id,
       m.code AS mfg_code,
       m.name AS mfg_name,

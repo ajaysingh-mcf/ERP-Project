@@ -29,10 +29,11 @@ export async function POST(req: NextRequest) {
   const { action } = body
 
   if (action === "create") {
-    const { code, name, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number } = body
+    const { code, name, location, gst_number, registered_name, zone, bank_name, ifsc_number, account_number, email } = body
     if (!code?.trim() || !name?.trim()) {
       return NextResponse.json({ error: "code and name are required" }, { status: 400 })
     }
+    const userId = parseInt(session.user.id)
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     try {
@@ -40,17 +41,40 @@ export async function POST(req: NextRequest) {
       const mfgId = (result as any).insertId
       await conn.execute(manufacturers.insertDetails, [
         mfgId,
-        location?.trim() || null,
-        gst_number?.trim() || null,
-        status || "active",
+        location?.trim()        || null,
+        gst_number?.trim()      || null,
+        "in_review",
         registered_name?.trim() || null,
-        zone?.trim() || null,
-        bank_name?.trim() || null,
-        ifsc_number?.trim() || null,
-        account_number?.trim() || null,
+        zone?.trim()            || null,
+        bank_name?.trim()       || null,
+        ifsc_number?.trim()     || null,
+        account_number?.trim()  || null,
+        email?.trim()           || null,
       ])
+
+      const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "MFG", mfgId])
+      const approvalId = (ar as any).insertId
+
+      const newFields: [string, string][] = [
+        ["code",            code.trim()],
+        ["name",            name.trim()],
+        ["registered_name", registered_name?.trim() || ""],
+        ["location",        location?.trim()        || ""],
+        ["zone",            zone?.trim()            || ""],
+        ["gst_number",      gst_number?.trim()      || ""],
+        ["bank_name",       bank_name?.trim()       || ""],
+        ["ifsc_number",     ifsc_number?.trim()     || ""],
+        ["account_number",  account_number?.trim()  || ""],
+        ["email",           email?.trim()           || ""],
+      ]
+      for (const [field, newVal] of newFields) {
+        if (newVal) {
+          await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, "", newVal])
+        }
+      }
+
       await conn.commit()
-      return NextResponse.json({ id: mfgId })
+      return NextResponse.json({ ok: true, approval_id: approvalId })
     } catch (err: any) {
       await conn.rollback()
       if (err.code === "ER_DUP_ENTRY") {
@@ -85,14 +109,15 @@ export async function POST(req: NextRequest) {
           const mfgId = (result as any).insertId
           await conn.execute(manufacturers.insertDetails, [
             mfgId,
-            row.location?.trim() || null,
-            row.gst_number?.trim() || null,
-            row.status || "active",
+            row.location?.trim()        || null,
+            row.gst_number?.trim()      || null,
+            row.status                  || "active",
             row.registered_name?.trim() || null,
-            row.zone?.trim() || null,
-            row.bank_name?.trim() || null,
-            row.ifsc_number?.trim() || null,
-            row.account_number?.trim() || null,
+            row.zone?.trim()            || null,
+            row.bank_name?.trim()       || null,
+            row.ifsc_number?.trim()     || null,
+            row.account_number?.trim()  || null,
+            row.email?.trim()           || null,
           ])
           inserted++
         } catch (err: any) {
@@ -154,7 +179,12 @@ export async function POST(req: NextRequest) {
       const diff = Object.entries(proposed).filter(
         ([k, v]) => String(current[k] ?? "") !== String(v ?? "")
       )
-      if (diff.length === 0) {
+
+      // A rejected new-record creation leaves the record in 'draft' with the
+      // correct values already in DB. If the submitter resubmits unchanged we
+      // still need to create an approval, so use all proposed fields as items.
+      const isDraftResubmit = diff.length === 0 && current.status === "draft"
+      if (diff.length === 0 && !isDraftResubmit) {
         await conn.rollback()
         return NextResponse.json({ ok: true, message: "No changes detected" })
       }
@@ -162,11 +192,14 @@ export async function POST(req: NextRequest) {
       const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "MFG", mfg_id])
       const approvalId = (approvalResult as any).insertId
 
-      for (const [field, newVal] of diff) {
+      const itemsToRecord = isDraftResubmit
+        ? Object.entries(proposed).filter(([, v]) => v !== "")
+        : diff
+      for (const [field, newVal] of itemsToRecord) {
         await conn.execute(approvalsSql.insertApprovalItem, [
           approvalId,
           field,
-          String(current[field] ?? ""),
+          isDraftResubmit ? "" : String(current[field] ?? ""),
           String(newVal ?? ""),
         ])
       }

@@ -1,6 +1,6 @@
 "use client"
 
-import { Eye, Loader2, Mail, Pencil, Scissors } from "lucide-react"
+import { Eye, FileText, Loader2, Mail, Pencil, Scissors } from "lucide-react"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -27,6 +27,36 @@ function ProgressCell({ value, total }: { value: string | number | null; total: 
 }
 
 type SendState = "idle" | "sending" | "sent" | "error"
+
+function ViewPoButton({ s3Key }: { s3Key: string }) {
+  const [loading, setLoading] = useState(false)
+
+  async function handleView() {
+    setLoading(true)
+    try {
+      const res  = await fetch(`/api/files/presign?key=${encodeURIComponent(s3Key)}`)
+      const data = await res.json()
+      if (data.url) window.open(data.url, "_blank", "noopener,noreferrer")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleView}
+      disabled={loading}
+      title="View PO PDF"
+      className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-1 text-xs hover:bg-accent transition-colors disabled:opacity-50"
+    >
+      {loading
+        ? <Loader2 className="h-3 w-3 animate-spin" />
+        : <FileText className="h-3 w-3" />
+      }
+      View PO
+    </button>
+  )
+}
 
 function RaisedPoActions({ poId, poNo }: { poId: number; poNo: string }) {
   const [sendState, setSendState] = useState<SendState>("idle")
@@ -216,7 +246,8 @@ export default function PoTable({
                           </button>
                         )}
                         {canSend && <RaisedPoActions poId={r.id} poNo={r.po_no} />}
-                        {!canEdit && !canSplit && !canSend && (
+                        {r.attachment_key && <ViewPoButton s3Key={r.attachment_key} />}
+                        {!canEdit && !canSplit && !canSend && !r.attachment_key && (
                           <span className="text-muted-foreground">—</span>
                         )}
                       </div>

@@ -276,6 +276,7 @@ const mfgHandler: ModuleHandler = {
       fieldMap.bank_name       ?? cur.bank_name       ?? null,
       fieldMap.ifsc_number     ?? cur.ifsc_number     ?? null,
       fieldMap.account_number  ?? cur.account_number  ?? null,
+      fieldMap.email           ?? cur.email           ?? null,
       entityId,
     ])
   },
