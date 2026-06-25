@@ -9,6 +9,7 @@ import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { s3FilesSql } from "@/lib/queries/s3-files"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { deleteFile } from "@/lib/s3"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 
 export async function PUT(
   req: NextRequest,
@@ -70,6 +71,10 @@ export async function PUT(
     return NextResponse.json({ error: "Only the original submitter can re-edit this PO." }, { status: 403 })
   }
 
+  const eventId = `po-${poId}-${Date.now()}`
+  console.log(`[events] PO edit id=${poId} — firing raw event ${eventId}`)
+  recordRawEvent("PO", eventId, { poId, mfg_id, sku_code, qty, expected_on, destination, reason })
+
   const conn: PoolConnection = await pool.getConnection()
   await conn.beginTransaction()
   try {
@@ -105,9 +110,11 @@ export async function PUT(
     }
 
     await conn.commit()
+    recordProcessedEvent("PO", eventId, { poId, approvalId })
     return NextResponse.json({ ok: true, approval_id: approvalId })
   } catch (err: any) {
     await conn.rollback()
+    recordFailedEvent("PO", eventId, { poId, mfg_id, sku_code, qty }, err.message)
     console.error("PO re-edit error:", err)
     return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
   } finally {

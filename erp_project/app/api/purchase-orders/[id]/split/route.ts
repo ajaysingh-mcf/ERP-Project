@@ -7,6 +7,7 @@ import type { PoolConnection } from "mysql2/promise"
 import { auth } from "@/lib/auth"
 import { query, pool } from "@/lib/db"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 
 const SPLITTABLE = new Set(["draft", "raised", "punched", "partially_received"])
 
@@ -62,6 +63,10 @@ export async function POST(
   )
   const mfg = mfgRows[0] ?? { code: po.mfg_id, name: String(po.mfg_id) }
 
+  const eventId = `po-split-${poId}-${Date.now()}`
+  console.log(`[events] PO split id=${poId} into ${splits.length} — firing raw event ${eventId}`)
+  recordRawEvent("PO_SPLIT", eventId, { parentPoId: poId, parentPoNo: po.po_no, splits })
+
   const conn: PoolConnection = await pool.getConnection()
   await conn.beginTransaction()
   try {
@@ -102,9 +107,11 @@ export async function POST(
     await conn.execute("UPDATE purchase_orders SET status = 'short_closed' WHERE id = ?", [poId])
 
     await conn.commit()
+    recordProcessedEvent("PO_SPLIT", eventId, { parentPoId: poId, splitsCreated: splits.length })
     return NextResponse.json({ ok: true, splits_created: splits.length })
   } catch (err: any) {
     await conn.rollback()
+    recordFailedEvent("PO_SPLIT", eventId, { parentPoId: poId, splits }, err.message)
     console.error("PO split error:", err)
     return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
   } finally {

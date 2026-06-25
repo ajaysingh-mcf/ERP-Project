@@ -21,6 +21,7 @@ import { pool, query } from "@/lib/db"
 import { manufacturers } from "@/lib/queries/manufacturers"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { parseS3Import } from "@/lib/import-s3"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -35,6 +36,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "code and name are required" }, { status: 400 })
     }
     const userId = parseInt(session.user.id)
+    const eventId = `mfg-new-${Date.now()}`
+    console.log(`[events] MFG create code=${code.trim()} — firing raw event ${eventId}`)
+    recordRawEvent("MFG", eventId, { code: code.trim(), name: name.trim() })
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     try {
@@ -75,9 +79,11 @@ export async function POST(req: NextRequest) {
       }
 
       await conn.commit()
+      recordProcessedEvent("MFG", eventId, { mfgId, approvalId })
       return NextResponse.json({ ok: true, approval_id: approvalId })
     } catch (err: any) {
       await conn.rollback()
+      recordFailedEvent("MFG", eventId, { code: code.trim(), name: name.trim() }, err.message)
       if (err.code === "ER_DUP_ENTRY") {
         return NextResponse.json(
           { error: `Code "${code.trim()}" already exists` },
@@ -97,6 +103,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No rows provided" }, { status: 400 })
     }
 
+    const eventId = `mfg-bulk-${Date.now()}`
+    console.log(`[events] MFG bulk csv rows=${rows.length} — firing raw event ${eventId}`)
+    recordRawEvent("MFG_BULK", eventId, { source: "csv", rowCount: rows.length })
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     let inserted = 0
@@ -130,9 +139,11 @@ export async function POST(req: NextRequest) {
         }
       }
       await conn.commit()
+      recordProcessedEvent("MFG_BULK", eventId, { source: "csv", inserted, skipped })
       return NextResponse.json({ inserted, skipped })
     } catch (err: any) {
       await conn.rollback()
+      recordFailedEvent("MFG_BULK", eventId, { source: "csv", rowCount: rows.length }, err.message)
       console.error("Manufacturer bulk insert error:", err)
       return NextResponse.json({ error: "Bulk insert failed: " + err.message }, { status: 500 })
     } finally {
@@ -231,6 +242,9 @@ export async function POST(req: NextRequest) {
 
     if (rawRows.length === 0) return NextResponse.json({ error: "File is empty or has no data rows" }, { status: 400 })
 
+    const eventId = `mfg-bulk-${Date.now()}`
+    console.log(`[events] MFG bulk_from_s3 key=${key} rows=${rawRows.length} — firing raw event ${eventId}`)
+    recordRawEvent("MFG_BULK", eventId, { source: "s3", s3Key: key, rowCount: rawRows.length })
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     let inserted = 0
@@ -262,9 +276,11 @@ export async function POST(req: NextRequest) {
         }
       }
       await conn.commit()
+      recordProcessedEvent("MFG_BULK", eventId, { source: "s3", s3Key: key, inserted, skipped })
       return NextResponse.json({ inserted, skipped })
     } catch (err: any) {
       await conn.rollback()
+      recordFailedEvent("MFG_BULK", eventId, { source: "s3", s3Key: key }, err.message)
       return NextResponse.json({ error: "Import failed: " + err.message }, { status: 500 })
     } finally {
       conn.release()

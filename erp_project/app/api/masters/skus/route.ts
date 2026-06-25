@@ -27,6 +27,7 @@ import { execute, pool, query } from "@/lib/db"
 import { skus as skuSql } from "@/lib/queries/skus"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { parseS3Import } from "@/lib/import-s3"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -40,6 +41,9 @@ export async function POST(req: NextRequest) {
     if (!sku_code?.trim() || !name?.trim()) {
       return NextResponse.json({ error: "sku_code and name are required" }, { status: 400 })
     }
+    const eventId = `sku-new-${Date.now()}`
+    console.log(`[events] SKU create sku_code=${sku_code.trim()} — firing raw event ${eventId}`)
+    recordRawEvent("SKU", eventId, { sku_code: sku_code.trim(), name: name.trim(), brand, category, status })
     try {
       const result = await execute(skuSql.insertSku, [
         sku_code.trim(),
@@ -49,8 +53,10 @@ export async function POST(req: NextRequest) {
         status || "active",
         parseInt(session.user.id),
       ])
+      recordProcessedEvent("SKU", eventId, { id: result.insertId })
       return NextResponse.json({ id: result.insertId })
     } catch (err: any) {
+      recordFailedEvent("SKU", eventId, { sku_code: sku_code.trim(), name: name.trim() }, err.message)
       if (err.code === "ER_DUP_ENTRY") {
         return NextResponse.json(
           { error: `SKU code "${sku_code.trim()}" already exists` },
@@ -68,6 +74,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No rows provided" }, { status: 400 })
     }
 
+    const eventId = `sku-bulk-${Date.now()}`
+    console.log(`[events] SKU bulk csv rows=${rows.length} — firing raw event ${eventId}`)
+    recordRawEvent("SKU_BULK", eventId, { source: "csv", rowCount: rows.length })
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     let inserted = 0
@@ -95,9 +104,11 @@ export async function POST(req: NextRequest) {
         }
       }
       await conn.commit()
+      recordProcessedEvent("SKU_BULK", eventId, { source: "csv", inserted, skipped })
       return NextResponse.json({ inserted, skipped })
     } catch (err: any) {
       await conn.rollback()
+      recordFailedEvent("SKU_BULK", eventId, { source: "csv", rowCount: rows.length }, err.message)
       console.error("SKU bulk insert error:", err)
       return NextResponse.json({ error: "Bulk insert failed: " + err.message }, { status: 500 })
     } finally {
@@ -189,6 +200,9 @@ export async function POST(req: NextRequest) {
 
     if (rawRows.length === 0) return NextResponse.json({ error: "File is empty or has no data rows" }, { status: 400 })
 
+    const eventId = `sku-bulk-${Date.now()}`
+    console.log(`[events] SKU bulk_from_s3 key=${key} rows=${rawRows.length} — firing raw event ${eventId}`)
+    recordRawEvent("SKU_BULK", eventId, { source: "s3", s3Key: key, rowCount: rawRows.length })
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     let inserted = 0
@@ -214,9 +228,11 @@ export async function POST(req: NextRequest) {
         }
       }
       await conn.commit()
+      recordProcessedEvent("SKU_BULK", eventId, { source: "s3", s3Key: key, inserted, skipped })
       return NextResponse.json({ inserted, skipped })
     } catch (err: any) {
       await conn.rollback()
+      recordFailedEvent("SKU_BULK", eventId, { source: "s3", s3Key: key }, err.message)
       return NextResponse.json({ error: "Import failed: " + err.message }, { status: 500 })
     } finally {
       conn.release()

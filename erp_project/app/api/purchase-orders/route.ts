@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { query, pool } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 import type { PoolConnection } from "mysql2/promise"
 
 // GET /api/purchase-orders — list all POs with MFG + SKU details
@@ -45,6 +46,10 @@ export async function POST(req: NextRequest) {
   const seq  = (Number(countRows[0]?.cnt ?? 0) + 1).toString().padStart(3, "0")
   const po_no = `IMP-${new Date().getFullYear()}-${seq}`
 
+  const eventId = `po-new-${Date.now()}`
+  console.log(`[events] PO create — firing raw event ${eventId}`)
+  recordRawEvent("PO", eventId, { mfg_id, sku_code, qty, expected_on, destination, reason })
+
   const conn: PoolConnection = await pool.getConnection()
   await conn.beginTransaction()
   try {
@@ -81,9 +86,11 @@ export async function POST(req: NextRequest) {
     }
 
     await conn.commit()
+    recordProcessedEvent("PO", eventId, { poId, po_no, approvalId })
     return NextResponse.json({ ok: true, approval_id: approvalId, po_no })
   } catch (err: any) {
     await conn.rollback()
+    recordFailedEvent("PO", eventId, { mfg_id, sku_code, qty, expected_on, destination, reason }, err.message)
     if (err.code === "ER_DUP_ENTRY") {
       return NextResponse.json({ error: "PO number already exists, please retry." }, { status: 409 })
     }

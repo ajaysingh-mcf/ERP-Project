@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { execute, query, pool } from "@/lib/db"
+import { query, pool } from "@/lib/db"
 import { rawMaterials } from "@/lib/queries/raw-materials"
 import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
 import { approvalsSql } from "@/lib/queries/approvals"
@@ -56,57 +56,93 @@ export async function POST(req: NextRequest) {
   if (action === "create") {
 
     if (material === "rm") {
-      // Validate required RM fields.
-      const {name , make, inci_name} = body;
-      if (!name?.trim())       return NextResponse.json({ error: "Name is required." }, { status: 400 })
-      if (!make?.trim())       return NextResponse.json({ error: "Make is required." }, { status: 400 })
-      if (!inci_name?.trim())  return NextResponse.json({ error: "INCI Name is required." }, { status: 400 })
-      
-      // Dublicate check
-      try {
-        const check = await execute(rawMaterials.checkDuplicate , [name , make, inci_name] );
-        if(check) {
-          return NextResponse.json({ error: "A raw material with this code already exists." }, { status: 409 })
-        }
-      }catch(e) {
-        return NextResponse.json({error:"Error while dublicate check: " , e} , {status: 409});
+      const { name, make, inci_name, type, uom, hsn_code } = body
+      if (!name?.trim())      return NextResponse.json({ error: "Name is required." }, { status: 400 })
+      if (!make?.trim())      return NextResponse.json({ error: "Make is required." }, { status: 400 })
+      if (!inci_name?.trim()) return NextResponse.json({ error: "INCI Name is required." }, { status: 400 })
+
+      const dupRows = await query<{ id: number }>(rawMaterials.checkDuplicate, [name, make, inci_name])
+      if (dupRows.length > 0) {
+        return NextResponse.json({ error: "A raw material with this code already exists." }, { status: 409 })
       }
+
+      const userId = parseInt(session.user.id)
+      const conn = await pool.getConnection()
+      await conn.beginTransaction()
       try {
-        const result = await execute(rawMaterials.insert, toRmParams(body))
-        return NextResponse.json({ id: result.insertId })
-      } catch (err: any) {
-        // Unique constraint on rm_code (null here, so unlikely — but handle it).
-        if (err.code === "ER_DUP_ENTRY") {
-          return NextResponse.json({ error: "A raw material with this code already exists." }, { status: 409 })
+        const [rmResult] = await conn.execute(rawMaterials.insert, [
+          null, name.trim(), make.trim(), type?.trim() || null,
+          uom?.trim() || null, "in_review", hsn_code?.trim() || null, inci_name.trim(),
+        ])
+        const rmId = (rmResult as any).insertId
+
+        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", rmId])
+        const approvalId = (ar as any).insertId
+
+        const newFields: [string, string][] = [
+          ["name",      name.trim()],
+          ["make",      make.trim()],
+          ["inci_name", inci_name.trim()],
+          ["type",      type?.trim()      || ""],
+          ["uom",       uom?.trim()       || ""],
+          ["hsn_code",  hsn_code?.trim()  || ""],
+        ]
+        for (const [field, newVal] of newFields) {
+          if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, "", newVal])
         }
+
+        await conn.commit()
+        return NextResponse.json({ ok: true, approval_id: approvalId })
+      } catch (err: any) {
+        await conn.rollback()
         console.error("Material master RM create error:", err)
         return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+      } finally {
+        conn.release()
       }
     }
 
     if (material === "pm") {
+      const { name, type, uom, hsn_code } = body
+      if (!name?.trim()) return NextResponse.json({ error: "Name is required." }, { status: 400 })
+      if (!type?.trim()) return NextResponse.json({ error: "Type is required." }, { status: 400 })
 
-      const {name , type} = body;
-      // Validate required PM fields.
-      if (!name?.trim())  return NextResponse.json({ error: "Name is required." }, { status: 400 })
-      if (!type?.trim())  return NextResponse.json({ error: "Type is required." }, { status: 400 })
-        try {
-          const check = await execute(PMMaterials.checkDuplicate , [name, type])
-          if(check) {
-            return NextResponse.json({ error: "A Packing material with this code already exists.", check }, { status: 409 })
-          }
-        }catch(e) {
-          return NextResponse.json({error: "Error Occured while ckecking dublicate: " , e} , {status: 409})
-        }
+      const dupRows = await query<{ id: number }>(PMMaterials.checkDuplicate, [name, type])
+      if (dupRows.length > 0) {
+        return NextResponse.json({ error: "A packing material with this code already exists." }, { status: 409 })
+      }
+
+      const userId = parseInt(session.user.id)
+      const conn = await pool.getConnection()
+      await conn.beginTransaction()
       try {
-        const result = await execute(PMMaterials.insert, toPmParams(body))
-        return NextResponse.json({ id: result.insertId })
-      } catch (err: any) {
-        if (err.code === "ER_DUP_ENTRY") {
-          return NextResponse.json({ error: "A packing material with this code already exists." , }, { status: 409 })
+        const [pmResult] = await conn.execute(PMMaterials.insert, [
+          null, name.trim(), type.trim(), hsn_code?.trim() || null,
+          uom?.trim() || null, "in_review",
+        ])
+        const pmId = (pmResult as any).insertId
+
+        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PM_MAT", pmId])
+        const approvalId = (ar as any).insertId
+
+        const newFields: [string, string][] = [
+          ["name",     name.trim()],
+          ["type",     type.trim()],
+          ["uom",      uom?.trim()      || ""],
+          ["hsn_code", hsn_code?.trim() || ""],
+        ]
+        for (const [field, newVal] of newFields) {
+          if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, "", newVal])
         }
+
+        await conn.commit()
+        return NextResponse.json({ ok: true, approval_id: approvalId })
+      } catch (err: any) {
+        await conn.rollback()
         console.error("Material master PM create error:", err)
         return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+      } finally {
+        conn.release()
       }
     }
 

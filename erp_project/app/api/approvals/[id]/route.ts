@@ -17,6 +17,7 @@ import { approvalsSql } from "@/lib/queries/approvals"
 import { MODULE_HANDLERS, type DiffItem } from "@/lib/approvals/module-handlers"
 import { APPROVAL_STATUS, STATUS } from "@/lib/constants"
 import { sendPoEmail } from "@/lib/mailer"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 
 export async function POST(
   req: NextRequest,
@@ -59,6 +60,10 @@ export async function POST(
 
   const items = await query<DiffItem>(approvalsSql.getItems, [approvalId])
 
+  const eventId = `approval-${approvalId}-${Date.now()}`
+  console.log(`[events] APPROVAL ${action} id=${approvalId} module=${approval.module} — firing raw event ${eventId}`)
+  recordRawEvent("APPROVAL", eventId, { approvalId, module: approval.module, entityId: approval.entity_id, action, remarks })
+
   const conn: PoolConnection = await pool.getConnection()
   await conn.beginTransaction()
   try {
@@ -70,6 +75,7 @@ export async function POST(
       await conn.execute(approvalsSql.markRejected, [approverId, remarks!.trim(), approvalId])
     }
     await conn.commit()
+    recordProcessedEvent("APPROVAL", eventId, { approvalId, module: approval.module, entityId: approval.entity_id, action })
 
     if (action === "approve" && approval.module === "PO") {
       sendPoEmail(approval.entity_id).catch((err) =>
@@ -80,6 +86,7 @@ export async function POST(
     return NextResponse.json({ ok: true })
   } catch (err: any) {
     await conn.rollback()
+    recordFailedEvent("APPROVAL", eventId, { approvalId, module: approval.module, action }, err.message)
     console.error(
       "[Approval] action=%s id=%d module=%s entity=%d user=%d error=%s",
       action, approvalId, approval.module, approval.entity_id, approverId, err.message
