@@ -23,6 +23,33 @@ function StatCard({ label, value, highlight }: { label: string; value: string; h
   )
 }
 
+function RemainingCard({ remaining, splitTotal }: { remaining: number; splitTotal: number }) {
+  const effective = Math.max(0, remaining - splitTotal)
+  const pct       = remaining > 0 ? Math.min(100, Math.round((splitTotal / remaining) * 100)) : 0
+  const done      = splitTotal >= remaining && remaining > 0
+
+  return (
+    <div className={cn(
+      "rounded-lg border p-3 text-center",
+      done ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"
+    )}>
+      <div className="text-[11px] text-muted-foreground mb-0.5">Remaining to split</div>
+      <div className={cn("text-xl font-bold tabular-nums", done ? "text-emerald-700" : "text-amber-700")}>
+        {effective.toLocaleString()}
+      </div>
+      <div className="mt-1.5 h-1.5 w-full rounded-full bg-black/10 overflow-hidden">
+        <div
+          className={cn("h-full rounded-full transition-all", done ? "bg-emerald-500" : "bg-amber-500")}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className={cn("mt-1 text-[10px] font-medium", done ? "text-emerald-600" : "text-amber-600")}>
+        {done ? "Completed" : `${pct}% allocated`}
+      </div>
+    </div>
+  )
+}
+
 export default function SplitPODialog({
   open, onClose, po, warehouseOptions, onSplit,
 }: {
@@ -115,7 +142,7 @@ export default function SplitPODialog({
         <div className="grid grid-cols-3 gap-3">
           <StatCard label="Total PO Qty"      value={fmtInt(total)} />
           <StatCard label="Already Received"  value={fmtInt(received)} />
-          <StatCard label="Remaining to split" value={fmtInt(remaining)} highlight />
+          <RemainingCard remaining={remaining} splitTotal={splitTotal} />
         </div>
 
         {/* Split rows */}

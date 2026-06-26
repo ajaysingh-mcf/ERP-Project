@@ -6,7 +6,7 @@ export const runtime = "nodejs"
 
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { query } from "@/lib/db"
+import { query, execute } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { sendPoEmail } from "@/lib/mailer"
 
@@ -32,6 +32,7 @@ export async function POST(
 
   try {
     await sendPoEmail(poId)
+    await execute(purchaseOrdersSql.setEmailSentAt, [poId])
     return NextResponse.json({ ok: true })
   } catch (err: any) {
     console.error("[send-email] failed:", err)

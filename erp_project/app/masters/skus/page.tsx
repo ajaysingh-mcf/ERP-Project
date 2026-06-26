@@ -11,7 +11,8 @@
 import { auth } from "@/lib/auth"
 import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
-import { parsePaginationParams, paginate } from "@/lib/pagination"
+import { parsePaginationParams } from "@/lib/pagination"
+import { timedQuery } from "@/lib/query-timing"
 import { skus as skuSql } from "@/lib/queries/skus"
 import type { Sku } from "@/types/masters"
 import SkusClient from "./SkusClient"
@@ -39,14 +40,17 @@ export default async function SkusPage({
 
   // ── DB query (paginated) ───────────────────────────────────────────────────
   // Param order: [like×4, status×2, LIMIT, OFFSET] (data) / [like×4, status×2] (count)
-  const { rows, total } = await paginate<Sku>(
-    skuSql.selectPaginated,
-    [like, like, like, like, status, status, size, offset],
-    skuSql.countAll,
-    [like, like, like, like, status, status],
-    page,
-    size
-  )
+  console.log(`[AUDIT] SKUs page load - page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
+  const pageStart = performance.now()
+
+  const [rows, countRows] = await Promise.all([
+    timedQuery<Sku>(skuSql.selectPaginated, [like, like, like, like, status, status, size, offset], { label: "selectPaginated" }),
+    timedQuery<{ total: number }>(skuSql.countAll, [like, like, like, like, status, status], { label: "countAll" }),
+  ])
+
+  const total = Number(countRows[0]?.total ?? 0)
+  const pageTime = performance.now() - pageStart
+  console.log(`[AUDIT] SKUs page complete: ${pageTime.toFixed(2)}ms | fetched ${rows.length}/${total} rows`)
 
   return (
     <div className="p-6">

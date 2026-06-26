@@ -69,7 +69,9 @@ model purchase_orders {
   invoice_no     String?                 @db.VarChar(100)
   destination    String?                 @db.VarChar(100)
   status         purchase_orders_status? @default(draft)
+  po_type        purchase_orders_type?   @default(impromptu)
   attachment_key String?                 @db.Text
+  csv_source_key String?                 @db.VarChar(500)
   mfgs           master_mfgs             @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "purchase_orders_ibfk_1")
   bom            master_bom?             @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "purchase_orders_ibfk_2")
 
@@ -648,6 +650,12 @@ enum purchase_orders_status {
   received
   cancelled
 }
+
+enum purchase_orders_type {
+  normal
+  impromptu
+}
+
 
 enum page_permissions_access {
   none

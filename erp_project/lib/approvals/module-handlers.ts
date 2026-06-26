@@ -20,6 +20,7 @@ import { packingMaterials as pmSql } from "@/lib/queries/packing-materials"
 import { vendors as vendorSql } from "@/lib/queries/vendors"
 import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
+import { getFileBuffer } from "@/lib/s3"
 import { STATUS } from "@/lib/constants"
 
 export type DiffItem = { field_name: string; old_value: string; new_value: string }
@@ -295,6 +296,91 @@ const poHandler: ModuleHandler = {
   },
 }
 
+// ── PO_BULK (bulk CSV upload — single approval for all POs in the file) ──────
+// No separate table needed. The S3 key and filename are stored directly as
+// approval_items rows. entity_id = uploader's user id.
+// applyAndArchive: reads s3_key from items, fetches the CSV from S3, parses
+// each row, inserts all POs directly as 'raised'.
+// Expected CSV columns (row 1 = header): mfg_code,sku_code,qty,expected_on,destination
+
+function parseCsv(text: string): string[][] {
+  const result: string[][] = []
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue
+    const cells: string[] = []
+    let i = 0
+    while (i < line.length) {
+      if (line[i] === '"') {
+        i++
+        let val = ""
+        while (i < line.length) {
+          if (line[i] === '"' && line[i + 1] === '"') { val += '"'; i += 2 }
+          else if (line[i] === '"') { i++; break }
+          else { val += line[i++] }
+        }
+        cells.push(val)
+        if (line[i] === ",") i++
+      } else {
+        const end = line.indexOf(",", i)
+        if (end === -1) { cells.push(line.slice(i).trim()); break }
+        cells.push(line.slice(i, end).trim()); i = end + 1
+      }
+    }
+    result.push(cells)
+  }
+  return result
+}
+
+const poBulkHandler: ModuleHandler = {
+  async setStatus() {
+    // No separate entity table — nothing to update on reject
+  },
+  async applyAndArchive(conn, _entityId, items) {
+    const s3Key = items.find((i) => i.field_name === "s3_key")?.new_value
+    if (!s3Key) throw new Error("s3_key not found in approval items")
+
+    const buffer  = await getFileBuffer(s3Key)
+    const csvText = buffer.toString("utf-8")
+    const allRows = parseCsv(csvText)
+    if (allRows.length < 2) throw new Error("CSV has no data rows")
+
+    const dataRows = allRows.slice(1) // skip header
+    const rows: { mfg_code: string; sku_code: string; qty: number; expected_on: string | null; destination: string | null }[] = []
+
+    for (const cells of dataRows) {
+      const mfg_code    = (cells[0] ?? "").trim()
+      const sku_code    = (cells[1] ?? "").trim()
+      const qty         = Number(cells[2] ?? 0)
+      const expected_on = (cells[3] ?? "").trim() || null
+      const destination = (cells[4] ?? "").trim() || null
+      if (!mfg_code || !sku_code || qty <= 0) continue
+      rows.push({ mfg_code, sku_code, qty, expected_on, destination })
+    }
+
+    if (rows.length === 0) throw new Error("No valid rows found in the uploaded CSV")
+
+    const year = new Date().getFullYear()
+    const [cntRows] = await conn.execute(
+      `SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE 'PO-%'`, []
+    )
+    let seq = Number((cntRows as any[])[0]?.cnt ?? 0)
+
+    for (const row of rows) {
+      const [mfgRows] = await conn.execute(
+        `SELECT id FROM master_mfgs WHERE code = ? LIMIT 1`, [row.mfg_code]
+      )
+      const mfg = (mfgRows as any[])[0]
+      if (!mfg) throw new Error(`Manufacturer not found: ${row.mfg_code}`)
+
+      seq++
+      const po_no = `PO-${year}-${seq.toString().padStart(3, "0")}`
+      await conn.execute(purchaseOrdersSql.insertBulkPo, [
+        po_no, mfg.id, row.sku_code, row.qty, row.expected_on, row.destination, s3Key,
+      ])
+    }
+  },
+}
+
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 export const MODULE_HANDLERS: Record<string, ModuleHandler> = {
@@ -308,4 +394,5 @@ export const MODULE_HANDLERS: Record<string, ModuleHandler> = {
   VENDOR:  vendorHandler,
   MFG:     mfgHandler,
   PO:      poHandler,
+  PO_BULK: poBulkHandler,
 }

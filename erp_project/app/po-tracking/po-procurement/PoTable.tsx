@@ -1,7 +1,8 @@
 "use client"
 
-import { FileText, Loader2, Mail, Pencil, Scissors } from "lucide-react"
+import { Download, FileText, Loader2, Mail, Pencil, Scissors } from "lucide-react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -58,54 +59,83 @@ function ViewPoButton({ s3Key }: { s3Key: string }) {
   )
 }
 
-function RaisedPoActions({ poId, poNo }: { poId: number; poNo: string }) {
-  const [sendState, setSendState] = useState<SendState>("idle")
-  const [errMsg, setErrMsg]       = useState("")
+const iconBtn = "inline-flex h-7 w-7 items-center justify-center rounded-md border border-input hover:bg-accent transition-colors disabled:opacity-50"
+
+function RaisedPoActions({
+  poId, poNo, attachmentKey, isSent,
+}: {
+  poId: number
+  poNo: string
+  attachmentKey: string | null
+  isSent: boolean
+}) {
+  const router                          = useRouter()
+  const [sending,      setSending]      = useState(false)
+  const [viewLoading,  setViewLoading]  = useState(false)
+  const [errMsg,       setErrMsg]       = useState("")
 
   async function handleSend() {
-    setSendState("sending"); setErrMsg("")
+    setSending(true); setErrMsg("")
     try {
       const res  = await fetch(`/api/purchase-orders/${poId}/send-email`, { method: "POST" })
       const data = await res.json()
-      if (!res.ok) { setSendState("error"); setErrMsg(data.error ?? "Send failed"); return }
-      setSendState("sent")
+      if (!res.ok) { setErrMsg(data.error ?? "Send failed"); return }
+      router.refresh()
     } catch {
-      setSendState("error"); setErrMsg("Network error — please try again")
+      setErrMsg("Network error — please try again")
+    } finally {
+      setSending(false)
     }
   }
 
-  return (
-    <div className="flex flex-col items-end gap-1.5">
-      <div className="flex items-center gap-1.5">
-        {/* Send button */}
-        {sendState === "sent" ? (
-          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 font-medium">
-            <Mail className="h-3 w-3" /> Sent ✓
-          </span>
-        ) : (
-          <button
-            onClick={handleSend}
-            disabled={sendState === "sending"}
-            title={`Send PO ${poNo} to manufacturer`}
-            className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50"
-          >
-            {sendState === "sending"
-              ? <><Loader2 className="h-3 w-3 animate-spin" /> Sending…</>
-              : <><Mail className="h-3 w-3" /> Send PO</>
-            }
+  async function handleView() {
+    if (!attachmentKey) return
+    setViewLoading(true)
+    try {
+      const res  = await fetch(`/api/files/presign?key=${encodeURIComponent(attachmentKey)}`)
+      const data = await res.json()
+      if (data.url) window.open(data.url, "_blank", "noopener,noreferrer")
+    } finally {
+      setViewLoading(false)
+    }
+  }
+
+  if (isSent) {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex items-center gap-1">
+          <button onClick={handleSend} disabled={sending} title="Re-send email" className={iconBtn}>
+            {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
           </button>
+          {attachmentKey && (
+            <button onClick={handleView} disabled={viewLoading} title="View PO" className={iconBtn}>
+              {viewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            </button>
+          )}
+        </div>
+        {errMsg && (
+          <span className="text-[10px] text-destructive">
+            {errMsg} <button onClick={() => setErrMsg("")} className="underline">dismiss</button>
+          </span>
         )}
       </div>
+    )
+  }
 
-      {/* Error message below buttons */}
-      {sendState === "error" && (
-        <div className="flex items-center gap-1 text-[10px] text-destructive max-w-[180px] text-right leading-tight">
-          <span>{errMsg}</span>
-          <button
-            onClick={() => setSendState("idle")}
-            className="ml-1 shrink-0 underline hover:no-underline"
-          >dismiss</button>
-        </div>
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        onClick={handleSend}
+        disabled={sending}
+        title={`Send PO ${poNo} to manufacturer`}
+        className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+      >
+        {sending ? <><Loader2 className="h-3 w-3 animate-spin" /> Sending…</> : <><Mail className="h-3 w-3" /> Send PO</>}
+      </button>
+      {errMsg && (
+        <span className="text-[10px] text-destructive">
+          {errMsg} <button onClick={() => setErrMsg("")} className="underline">dismiss</button>
+        </span>
       )}
     </div>
   )
@@ -127,7 +157,7 @@ export default function PoTable({
       <CardContent className="p-0">
         <Table>
           <TableHeader>
-            <TableRow className="bg-gray-200">
+            <TableRow>
               <TableHead>PO Number</TableHead>
               <TableHead>Manufacturer</TableHead>
               <TableHead>PO Date</TableHead>
@@ -164,7 +194,7 @@ export default function PoTable({
                     {/* PO Number */}
                     <TableCell className="font-mono text-xs font-medium whitespace-nowrap">
                       {r.po_no}
-                      {isImpromptu(r.po_no) && (
+                      {(r.po_type === "impromptu" || isImpromptu(r.po_no)) && (
                         <Badge variant="warning" className="ml-1.5 px-1.5 py-0 text-[10px]">IMP</Badge>
                       )}
                     </TableCell>
@@ -234,8 +264,15 @@ export default function PoTable({
                             <Scissors className="h-3 w-3" /> Split
                           </button>
                         )}
-                        {canSend && <RaisedPoActions poId={r.id} poNo={r.po_no} />}
-                        {r.attachment_key && <ViewPoButton s3Key={r.attachment_key} />}
+                        {canSend && (
+                          <RaisedPoActions
+                            poId={r.id}
+                            poNo={r.po_no}
+                            attachmentKey={r.attachment_key}
+                            isSent={!!r.email_sent_at}
+                          />
+                        )}
+                        {!canSend && r.attachment_key && <ViewPoButton s3Key={r.attachment_key} />}
                         {!canEdit && !canSplit && !canSend && !r.attachment_key && (
                           <span className="text-muted-foreground">—</span>
                         )}

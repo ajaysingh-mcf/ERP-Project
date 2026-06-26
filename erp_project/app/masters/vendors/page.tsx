@@ -15,7 +15,8 @@
 import { auth } from "@/lib/auth"
 import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
-import { parsePaginationParams, paginate } from "@/lib/pagination"
+import { parsePaginationParams } from "@/lib/pagination"
+import { timedQuery } from "@/lib/query-timing"
 import { vendors } from "@/lib/queries/vendors"
 import type { Vendor } from "@/types/masters"
 import VendorsClient from "./VendorsClient"
@@ -40,14 +41,17 @@ export default async function VendorsPage({
 
   const fp = vendors.filterParams(search || null, typeFilter || null)
 
-  const { rows, total } = await paginate<Vendor>(
-    vendors.selectPaginated,
-    [...fp, size, offset],
-    vendors.countAll,
-    fp,
-    page,
-    size
-  )
+  console.log(`[AUDIT] Vendors page load - page=${page}, size=${size}, search=${search || "none"}, type=${typeFilter || "all"}`)
+  const pageStart = performance.now()
+
+  const [rows, countRows] = await Promise.all([
+    timedQuery<Vendor>(vendors.selectPaginated, [...fp, size, offset], { label: "selectPaginated" }),
+    timedQuery<{ total: number }>(vendors.countAll, fp, { label: "countAll" }),
+  ])
+
+  const total = Number(countRows[0]?.total ?? 0)
+  const pageTime = performance.now() - pageStart
+  console.log(`[AUDIT] Vendors page complete: ${pageTime.toFixed(2)}ms | fetched ${rows.length}/${total} rows`)
 
   return (
     <div className="p-6">

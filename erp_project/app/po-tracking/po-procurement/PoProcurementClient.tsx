@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Filter, Zap } from "lucide-react"
+import { Filter, Plus, Upload } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { SearchInput } from "@/components/masters/SearchInput"
 import { cn } from "@/lib/utils"
@@ -11,7 +11,9 @@ import type { MfgOption, PoRow, SkuOption, TabKey, WarehouseOption } from "./po-
 import { PAGE_SIZE, STATUS_CONFIG, STATUS_KEYS, TABS } from "./po-types"
 import { fmtInt, fmtMoney, getPageNumbers, num } from "./po-utils"
 import PoTable from "./PoTable"
+import AddPODialog from "./AddPODialog"
 import ImpromptuPODialog from "./ImpromptuPODialog"
+import PoBulkUploadDialog from "./PoBulkUploadDialog"
 import SplitPODialog from "./SplitPODialog"
 
 /* ── Summary card ────────────────────────────────────────────────────────────── */
@@ -104,6 +106,8 @@ export default function PoProcurementClient({
   const [search, setSearch]               = useState("")
   const [activeTab, setActiveTab]         = useState<TabKey>("all")
   const [currentPage, setCurrentPage]     = useState(1)
+  const [showAddPO, setShowAddPO]         = useState(false)
+  const [showBulk, setShowBulk]           = useState(false)
   const [showImpromptu, setShowImpromptu] = useState(false)
   const [editTarget, setEditTarget]       = useState<PoRow | null>(null)
   const [splitTarget, setSplitTarget]     = useState<PoRow | null>(null)
@@ -178,10 +182,16 @@ export default function PoProcurementClient({
           <Filter className="h-3.5 w-3.5" /> Filters
         </button>
         <button
-          onClick={() => setShowImpromptu(true)}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-amber-500 px-3 text-xs font-medium text-white hover:bg-amber-600 transition-colors sm:ml-auto"
+          onClick={() => setShowBulk(true)}
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-input bg-background px-3 text-xs font-medium hover:bg-accent transition-colors"
         >
-          <Zap className="h-3.5 w-3.5" /> Impromptu PO
+          <Upload className="h-3.5 w-3.5" /> Bulk Upload
+        </button>
+        <button
+          onClick={() => setShowAddPO(true)}
+          className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors sm:ml-auto"
+        >
+          <Plus className="h-3.5 w-3.5" /> Add PO
         </button>
       </div>
 
@@ -237,13 +247,19 @@ export default function PoProcurementClient({
       </div>
 
       {/* ── Dialogs ── */}
-      <ImpromptuPODialog
-        open={showImpromptu}
-        onClose={() => setShowImpromptu(false)}
+      <AddPODialog
+        open={showAddPO}
+        onClose={() => setShowAddPO(false)}
         skuOptions={skuOptions}
         mfgOptions={mfgOptions}
         warehouseOptions={warehouseOptions}
         onCreated={afterAction}
+      />
+
+      <PoBulkUploadDialog
+        open={showBulk}
+        onClose={() => setShowBulk(false)}
+        onSubmitted={afterAction}
       />
 
       <ImpromptuPODialog

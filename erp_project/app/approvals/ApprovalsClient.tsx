@@ -46,6 +46,7 @@ const MODULE_LABEL: Record<string, string> = {
   VENDOR:  "Vendor",
   MFG:     "Manufacturer",
   PO:      "Impromptu PO",
+  PO_BULK: "Bulk PO Upload",
 }
 
 const MODULE_COLOR: Record<string, string> = {
@@ -59,6 +60,7 @@ const MODULE_COLOR: Record<string, string> = {
   VENDOR:  "bg-indigo-50 text-indigo-700 border-indigo-200",
   MFG:     "bg-amber-50 text-amber-700 border-amber-200",
   PO:      "bg-yellow-50 text-yellow-700 border-yellow-200",
+  PO_BULK: "bg-cyan-50 text-cyan-700 border-cyan-200",
 }
 
 export default function ApprovalsClient({

@@ -14,8 +14,8 @@
 import { auth } from "@/lib/auth"
 import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
-import { query } from "@/lib/db"
-import { parsePaginationParams, paginate } from "@/lib/pagination"
+import { parsePaginationParams } from "@/lib/pagination"
+import { timedQuery } from "@/lib/query-timing"
 import { rawMaterials } from "@/lib/queries/raw-materials"
 import { vendors as vendorSql } from "@/lib/queries/vendors"
 import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
@@ -46,11 +46,14 @@ export default async function RawMaterialsPage({
   const like   = search       ? `%${search}%` : null
   const status = statusFilter ? statusFilter  : null
 
+  console.log(`[AUDIT] Raw Materials page load - view=${isMfg ? "mfg" : "vendor"}, page=${page}, size=${size}, search=${search || "none"}`)
+  const pageStart = performance.now()
+
   // ── Parallel fetch: reference lists + paginated view data ─────────────────
   // vendorList and mfgList are fetched in full for the Add wizard dropdowns.
   const [vendorList, mfgList] = await Promise.all([
-    query<Vendor>(vendorSql.selectAll),
-    query<Mfg>(mfgSql.selectAll),
+    timedQuery<Vendor>(vendorSql.selectAll, [], { label: "vendors.selectAll" }),
+    timedQuery<Mfg>(mfgSql.selectAll, [], { label: "manufacturers.selectAll" }),
   ])
 
   let body: React.ReactNode
@@ -58,14 +61,11 @@ export default async function RawMaterialsPage({
   if (isMfg) {
     // Manufacturer view — query rm_mrm × rm
     // Param order: [like×3, status×2, LIMIT, OFFSET] (data) / [like×3, status×2] (count)
-    const { rows, total } = await paginate<RMByMfg>(
-      rawMaterials.selectMfgPaginated,
-      [like, like, like, status, status, size, offset],
-      rawMaterials.countMfg,
-      [like, like, like, status, status],
-      page,
-      size
-    )
+    const [rows, countRows] = await Promise.all([
+      timedQuery<RMByMfg>(rawMaterials.selectMfgPaginated, [like, like, like, status, status, size, offset], { label: "selectMfgPaginated" }),
+      timedQuery<{ total: number }>(rawMaterials.countMfg, [like, like, like, status, status], { label: "countMfg" }),
+    ])
+    const total = Number(countRows[0]?.total ?? 0)
     body = (
       <ManufacturerRawMaterialsClient
         rows={rows}
@@ -80,14 +80,11 @@ export default async function RawMaterialsPage({
     )
   } else {
     // Vendor view (default) — query rm_vrm × rm
-    const { rows, total } = await paginate<RM>(
-      rawMaterials.selectVendorPaginated,
-      [like, like, like, status, status, size, offset],
-      rawMaterials.countVendor,
-      [like, like, like, status, status],
-      page,
-      size
-    )
+    const [rows, countRows] = await Promise.all([
+      timedQuery<RM>(rawMaterials.selectVendorPaginated, [like, like, like, status, status, size, offset], { label: "selectVendorPaginated" }),
+      timedQuery<{ total: number }>(rawMaterials.countVendor, [like, like, like, status, status], { label: "countVendor" }),
+    ])
+    const total = Number(countRows[0]?.total ?? 0)
     body = (
       <VendorRawMaterialsClient
         rows={rows}
@@ -101,6 +98,9 @@ export default async function RawMaterialsPage({
       />
     )
   }
+
+  const pageTime = performance.now() - pageStart
+  console.log(`[AUDIT] Raw Materials page complete: ${pageTime.toFixed(2)}ms`)
 
   return (
     <div className="p-6">

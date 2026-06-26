@@ -17,7 +17,10 @@ export type PoRow = {
   invoice_no: string | null
   destination: string | null
   status: PoStatus | null
+  po_type: "normal" | "impromptu" | null
   attachment_key: string | null
+  csv_source_key: string | null
+  email_sent_at: string | null
   mfg_id: number
   mfg_code: string
   mfg_name: string

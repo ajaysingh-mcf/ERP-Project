@@ -5,7 +5,7 @@ type EventStatus = "raw" | "processed" | "failed"
 
 function eventKey(status: EventStatus, module: string, eventId: string): string {
   // const date = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
-  return `${status}-events/${module}/${uuidv4}/${eventId}.json`
+  return `${status}-events/${module}/${uuidv4()}/${eventId}.json`
 }
 
 /**

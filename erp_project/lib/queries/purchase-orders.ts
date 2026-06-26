@@ -3,7 +3,8 @@
  *
  * Real table: purchase_orders
  * Columns: id, po_no, mfg_id, date, sku_code, bom_id, qty, unit_price,
- *          total_amount, expected_on, received_qty, invoice_no, status
+ *          total_amount, expected_on, received_qty, invoice_no, status,
+ *          po_type, email_sent_at, attachment_key
  */
 
 export const purchaseOrdersSql = {
@@ -22,7 +23,10 @@ export const purchaseOrdersSql = {
       po.invoice_no,
       po.destination,
       po.status,
+      po.po_type,
       po.attachment_key,
+      po.csv_source_key,
+      po.email_sent_at,
       m.id   AS mfg_id,
       m.code AS mfg_code,
       m.name AS mfg_name,
@@ -40,14 +44,28 @@ export const purchaseOrdersSql = {
     SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE 'IMP-%'
   `,
 
-  /** Insert a new impromptu PO as draft (pending approval). Parameters: [po_no, mfg_id, sku_code, qty, expected_on, destination] */
+  /** Count of normal POs (PO- prefix) — used for PO-YYYY-NNN number generation. */
+  countNormal: `
+    SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE 'PO-%'
+  `,
+
+  /** Insert an impromptu PO as draft (pending approval). Parameters: [po_no, mfg_id, sku_code, qty, expected_on, po_type, destination] */
   insert: `
-    INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, destination)
-    VALUES (?, ?, CURDATE(), ?, ?, ?, 'draft', ?)
+    INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, po_type, destination)
+    VALUES (?, ?, CURDATE(), ?, ?, ?, 'draft', ?, ?)
+  `,
+
+  /** Insert a normal PO directly as raised (no approval needed). Parameters: [po_no, mfg_id, sku_code, qty, expected_on, destination] */
+  insertNormal: `
+    INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, po_type, destination)
+    VALUES (?, ?, CURDATE(), ?, ?, ?, 'raised', 'normal', ?)
   `,
 
   /** Set status on a purchase_orders row. Parameters: [status, id] */
   setStatus: `UPDATE purchase_orders SET status = ? WHERE id = ?`,
+
+  /** Stamp email_sent_at on first send only. Parameters: [id] */
+  setEmailSentAt: `UPDATE purchase_orders SET email_sent_at = NOW() WHERE id = ? AND email_sent_at IS NULL`,
 
   /** Fetch MFG name for readable approval diff. Parameters: [id] */
   selectById: `
@@ -104,6 +122,12 @@ export const purchaseOrdersSql = {
   insertSplit: `
     INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, destination)
     VALUES (?, ?, CURDATE(), ?, ?, ?, ?, ?)
+  `,
+
+  /** Insert a PO directly as 'raised' for the bulk CSV approval flow. Parameters: [po_no, mfg_id, sku_code, qty, expected_on, destination, csv_source_key] */
+  insertBulkPo: `
+    INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, po_type, destination, csv_source_key)
+    VALUES (?, ?, CURDATE(), ?, ?, ?, 'raised', 'normal', ?, ?)
   `,
 
   /** Update editable fields on a PO (draft/raised/punched). Parameters: [mfg_id, sku_code, qty, expected_on, destination, id] */

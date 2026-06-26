@@ -79,6 +79,7 @@ export function QuickCreateManufacturerModal({ open, onClose, onSuccess }: Props
         bank_name: null,
         ifsc_number: null,
         account_number: null,
+        email: null,
       }
       toast({ title: "Manufacturer created", description: newMfg.name, variant: "success" })
       onSuccess(newMfg)
