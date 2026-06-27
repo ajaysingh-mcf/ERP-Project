@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import type { PoRow, SplitRow, WarehouseOption } from "./po-types"
+import type { MfgOption, PoRow, SplitRow, WarehouseOption } from "./po-types"
 import { fmtInt, num } from "./po-utils"
 
 function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
@@ -23,55 +23,74 @@ function StatCard({ label, value, highlight }: { label: string; value: string; h
   )
 }
 
-function RemainingCard({ remaining, splitTotal }: { remaining: number; splitTotal: number }) {
-  const effective = Math.max(0, remaining - splitTotal)
-  const pct       = remaining > 0 ? Math.min(100, Math.round((splitTotal / remaining) * 100)) : 0
-  const done      = splitTotal >= remaining && remaining > 0
+function RemainingCard({ remaining, splitTotal, originalMfg }: {
+  remaining: number
+  splitTotal: number
+  originalMfg: string
+}) {
+  const leftover = Math.max(0, remaining - splitTotal)
+  const pct      = remaining > 0 ? Math.min(100, Math.round((splitTotal / remaining) * 100)) : 0
+  const done     = splitTotal >= remaining && remaining > 0
+
+  if (done) {
+    return (
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-center">
+        <div className="text-[11px] text-muted-foreground mb-0.5">Stays with original MFG</div>
+        <div className="text-xl font-bold tabular-nums text-emerald-700">0</div>
+        <div className="mt-1.5 h-1.5 w-full rounded-full bg-black/10 overflow-hidden">
+          <div className="h-full w-full rounded-full bg-emerald-500" />
+        </div>
+        <div className="mt-1 text-[10px] font-medium text-emerald-600">Fully handed off</div>
+      </div>
+    )
+  }
 
   return (
-    <div className={cn(
-      "rounded-lg border p-3 text-center",
-      done ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"
-    )}>
-      <div className="text-[11px] text-muted-foreground mb-0.5">Remaining to split</div>
-      <div className={cn("text-xl font-bold tabular-nums", done ? "text-emerald-700" : "text-amber-700")}>
-        {effective.toLocaleString()}
-      </div>
+    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-center">
+      <div className="text-[11px] text-muted-foreground mb-0.5">Stays with original MFG</div>
+      <div className="text-xl font-bold tabular-nums text-blue-700">{leftover.toLocaleString()}</div>
       <div className="mt-1.5 h-1.5 w-full rounded-full bg-black/10 overflow-hidden">
         <div
-          className={cn("h-full rounded-full transition-all", done ? "bg-emerald-500" : "bg-amber-500")}
+          className="h-full rounded-full bg-blue-400 transition-all"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className={cn("mt-1 text-[10px] font-medium", done ? "text-emerald-600" : "text-amber-600")}>
-        {done ? "Completed" : `${pct}% allocated`}
+      <div className="mt-1 text-[10px] font-medium text-blue-600 truncate" title={originalMfg}>
+        {pct}% split off · {originalMfg}
       </div>
     </div>
   )
 }
 
 export default function SplitPODialog({
-  open, onClose, po, warehouseOptions, onSplit,
+  open, onClose, po, warehouseOptions, mfgOptions, onSplit,
 }: {
   open: boolean
   onClose: () => void
   po: PoRow | null
   warehouseOptions: WarehouseOption[]
+  mfgOptions: MfgOption[]
   onSplit: () => void
 }) {
-  const [rows, setRows]           = useState<SplitRow[]>([
-    { destination: "", qty: "" },
-    { destination: "", qty: "" },
+  const defaultMfgId = po ? String(po.mfg_id) : ""
+
+  const [rows, setRows]             = useState<SplitRow[]>([
+    { mfg_id: defaultMfgId, destination: "", qty: "" },
+    { mfg_id: defaultMfgId, destination: "", qty: "" },
   ])
   const [submitting, setSubmitting] = useState(false)
-  const [apiError, setApiError]   = useState("")
+  const [apiError, setApiError]     = useState("")
 
   useEffect(() => {
-    if (open) {
-      setRows([{ destination: "", qty: "" }, { destination: "", qty: "" }])
+    if (open && po) {
+      const id = String(po.mfg_id)
+      setRows([
+        { mfg_id: id, destination: "", qty: "" },
+        { mfg_id: id, destination: "", qty: "" },
+      ])
       setApiError("")
     }
-  }, [open])
+  }, [open, po])
 
   if (!po) return null
 
@@ -86,7 +105,7 @@ export default function SplitPODialog({
     setApiError("")
   }
 
-  const addRow    = () => setRows((p) => [...p, { destination: "", qty: "" }])
+  const addRow    = () => setRows((p) => [...p, { mfg_id: po ? String(po.mfg_id) : "", destination: "", qty: "" }])
   const removeRow = (i: number) => {
     if (rows.length <= 2) return
     setRows((p) => p.filter((_, idx) => idx !== i))
@@ -94,6 +113,10 @@ export default function SplitPODialog({
 
   async function handleSplit() {
     if (!po) return
+    if (rows.some((r) => !r.mfg_id)) {
+      setApiError("Each row must have a manufacturer selected.")
+      return
+    }
     if (rows.some((r) => !r.qty || num(r.qty) <= 0)) {
       setApiError("Each row must have a quantity greater than 0.")
       return
@@ -108,11 +131,12 @@ export default function SplitPODialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          splits: rows.map((r) => ({ destination: r.destination, qty: Number(r.qty) })),
+          splits: rows.map((r) => ({ mfg_id: Number(r.mfg_id), destination: r.destination, qty: Number(r.qty) })),
         }),
       })
       const data = await res.json()
       if (!res.ok) { setApiError(data.error ?? "Failed to split PO."); return }
+      console.log(`[split dialog] success — split_type=${data.split_type} splits_created=${data.splits_created}`)
       onSplit()
       onClose()
     } catch {
@@ -142,7 +166,7 @@ export default function SplitPODialog({
         <div className="grid grid-cols-3 gap-3">
           <StatCard label="Total PO Qty"      value={fmtInt(total)} />
           <StatCard label="Already Received"  value={fmtInt(received)} />
-          <RemainingCard remaining={remaining} splitTotal={splitTotal} />
+          <RemainingCard remaining={remaining} splitTotal={splitTotal} originalMfg={po.mfg_name} />
         </div>
 
         {/* Split rows */}
@@ -150,6 +174,18 @@ export default function SplitPODialog({
           {rows.map((row, i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="w-5 text-center text-xs text-muted-foreground flex-shrink-0">{i + 1}</span>
+              <select
+                value={row.mfg_id}
+                onChange={(e) => setRow(i, "mfg_id", e.target.value)}
+                className={selectCls}
+              >
+                <option value="">— Manufacturer —</option>
+                {mfgOptions.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.code} — {m.name}
+                  </option>
+                ))}
+              </select>
               <select
                 value={row.destination}
                 onChange={(e) => setRow(i, "destination", e.target.value)}

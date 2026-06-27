@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getPresignedDownloadUrl } from "@/lib/s3"
+import { getPresignedDownloadUrl, getPresignedViewUrl } from "@/lib/s3"
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const session = await auth()
@@ -17,8 +17,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const expiresInParam = req.nextUrl.searchParams.get("expiresIn")
   const expiresIn = expiresInParam ? Math.min(Math.max(parseInt(expiresInParam), 60), 3600) : 300
 
+  const view = req.nextUrl.searchParams.get("view") === "1"
+
   try {
-    const url = await getPresignedDownloadUrl(key, expiresIn)
+    const url = view
+      ? await getPresignedViewUrl(key, expiresIn)
+      : await getPresignedDownloadUrl(key, expiresIn)
     return NextResponse.json({ url, expiresIn })
   } catch (err: any) {
     console.error("[presign] failed key=%s", key, err)

@@ -31,7 +31,13 @@ export async function POST(
   }
 
   try {
-    await sendPoEmail(poId)
+    const sent = await sendPoEmail(poId)
+    if (!sent) {
+      return NextResponse.json(
+        { error: "Manufacturer has no email address on file. Add an email in the Manufacturer master first." },
+        { status: 422 }
+      )
+    }
     await execute(purchaseOrdersSql.setEmailSentAt, [poId])
     return NextResponse.json({ ok: true })
   } catch (err: any) {

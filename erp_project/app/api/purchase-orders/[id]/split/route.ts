@@ -1,6 +1,10 @@
 // POST /api/purchase-orders/[id]/split
-// Split a raised PO into N child POs, one per destination.
-// The original PO is set to 'short_closed'; child POs inherit status 'raised'.
+// Split a raised PO into N child POs across (optionally different) manufacturers.
+//
+// Parent PO closing rules:
+//   splitTotal >= remaining → parent set to 'short_closed' (all qty handed off)
+//   splitTotal <  remaining → parent qty reduced by splitTotal; status unchanged
+//                             (original mfg still fulfils the leftover qty)
 
 import { NextRequest, NextResponse } from "next/server"
 import type { PoolConnection } from "mysql2/promise"
@@ -25,10 +29,13 @@ export async function POST(
   if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
 
   const body = await req.json()
-  const splits: { destination: string; qty: number }[] = body.splits ?? []
+  const splits: { mfg_id: number; destination: string; qty: number }[] = body.splits ?? []
 
   if (!Array.isArray(splits) || splits.length < 2) {
     return NextResponse.json({ error: "At least 2 split rows are required." }, { status: 400 })
+  }
+  if (splits.some((s) => !s.mfg_id || isNaN(Number(s.mfg_id)))) {
+    return NextResponse.json({ error: "Each split row must have a manufacturer selected." }, { status: 400 })
   }
   if (splits.some((s) => !s.qty || Number(s.qty) <= 0)) {
     return NextResponse.json({ error: "Each split must have a quantity greater than 0." }, { status: 400 })
@@ -45,8 +52,9 @@ export async function POST(
     )
   }
 
-  const remaining = Number(po.qty) - Number(po.received_qty ?? 0)
+  const remaining  = Number(po.qty) - Number(po.received_qty ?? 0)
   const splitTotal = splits.reduce((sum, s) => sum + Number(s.qty), 0)
+  console.log(`[split] po_id=${poId} po.qty=${po.qty} received=${po.received_qty} remaining=${remaining} splitTotal=${splitTotal}`)
   if (splitTotal > remaining) {
     return NextResponse.json(
       { error: `Split total (${splitTotal}) exceeds remaining qty (${remaining}).` },
@@ -56,13 +64,17 @@ export async function POST(
 
   const userId = parseInt(session.user.id)
 
-  // Fetch MFG details once for readable approval diffs
-  const mfgRows = await query<any>(mfgsSql.selectNameById, [po.mfg_id])
-  const mfg = mfgRows[0] ?? { code: po.mfg_id, name: String(po.mfg_id) }
-
   const eventId = `po-split-${poId}-${Date.now()}`
   console.log(`[events] PO split id=${poId} into ${splits.length} — firing raw event ${eventId}`)
   recordRawEvent("PO_SPLIT", eventId, { parentPoId: poId, parentPoNo: po.po_no, splits })
+
+  // Pre-fetch all unique manufacturer names needed for approval diffs
+  const uniqueMfgIds = [...new Set(splits.map((s) => s.mfg_id))]
+  const mfgMap: Record<number, { code: string; name: string }> = {}
+  for (const mfgId of uniqueMfgIds) {
+    const rows = await query<any>(mfgsSql.selectNameById, [mfgId])
+    mfgMap[mfgId] = rows[0] ?? { code: String(mfgId), name: String(mfgId) }
+  }
 
   const conn: PoolConnection = await pool.getConnection()
   await conn.beginTransaction()
@@ -71,12 +83,13 @@ export async function POST(
     const childStatus   = isParentDraft ? "draft" : "raised"
 
     for (let i = 0; i < splits.length; i++) {
-      const { destination, qty } = splits[i]
+      const { mfg_id, destination, qty } = splits[i]
       const childPoNo = `${po.po_no}-S${i + 1}`
+      const mfg = mfgMap[mfg_id]
 
       const [childResult] = await conn.execute(
         purchaseOrdersSql.insertSplit,
-        [childPoNo, po.mfg_id, po.sku_code, Number(qty), po.expected_on, childStatus, destination || null]
+        [childPoNo, mfg_id, po.sku_code, Number(qty), po.expected_on, childStatus, destination || null]
       )
       const childId = (childResult as any).insertId
 
@@ -99,12 +112,22 @@ export async function POST(
       }
     }
 
-    // Close the original
-    await conn.execute(purchaseOrdersSql.setStatus, ["short_closed", poId])
+    // Close or trim the original PO
+    let splitType: "full" | "partial"
+    if (splitTotal >= remaining) {
+      splitType = "full"
+      console.log(`[split] FULL split — setting parent ${poId} to short_closed`)
+      await conn.execute(purchaseOrdersSql.setStatus, ["short_closed", poId])
+    } else {
+      splitType = "partial"
+      const newQty = Number(po.qty) - splitTotal
+      console.log(`[split] PARTIAL split — reducing parent ${poId} qty from ${po.qty} to ${newQty}`)
+      await conn.execute(purchaseOrdersSql.setQty, [newQty, poId])
+    }
 
     await conn.commit()
-    recordProcessedEvent("PO_SPLIT", eventId, { parentPoId: poId, splitsCreated: splits.length })
-    return NextResponse.json({ ok: true, splits_created: splits.length })
+    recordProcessedEvent("PO_SPLIT", eventId, { parentPoId: poId, splitsCreated: splits.length, splitType })
+    return NextResponse.json({ ok: true, splits_created: splits.length, split_type: splitType })
   } catch (err: any) {
     await conn.rollback()
     recordFailedEvent("PO_SPLIT", eventId, { parentPoId: poId, splits }, err.message)

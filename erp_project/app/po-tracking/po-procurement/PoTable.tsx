@@ -1,14 +1,16 @@
 "use client"
 
-import { Download, FileText, Loader2, Mail, Pencil, Scissors } from "lucide-react"
+import { AlertTriangle, Download, FileText, Loader2, Mail, Pencil, Scissors } from "lucide-react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog"
+import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
-import { cn } from "@/lib/utils"
 import type { BadgeVariant, PoRow } from "./po-types"
 import { STATUS_CONFIG } from "./po-types"
 import { fmtDate, fmtInt, fmtMoney, isImpromptu, num } from "./po-utils"
@@ -26,8 +28,6 @@ function ProgressCell({ value, total }: { value: string | number | null; total: 
     </div>
   )
 }
-
-type SendState = "idle" | "sending" | "sent" | "error"
 
 function ViewPoButton({ s3Key }: { s3Key: string }) {
   const [loading, setLoading] = useState(false)
@@ -62,27 +62,24 @@ function ViewPoButton({ s3Key }: { s3Key: string }) {
 const iconBtn = "inline-flex h-7 w-7 items-center justify-center rounded-md border border-input hover:bg-accent transition-colors disabled:opacity-50"
 
 function RaisedPoActions({
-  poId, poNo, attachmentKey, isSent,
+  poId, poNo, attachmentKey, isSent, hasMfgEmail,
 }: {
   poId: number
   poNo: string
   attachmentKey: string | null
   isSent: boolean
+  hasMfgEmail: boolean
 }) {
-  const router                          = useRouter()
-  const [sending,      setSending]      = useState(false)
-  const [viewLoading,  setViewLoading]  = useState(false)
-  const [errMsg,       setErrMsg]       = useState("")
+  const router                              = useRouter()
+  const [sending,        setSending]        = useState(false)
+  const [viewLoading,    setViewLoading]    = useState(false)
+  const [errDialogOpen,  setErrDialogOpen]  = useState(false)
 
   async function handleSend() {
-    setSending(true); setErrMsg("")
+    setSending(true)
     try {
       const res  = await fetch(`/api/purchase-orders/${poId}/send-email`, { method: "POST" })
-      const data = await res.json()
-      if (!res.ok) { setErrMsg(data.error ?? "Send failed"); return }
-      router.refresh()
-    } catch {
-      setErrMsg("Network error — please try again")
+      if (res.ok) router.refresh()
     } finally {
       setSending(false)
     }
@@ -100,44 +97,66 @@ function RaisedPoActions({
     }
   }
 
+  // No email on file — show warning icon immediately, no send button
+  if (!hasMfgEmail) {
+    return (
+      <>
+        <button
+          onClick={() => setErrDialogOpen(true)}
+          title="No email on file"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-amber-500 hover:bg-amber-50 transition-colors"
+        >
+          <AlertTriangle className="h-4 w-4" />
+        </button>
+        <Dialog open={errDialogOpen} onOpenChange={setErrDialogOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-amber-600">
+                <AlertTriangle className="h-4 w-4" />
+                Cannot Send Email
+              </DialogTitle>
+              <DialogDescription className="pt-1 text-sm text-foreground">
+                Manufacturer has no email address on file. Add an email in the Manufacturer master first.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <button
+                onClick={() => setErrDialogOpen(false)}
+                className="inline-flex items-center justify-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+              >
+                Close
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
+    )
+  }
+
   if (isSent) {
     return (
-      <div className="flex flex-col items-end gap-1">
-        <div className="flex items-center gap-1">
-          <button onClick={handleSend} disabled={sending} title="Re-send email" className={iconBtn}>
-            {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+      <div className="flex items-center gap-1">
+        <button onClick={handleSend} disabled={sending} title="Re-send email" className={iconBtn}>
+          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+        </button>
+        {attachmentKey && (
+          <button onClick={handleView} disabled={viewLoading} title="View PO" className={iconBtn}>
+            {viewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
           </button>
-          {attachmentKey && (
-            <button onClick={handleView} disabled={viewLoading} title="View PO" className={iconBtn}>
-              {viewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            </button>
-          )}
-        </div>
-        {errMsg && (
-          <span className="text-[10px] text-destructive">
-            {errMsg} <button onClick={() => setErrMsg("")} className="underline">dismiss</button>
-          </span>
         )}
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <button
-        onClick={handleSend}
-        disabled={sending}
-        title={`Send PO ${poNo} to manufacturer`}
-        className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50"
-      >
-        {sending ? <><Loader2 className="h-3 w-3 animate-spin" /> Sending…</> : <><Mail className="h-3 w-3" /> Send PO</>}
-      </button>
-      {errMsg && (
-        <span className="text-[10px] text-destructive">
-          {errMsg} <button onClick={() => setErrMsg("")} className="underline">dismiss</button>
-        </span>
-      )}
-    </div>
+    <button
+      onClick={handleSend}
+      disabled={sending}
+      title={`Send PO ${poNo} to manufacturer`}
+      className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+    >
+      {sending ? <><Loader2 className="h-3 w-3 animate-spin" /> Sending…</> : <><Mail className="h-3 w-3" /> Send PO</>}
+    </button>
   )
 }
 
@@ -261,7 +280,7 @@ export default function PoTable({
                             onClick={() => onSplit(r)}
                             className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-1 text-xs hover:bg-accent transition-colors"
                           >
-                            <Scissors className="h-3 w-3" /> Split
+                            <Scissors className="h-3 w-3" />
                           </button>
                         )}
                         {canSend && (
@@ -270,6 +289,7 @@ export default function PoTable({
                             poNo={r.po_no}
                             attachmentKey={r.attachment_key}
                             isSent={!!r.email_sent_at}
+                            hasMfgEmail={!!r.mfg_email}
                           />
                         )}
                         {!canSend && r.attachment_key && <ViewPoButton s3Key={r.attachment_key} />}

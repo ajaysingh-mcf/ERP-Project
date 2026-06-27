@@ -12,11 +12,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import type { PoolConnection } from "mysql2/promise"
 import { auth } from "@/lib/auth"
-import { query, pool } from "@/lib/db"
+import { query, execute, pool } from "@/lib/db"
+import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { MODULE_HANDLERS, type DiffItem } from "@/lib/approvals/module-handlers"
 import { APPROVAL_STATUS, STATUS } from "@/lib/constants"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { sendPoEmail } from "@/lib/mailer"
 
 export async function POST(
   req: NextRequest,
@@ -75,6 +77,26 @@ export async function POST(
     }
     await conn.commit()
     recordProcessedEvent("APPROVAL", eventId, { approvalId, module: approval.module, entityId: approval.entity_id, action })
+
+    // ── Auto-send PO email after impromptu PO approval ────────────────────
+    // Fire-and-forget: don't block the approval response on email/PDF generation.
+    // email_sent_at is stamped after send so the table shows re-send icons.
+    if (action === "approve" && approval.module === "PO") {
+      const poId = approval.entity_id
+      ;(async () => {
+        try {
+          const sent = await sendPoEmail(poId)
+          if (sent) {
+            await execute(purchaseOrdersSql.setEmailSentAt, [poId])
+            console.log(`[approval] Auto-sent PO email for po_id=${poId}`)
+          } else {
+            console.warn(`[approval] PO po_id=${poId} approved but manufacturer has no email — skipped auto-send`)
+          }
+        } catch (err: any) {
+          console.error(`[approval] Auto-send email failed for po_id=${poId}:`, err.message)
+        }
+      })()
+    }
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {

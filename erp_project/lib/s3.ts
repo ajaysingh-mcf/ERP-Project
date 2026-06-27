@@ -47,6 +47,20 @@ export async function getPresignedDownloadUrl(key: string, expiresIn = 900): Pro
   )
 }
 
+/** Presigned URL that forces inline display in the browser (text/plain) instead of triggering a download. */
+export async function getPresignedViewUrl(key: string, expiresIn = 900): Promise<string> {
+  return getSignedUrl(
+    s3,
+    new GetObjectCommand({
+      Bucket:                     FILES_BUCKET,
+      Key:                        key,
+      ResponseContentType:        "text/plain",
+      ResponseContentDisposition: "inline",
+    }),
+    { expiresIn }
+  )
+}
+
 export async function getFileBuffer(key: string): Promise<Buffer> {
   const res = await s3.send(new GetObjectCommand({ Bucket: FILES_BUCKET, Key: key }))
   const chunks: Uint8Array[] = []

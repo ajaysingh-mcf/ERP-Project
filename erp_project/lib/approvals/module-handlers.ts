@@ -337,12 +337,20 @@ const poBulkHandler: ModuleHandler = {
   },
   async applyAndArchive(conn, _entityId, items) {
     const s3Key = items.find((i) => i.field_name === "s3_key")?.new_value
-    if (!s3Key) throw new Error("s3_key not found in approval items")
+    if (!s3Key) throw new Error("PO_BULK: s3_key not found in approval items")
 
-    const buffer  = await getFileBuffer(s3Key)
-    const csvText = buffer.toString("utf-8")
+    // ── Fetch and parse CSV from S3 BEFORE any DB work ────────────────────
+    let csvText: string
+    try {
+      const buffer = await getFileBuffer(s3Key)
+      csvText = buffer.toString("utf-8")
+    } catch (err: any) {
+      throw new Error(`PO_BULK: failed to fetch CSV from S3 (key=${s3Key}): ${err.message}`)
+    }
+
     const allRows = parseCsv(csvText)
-    if (allRows.length < 2) throw new Error("CSV has no data rows")
+    console.log(`[PO_BULK] parsed CSV: ${allRows.length} total rows (incl. header), key=${s3Key}`)
+    if (allRows.length < 2) throw new Error("PO_BULK: CSV has no data rows (only header or empty)")
 
     const dataRows = allRows.slice(1) // skip header
     const rows: { mfg_code: string; sku_code: string; qty: number; expected_on: string | null; destination: string | null }[] = []
@@ -357,8 +365,10 @@ const poBulkHandler: ModuleHandler = {
       rows.push({ mfg_code, sku_code, qty, expected_on, destination })
     }
 
-    if (rows.length === 0) throw new Error("No valid rows found in the uploaded CSV")
+    if (rows.length === 0) throw new Error("PO_BULK: no valid data rows found — check mfg_code, sku_code, qty columns")
+    console.log(`[PO_BULK] ${rows.length} valid rows to insert`)
 
+    // ── DB work: count, look up MFG IDs, insert POs ───────────────────────
     const year = new Date().getFullYear()
     const [cntRows] = await conn.execute(
       `SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE 'PO-%'`, []
@@ -370,14 +380,17 @@ const poBulkHandler: ModuleHandler = {
         `SELECT id FROM master_mfgs WHERE code = ? LIMIT 1`, [row.mfg_code]
       )
       const mfg = (mfgRows as any[])[0]
-      if (!mfg) throw new Error(`Manufacturer not found: ${row.mfg_code}`)
+      if (!mfg) throw new Error(`PO_BULK: manufacturer not found for code="${row.mfg_code}" — check mfg_code column`)
 
       seq++
       const po_no = `PO-${year}-${seq.toString().padStart(3, "0")}`
       await conn.execute(purchaseOrdersSql.insertBulkPo, [
         po_no, mfg.id, row.sku_code, row.qty, row.expected_on, row.destination, s3Key,
       ])
+      console.log(`[PO_BULK] inserted ${po_no} (mfg=${row.mfg_code} sku=${row.sku_code} qty=${row.qty})`)
     }
+
+    console.log(`[PO_BULK] all ${rows.length} POs inserted, awaiting commit`)
   },
 }
 

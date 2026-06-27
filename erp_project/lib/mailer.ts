@@ -39,16 +39,20 @@ export async function fetchPoData(poId: number): Promise<PoEmailData | null> {
   }
 }
 
-export async function sendPoEmail(poId: number): Promise<void> {
+/**
+ * Returns true if the email was sent, false if the manufacturer has no email on file.
+ * Throws on actual send/PDF failures.
+ */
+export async function sendPoEmail(poId: number): Promise<boolean> {
   const data = await fetchPoData(poId)
 
   if (!data) {
     console.warn(`[mailer] sendPoEmail: PO id=${poId} not found`)
-    return
+    return false
   }
   if (!data.mfg_email) {
-    console.warn(`[mailer] sendPoEmail: PO id=${poId} — manufacturer has no email, skipping`)
-    return
+    console.warn(`[mailer] sendPoEmail: PO id=${poId} — manufacturer has no email on file, skipping`)
+    return false
   }
 
   let pdfBuffer: Buffer
@@ -115,4 +119,5 @@ export async function sendPoEmail(poId: number): Promise<void> {
   })
 
   console.log(`[mailer] PO ${data.po_no} sent to ${data.mfg_email}`)
+  return true
 }

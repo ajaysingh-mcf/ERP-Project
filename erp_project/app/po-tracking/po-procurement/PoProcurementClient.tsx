@@ -1,22 +1,21 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
+import { useState } from "react"
 import { Filter, Plus, Upload } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
-import { SearchInput } from "@/components/masters/SearchInput"
+import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
+import { PaginationBar } from "@/components/ui/pagination-bar"
 import { cn } from "@/lib/utils"
 
 import type { MfgOption, PoRow, SkuOption, TabKey, WarehouseOption } from "./po-types"
-import { PAGE_SIZE, STATUS_CONFIG, STATUS_KEYS, TABS } from "./po-types"
-import { fmtInt, fmtMoney, getPageNumbers, num } from "./po-utils"
+import { STATUS_CONFIG, STATUS_KEYS, TABS } from "./po-types"
+import { fmtInt, fmtMoney } from "./po-utils"
 import PoTable from "./PoTable"
 import AddPODialog from "./AddPODialog"
 import ImpromptuPODialog from "./ImpromptuPODialog"
 import PoBulkUploadDialog from "./PoBulkUploadDialog"
 import SplitPODialog from "./SplitPODialog"
-
-/* ── Summary card ────────────────────────────────────────────────────────────── */
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
@@ -29,152 +28,62 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
   )
 }
 
-/* ── Pagination bar ──────────────────────────────────────────────────────────── */
-
-function PoPagination({
-  total, safePage, totalPages, firstItem, lastItem, onChange,
-}: {
-  total: number
-  safePage: number
-  totalPages: number
-  firstItem: number
-  lastItem: number
-  onChange: (page: number) => void
-}) {
-  if (total === 0) return null
-  return (
-    <div className="flex items-center justify-between gap-4 px-1">
-      <p className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-        Showing {firstItem}–{lastItem} of {total} result{total !== 1 ? "s" : ""}
-      </p>
-
-      {totalPages > 1 && (
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => onChange(Math.max(1, safePage - 1))}
-            disabled={safePage === 1}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-input text-xs hover:bg-accent disabled:opacity-40 disabled:pointer-events-none transition-colors"
-            aria-label="Previous page"
-          >‹</button>
-
-          {getPageNumbers(safePage, totalPages).map((p, i) =>
-            p === "…" ? (
-              <span key={`el-${i}`} className="h-7 w-7 flex items-center justify-center text-muted-foreground text-xs select-none">…</span>
-            ) : (
-              <button
-                key={p}
-                onClick={() => onChange(p as number)}
-                className={cn(
-                  "inline-flex h-7 w-7 items-center justify-center rounded-md border text-xs transition-colors",
-                  safePage === p
-                    ? "border-foreground bg-foreground text-background font-semibold"
-                    : "border-input hover:bg-accent"
-                )}
-              >{p}</button>
-            )
-          )}
-
-          <button
-            onClick={() => onChange(Math.min(totalPages, safePage + 1))}
-            disabled={safePage === totalPages}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-input text-xs hover:bg-accent disabled:opacity-40 disabled:pointer-events-none transition-colors"
-            aria-label="Next page"
-          >›</button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ── Main component ──────────────────────────────────────────────────────────── */
-
 export default function PoProcurementClient({
-  initialRows,
+  rows,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentStatus,
+  statusCounts,
+  summary,
   skuOptions,
   mfgOptions,
   warehouseOptions,
   sessionUserId,
 }: {
-  initialRows: PoRow[]
+  rows: PoRow[]
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentStatus: string
+  statusCounts: Record<string, number>
+  summary: { total: number; raised: number; punched: number; partiallyReceived: number; openValue: number }
   skuOptions: SkuOption[]
   mfgOptions: MfgOption[]
   warehouseOptions: WarehouseOption[]
   sessionUserId: number
 }) {
-  const router = useRouter()
+  const router       = useRouter()
+  const pathname     = usePathname()
+  const searchParams = useSearchParams()
 
-  const [search, setSearch]               = useState("")
-  const [activeTab, setActiveTab]         = useState<TabKey>("all")
-  const [currentPage, setCurrentPage]     = useState(1)
-  const [showAddPO, setShowAddPO]         = useState(false)
-  const [showBulk, setShowBulk]           = useState(false)
-  const [showImpromptu, setShowImpromptu] = useState(false)
-  const [editTarget, setEditTarget]       = useState<PoRow | null>(null)
-  const [splitTarget, setSplitTarget]     = useState<PoRow | null>(null)
+  const [showAddPO, setShowAddPO]   = useState(false)
+  const [showBulk, setShowBulk]     = useState(false)
+  const [editTarget, setEditTarget] = useState<PoRow | null>(null)
+  const [splitTarget, setSplitTarget] = useState<PoRow | null>(null)
 
-  useEffect(() => { setCurrentPage(1) }, [search, activeTab])
-
-  /* ── Filtering ── */
-
-  const searchFiltered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return initialRows
-    return initialRows.filter((r) =>
-      [r.po_no, r.mfg_name, r.mfg_code, r.sku_code, r.sku_name]
-        .some((f) => (f ?? "").toLowerCase().includes(q))
-    )
-  }, [initialRows, search])
-
-  const counts = useMemo(() => {
-    const c: Record<string, number> = { all: searchFiltered.length }
-    for (const k of STATUS_KEYS) c[k] = 0
-    for (const r of searchFiltered) {
-      const s = r.status ?? "draft"
-      if (c[s] !== undefined) c[s]++
+  function navigate(updates: Record<string, string>) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) params.set(k, v)
+      else   params.delete(k)
     }
-    return c
-  }, [searchFiltered])
-
-  const visibleRows = useMemo(
-    () => activeTab === "all" ? searchFiltered : searchFiltered.filter((r) => r.status === activeTab),
-    [searchFiltered, activeTab]
-  )
-
-  /* ── Pagination ── */
-
-  const totalPages    = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE))
-  const safePage      = Math.min(currentPage, totalPages)
-  const paginatedRows = useMemo(
-    () => visibleRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-    [visibleRows, safePage]
-  )
-  const firstItem = visibleRows.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1
-  const lastItem  = Math.min(safePage * PAGE_SIZE, visibleRows.length)
-
-  /* ── Summary ── */
-
-  const summary = useMemo(() => {
-    const by = (s: string) => initialRows.filter((r) => r.status === s).length
-    const openValue = initialRows
-      .filter((r) => r.status !== "received" && r.status !== "cancelled")
-      .reduce((sum, r) => sum + num(r.total_amount), 0)
-    return {
-      total: initialRows.length,
-      raised: by("raised"),
-      punched: by("punched"),
-      partiallyReceived: by("partially_received"),
-      openValue,
-    }
-  }, [initialRows])
+    params.set("page", "1")
+    router.push(`${pathname}?${params.toString()}`)
+  }
 
   const afterAction = () => router.refresh()
+
+  const activeTab = (currentStatus || "all") as TabKey
 
   return (
     <div className="space-y-4 text-xs [&_th]:h-9 [&_th]:px-3 [&_th]:text-[11px] [&_td]:px-3 [&_td]:py-2">
 
       {/* ── Toolbar ── */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search PO, SKU, MFG…" />
+        <UrlSearchInput initialValue={currentSearch} placeholder="Search PO, SKU, MFG…" />
         <button
           onClick={() => console.log("TODO: filters")}
           className="inline-flex h-9 items-center gap-2 rounded-lg border border-input bg-background px-3 text-xs font-medium hover:bg-accent transition-colors"
@@ -200,10 +109,13 @@ export default function PoProcurementClient({
         <CardContent className="p-0">
           {TABS.map((tab) => {
             const isActive = activeTab === tab
+            const count = tab === "all"
+              ? statusCounts.all
+              : (statusCounts[tab] ?? 0)
             return (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => navigate({ status: tab === "all" ? "" : tab })}
                 className={cn(
                   "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                   isActive
@@ -212,7 +124,7 @@ export default function PoProcurementClient({
                 )}
               >
                 {tab === "all" ? "All" : STATUS_CONFIG[tab].label}{" "}
-                <span className="opacity-70">({counts[tab] ?? 0})</span>
+                <span className="opacity-70">({count})</span>
               </button>
             )
           })}
@@ -221,21 +133,14 @@ export default function PoProcurementClient({
 
       {/* ── Table ── */}
       <PoTable
-        rows={paginatedRows}
+        rows={rows}
         sessionUserId={sessionUserId}
         onEdit={setEditTarget}
         onSplit={setSplitTarget}
       />
 
       {/* ── Pagination ── */}
-      <PoPagination
-        total={visibleRows.length}
-        safePage={safePage}
-        totalPages={totalPages}
-        firstItem={firstItem}
-        lastItem={lastItem}
-        onChange={setCurrentPage}
-      />
+      <PaginationBar page={page} pageSize={pageSize} total={total} />
 
       {/* ── Summary cards ── */}
       <div className="text-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -284,6 +189,7 @@ export default function PoProcurementClient({
         onClose={() => setSplitTarget(null)}
         po={splitTarget}
         warehouseOptions={warehouseOptions}
+        mfgOptions={mfgOptions}
         onSplit={afterAction}
       />
     </div>

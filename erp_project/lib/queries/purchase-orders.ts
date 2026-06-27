@@ -32,11 +32,71 @@ export const purchaseOrdersSql = {
       m.name AS mfg_name,
       sk.name   AS sku_name,
       sk.status AS sku_status,
-      (SELECT raised_by FROM approvals WHERE module = 'PO' AND entity_id = po.id ORDER BY id DESC LIMIT 1) AS po_raised_by
+      (SELECT raised_by FROM approvals WHERE module = 'PO' AND entity_id = po.id ORDER BY id DESC LIMIT 1) AS po_raised_by,
+      (SELECT email FROM details_mfg WHERE mfg_id = m.id LIMIT 1) AS mfg_email
     FROM purchase_orders po
     INNER JOIN master_mfgs m  ON m.id        = po.mfg_id
     LEFT  JOIN master_skus sk ON sk.sku_code = po.sku_code
     ORDER BY po.date DESC, po.id DESC
+  `,
+
+  /**
+   * Paginated PO list with search + status filter.
+   * Params: [like×6, status, status, LIMIT, OFFSET]
+   * like = '%term%' or null (null disables the search filter)
+   * status = 'raised' etc. or null (null = all statuses)
+   */
+  selectPaginated: `
+    SELECT
+      po.id, po.po_no, po.date, po.sku_code, po.qty, po.unit_price,
+      po.total_amount, po.expected_on, po.received_qty, po.invoice_no,
+      po.destination, po.status, po.po_type, po.attachment_key,
+      po.csv_source_key, po.email_sent_at,
+      m.id   AS mfg_id, m.code AS mfg_code, m.name AS mfg_name,
+      sk.name   AS sku_name, sk.status AS sku_status,
+      (SELECT raised_by FROM approvals WHERE module = 'PO' AND entity_id = po.id ORDER BY id DESC LIMIT 1) AS po_raised_by,
+      (SELECT email FROM details_mfg WHERE mfg_id = m.id LIMIT 1) AS mfg_email
+    FROM purchase_orders po
+    INNER JOIN master_mfgs m  ON m.id        = po.mfg_id
+    LEFT  JOIN master_skus sk ON sk.sku_code = po.sku_code
+    WHERE (? IS NULL OR po.po_no LIKE ? OR m.code LIKE ? OR m.name LIKE ? OR po.sku_code LIKE ? OR sk.name LIKE ?)
+      AND (? IS NULL OR po.status = ?)
+    ORDER BY po.date DESC, po.id DESC
+    LIMIT ? OFFSET ?
+  `,
+
+  /** COUNT matching the selectPaginated WHERE. Params: [like×6, status, status] */
+  countPaginated: `
+    SELECT COUNT(*) AS total
+    FROM purchase_orders po
+    INNER JOIN master_mfgs m  ON m.id        = po.mfg_id
+    LEFT  JOIN master_skus sk ON sk.sku_code = po.sku_code
+    WHERE (? IS NULL OR po.po_no LIKE ? OR m.code LIKE ? OR m.name LIKE ? OR po.sku_code LIKE ? OR sk.name LIKE ?)
+      AND (? IS NULL OR po.status = ?)
+  `,
+
+  /** Per-status counts for tab badges (search-filtered, ignores status param). Params: [like×6] */
+  statusCounts: `
+    SELECT po.status, COUNT(*) AS cnt
+    FROM purchase_orders po
+    INNER JOIN master_mfgs m  ON m.id        = po.mfg_id
+    LEFT  JOIN master_skus sk ON sk.sku_code = po.sku_code
+    WHERE (? IS NULL OR po.po_no LIKE ? OR m.code LIKE ? OR m.name LIKE ? OR po.sku_code LIKE ? OR sk.name LIKE ?)
+    GROUP BY po.status
+  `,
+
+  /** Summary stats for the cards (search-filtered, ignores status param). Params: [like×6] */
+  summaryStats: `
+    SELECT
+      COUNT(*) AS total,
+      SUM(po.status = 'raised') AS raised,
+      SUM(po.status = 'punched') AS punched,
+      SUM(po.status = 'partially_received') AS partially_received,
+      SUM(CASE WHEN po.status NOT IN ('received','cancelled') THEN COALESCE(po.total_amount,0) ELSE 0 END) AS open_value
+    FROM purchase_orders po
+    INNER JOIN master_mfgs m  ON m.id        = po.mfg_id
+    LEFT  JOIN master_skus sk ON sk.sku_code = po.sku_code
+    WHERE (? IS NULL OR po.po_no LIKE ? OR m.code LIKE ? OR m.name LIKE ? OR po.sku_code LIKE ? OR sk.name LIKE ?)
   `,
 
   /** Count of impromptu POs (identified by IMP- prefix) — used for number generation. */
@@ -63,6 +123,9 @@ export const purchaseOrdersSql = {
 
   /** Set status on a purchase_orders row. Parameters: [status, id] */
   setStatus: `UPDATE purchase_orders SET status = ? WHERE id = ?`,
+
+  /** Reduce parent PO qty after a partial split. Parameters: [new_qty, id] */
+  setQty: `UPDATE purchase_orders SET qty = ? WHERE id = ?`,
 
   /** Stamp email_sent_at on first send only. Parameters: [id] */
   setEmailSentAt: `UPDATE purchase_orders SET email_sent_at = NOW() WHERE id = ? AND email_sent_at IS NULL`,

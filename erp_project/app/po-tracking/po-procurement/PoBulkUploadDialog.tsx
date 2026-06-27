@@ -86,10 +86,6 @@ export default function PoBulkUploadDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Bulk PO Upload</DialogTitle>
-          <p className="text-xs text-muted-foreground pt-1">
-            Upload an Excel file with multiple POs. A single approval card will be created for the
-            entire batch. POs are inserted as <strong>Raised</strong> once approved.
-          </p>
         </DialogHeader>
 
         {success ? (
@@ -98,23 +94,24 @@ export default function PoBulkUploadDialog({
               <CheckCircle2 className="h-6 w-6 text-emerald-600" />
             </div>
             <p className="font-medium text-sm">Submitted for approval</p>
-            <p className="text-xs text-muted-foreground">
-              The bulk upload will appear in the Approvals queue. Once approved, all POs will be
-              created automatically.
-            </p>
           </div>
         ) : (
           <div className="space-y-4 py-1">
             {/* Column reference */}
             <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs space-y-1.5">
-              <p className="font-medium text-muted-foreground">Required column order (row 1 = header):</p>
+              <div className="flex items-center justify-between">
+                <p className="font-medium text-muted-foreground">Required column order (row 1 = header):</p>
+                <a
+                  href="/samples/po-bulk-upload-sample.csv"
+                  download="po-bulk-upload-sample.csv"
+                  className="text-primary underline hover:no-underline text-[11px]"
+                >
+                  Download sample
+                </a>
+              </div>
               <code className="block font-mono text-[11px] leading-relaxed">
                 mfg_code,sku_code,qty,expected_on,destination
               </code>
-              <p className="text-muted-foreground">
-                <span className="text-destructive">*</span> mfg_code, sku_code, qty are required per row.
-                expected_on format: YYYY-MM-DD. Row 1 must be the header.
-              </p>
             </div>
 
             {/* File picker */}
@@ -144,7 +141,7 @@ export default function PoBulkUploadDialog({
 
               {s3Key && !uploading && (
                 <p className="mt-2 text-xs text-emerald-600">
-                  File uploaded to S3 — ready to submit
+                  File Uploaded.
                 </p>
               )}
             </div>
