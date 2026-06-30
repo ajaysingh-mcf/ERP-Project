@@ -1,9 +1,9 @@
 // Server component — fetches all pending approvals and passes them to the
 // client for interactive approve / reject actions.
-
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { query } from "@/lib/db"
+import { timedQuery } from "@/lib/query-timing"
 import { approvalsSql, entityLabelSql } from "@/lib/queries/approvals"
 import ApprovalsClient from "./ApprovalsClient"
 
@@ -13,7 +13,10 @@ export default async function ApprovalsPage() {
   const session = await auth()
   if (!session?.user) redirect("/auth/signin")
 
-  const rows = await query<any>(approvalsSql.listPending, [])
+  const pageStart = performance.now()
+  console.log(`[AUDIT] Approvals load`)
+
+  const rows = await timedQuery<any>(approvalsSql.listPending, [], { label: "listPending" })
   const approvals = await Promise.all(
     rows.map(async (a) => {
       const [items, labelRows] = await Promise.all([
@@ -33,6 +36,8 @@ export default async function ApprovalsPage() {
       }
     })
   )
+
+  console.log(`[AUDIT] Approvals complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${approvals.length} pending`)
 
   const isApprover = session.user.roles?.some((r) => ["admin", "manager"].includes(r)) ?? false
 

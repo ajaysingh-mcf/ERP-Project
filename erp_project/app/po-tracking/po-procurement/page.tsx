@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth"
 import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
-import { query } from "@/lib/db"
+import { timedQuery } from "@/lib/query-timing"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import type { PoRow } from "./po-types"
 import PoProcurementClient from "./PoProcurementClient"
@@ -30,17 +30,21 @@ export default async function PoProcurementPage({
 
   const searchParams6 = [like, like, like, like, like, like]
 
+  const pageStart = performance.now()
+  console.log(`[AUDIT] PO Procurement load - page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
+
   const [rows, countRows, statusCountRows, summaryRows, skus, mfgs, warehouses] = await Promise.all([
-    query<PoRow>(purchaseOrdersSql.selectPaginated, [...searchParams6, status, status, size, offset]),
-    query<{ total: number }>(purchaseOrdersSql.countPaginated, [...searchParams6, status, status]),
-    query<{ status: string; cnt: number }>(purchaseOrdersSql.statusCounts, searchParams6),
-    query<any>(purchaseOrdersSql.summaryStats, searchParams6),
-    query<any>(purchaseOrdersSql.skuOptions, []),
-    query<any>(purchaseOrdersSql.mfgOptions, []),
-    query<any>(purchaseOrdersSql.warehouseOptions, []),
+    timedQuery<PoRow>(purchaseOrdersSql.selectPaginated, [...searchParams6, status, status, size, offset], { label: "selectPaginated" }),
+    timedQuery<{ total: number }>(purchaseOrdersSql.countPaginated, [...searchParams6, status, status], { label: "countPaginated" }),
+    timedQuery<{ status: string; cnt: number }>(purchaseOrdersSql.statusCounts, searchParams6, { label: "statusCounts" }),
+    timedQuery<any>(purchaseOrdersSql.summaryStats, searchParams6, { label: "summaryStats" }),
+    timedQuery<any>(purchaseOrdersSql.skuOptions, [], { label: "skuOptions" }),
+    timedQuery<any>(purchaseOrdersSql.mfgOptions, [], { label: "mfgOptions" }),
+    timedQuery<any>(purchaseOrdersSql.warehouseOptions, [], { label: "warehouseOptions" }),
   ])
 
   const total = Number(countRows[0]?.total ?? 0)
+  console.log(`[AUDIT] PO Procurement complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
   const statusCounts: Record<string, number> = { all: total }
   for (const r of statusCountRows) statusCounts[r.status] = Number(r.cnt)

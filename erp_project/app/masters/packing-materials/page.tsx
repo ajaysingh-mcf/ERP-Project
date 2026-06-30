@@ -14,8 +14,8 @@
 import { auth } from "@/lib/auth"
 import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
-import { query } from "@/lib/db"
-import { parsePaginationParams, paginate } from "@/lib/pagination"
+import { parsePaginationParams } from "@/lib/pagination"
+import { timedQuery } from "@/lib/query-timing"
 import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
 import { vendors as vendorSql } from "@/lib/queries/vendors"
 import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
@@ -46,33 +46,34 @@ export default async function PackingMaterialsPage({
   const like   = search       ? `%${search}%` : null
   const status = statusFilter ? statusFilter  : null
 
+  const pageStart = performance.now()
+  console.log(`[AUDIT] Packing Materials load - view=${isMfg ? "mfg" : "vendor"}, page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
+
   // ── Parallel fetch: reference lists + paginated view data ─────────────────
-  // vendorList and mfgList are always fetched in full — they power the Add wizard's
-  // dropdowns and are small enough that no pagination is needed.
   const [vendorList, mfgList] = await Promise.all([
-    query<Vendor>(vendorSql.selectAll),
-    query<Mfg>(mfgSql.selectAll),
+    timedQuery<Vendor>(vendorSql.selectAll, [], { label: "vendors.selectAll" }),
+    timedQuery<Mfg>(mfgSql.selectAll, [], { label: "manufacturers.selectAll" }),
   ])
 
   let body: React.ReactNode
+  let finalRowCount = 0
+  let finalTotal = 0
 
   if (isMfg) {
     // Manufacturer view — query pm_mrm × pm
     // Param order: [like×3, status×2, LIMIT, OFFSET] (data) / [like×3, status×2] (count)
-    const { rows, total } = await paginate<PMByMfg>(
-      PMMaterials.selectMfgPaginated,
-      [like, like, like, status, status, size, offset],
-      PMMaterials.countMfg,
-      [like, like, like, status, status],
-      page,
-      size
-    )
+    const [rows, countRows] = await Promise.all([
+      timedQuery<PMByMfg>(PMMaterials.selectMfgPaginated, [like, like, like, status, status, size, offset], { label: "selectMfgPaginated" }),
+      timedQuery<{ total: number }>(PMMaterials.countMfg, [like, like, like, status, status], { label: "countMfg" }),
+    ])
+    finalRowCount = rows.length
+    finalTotal = Number(countRows[0]?.total ?? 0)
     body = (
       <ManufacturerPackingMaterialsClient
         rows={rows}
         vendors={vendorList}
         manufacturers={mfgList}
-        total={total}
+        total={finalTotal}
         page={page}
         pageSize={size}
         currentSearch={search}
@@ -81,20 +82,18 @@ export default async function PackingMaterialsPage({
     )
   } else {
     // Vendor view (default) — query pm_vrm × pm
-    const { rows, total } = await paginate<PMVendor>(
-      PMMaterials.selectVendorPaginated,
-      [like, like, like, status, status, size, offset],
-      PMMaterials.countVendor,
-      [like, like, like, status, status],
-      page,
-      size
-    )
+    const [rows, countRows] = await Promise.all([
+      timedQuery<PMVendor>(PMMaterials.selectVendorPaginated, [like, like, like, status, status, size, offset], { label: "selectVendorPaginated" }),
+      timedQuery<{ total: number }>(PMMaterials.countVendor, [like, like, like, status, status], { label: "countVendor" }),
+    ])
+    finalRowCount = rows.length
+    finalTotal = Number(countRows[0]?.total ?? 0)
     body = (
       <VendorPackingMaterialsClient
         rows={rows}
         vendors={vendorList}
         manufacturers={mfgList}
-        total={total}
+        total={finalTotal}
         page={page}
         pageSize={size}
         currentSearch={search}
@@ -102,6 +101,8 @@ export default async function PackingMaterialsPage({
       />
     )
   }
+
+  console.log(`[AUDIT] Packing Materials complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${finalRowCount}/${finalTotal} rows`)
 
   return (
     <div className="p-6">

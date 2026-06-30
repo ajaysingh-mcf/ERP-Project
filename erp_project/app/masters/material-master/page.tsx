@@ -12,7 +12,8 @@
 import { auth } from "@/lib/auth"
 import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
-import { parsePaginationParams, paginate } from "@/lib/pagination"
+import { parsePaginationParams } from "@/lib/pagination"
+import { timedQuery } from "@/lib/query-timing"
 import { rawMaterials } from "@/lib/queries/raw-materials"
 import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
 import { MaterialToggle } from "./MaterialToggle"
@@ -44,14 +45,16 @@ export default async function MaterialMasterPage({
 
   // ── DB-level paginated fetch ───────────────────────────────────────────────
   // Params: [like×4 (null-check + code + name + make/type), status×2, LIMIT, OFFSET]
-  const { rows, total } = await paginate<AnyRow>(
-    isPm ? PMMaterials.selectPaginated : rawMaterials.selectPaginated,
-    [like, like, like, like, status, status, size, offset],
-    isPm ? PMMaterials.countAll        : rawMaterials.countAll,
-    [like, like, like, like, status, status],
-    page,
-    size
-  )
+  const pageStart = performance.now()
+  const material = isPm ? "pm" : "rm"
+  console.log(`[AUDIT] Material Master load - material=${material}, page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
+
+  const [rows, countRows] = await Promise.all([
+    timedQuery<AnyRow>(isPm ? PMMaterials.selectPaginated : rawMaterials.selectPaginated, [like, like, like, like, status, status, size, offset], { label: "selectPaginated" }),
+    timedQuery<{ total: number }>(isPm ? PMMaterials.countAll : rawMaterials.countAll, [like, like, like, like, status, status], { label: "countAll" }),
+  ])
+  const total = Number(countRows[0]?.total ?? 0)
+  console.log(`[AUDIT] Material Master complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
   return (
     <div className="p-6">

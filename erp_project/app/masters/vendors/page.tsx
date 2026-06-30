@@ -41,8 +41,8 @@ export default async function VendorsPage({
 
   const fp = vendors.filterParams(search || null, typeFilter || null)
 
-  console.log(`[AUDIT] Vendors page load - page=${page}, size=${size}, search=${search || "none"}, type=${typeFilter || "all"}`)
   const pageStart = performance.now()
+  console.log(`[AUDIT] Vendors load - page=${page}, size=${size}, search=${search || "none"}, type=${typeFilter || "all"}`)
 
   const [rows, countRows] = await Promise.all([
     timedQuery<Vendor>(vendors.selectPaginated, [...fp, size, offset], { label: "selectPaginated" }),
@@ -50,8 +50,7 @@ export default async function VendorsPage({
   ])
 
   const total = Number(countRows[0]?.total ?? 0)
-  const pageTime = performance.now() - pageStart
-  console.log(`[AUDIT] Vendors page complete: ${pageTime.toFixed(2)}ms | fetched ${rows.length}/${total} rows`)
+  console.log(`[AUDIT] Vendors complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
   return (
     <div className="p-6">

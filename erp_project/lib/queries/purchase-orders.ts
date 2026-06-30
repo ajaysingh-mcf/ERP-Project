@@ -11,27 +11,10 @@ export const purchaseOrdersSql = {
   /** All POs joined with manufacturer name, SKU name, and who originally raised each PO. */
   selectAll: `
     SELECT
-      po.id,
-      po.po_no,
-      po.date,
-      po.sku_code,
-      po.qty,
-      po.unit_price,
-      po.total_amount,
-      po.expected_on,
-      po.received_qty,
-      po.invoice_no,
-      po.destination,
-      po.status,
-      po.po_type,
-      po.attachment_key,
-      po.csv_source_key,
-      po.email_sent_at,
-      m.id   AS mfg_id,
-      m.code AS mfg_code,
-      m.name AS mfg_name,
-      sk.name   AS sku_name,
-      sk.status AS sku_status,
+      po.id, po.po_no, po.date, po.sku_code, po.qty, po.unit_price,
+      po.total_amount, po.expected_on, po.received_qty, po.invoice_no, po.destination, po.status, po.po_type,
+      po.attachment_key, po.csv_source_key, po.email_sent_at,
+      m.id   AS mfg_id, m.code AS mfg_code, m.name AS mfg_name, sk.name   AS sku_name, sk.status AS sku_status,
       (SELECT raised_by FROM approvals WHERE module = 'PO' AND entity_id = po.id ORDER BY id DESC LIMIT 1) AS po_raised_by,
       (SELECT email FROM details_mfg WHERE mfg_id = m.id LIMIT 1) AS mfg_email
     FROM purchase_orders po
@@ -124,8 +107,8 @@ export const purchaseOrdersSql = {
   /** Set status on a purchase_orders row. Parameters: [status, id] */
   setStatus: `UPDATE purchase_orders SET status = ? WHERE id = ?`,
 
-  /** Reduce parent PO qty after a partial split. Parameters: [new_qty, id] */
-  setQty: `UPDATE purchase_orders SET qty = ? WHERE id = ?`,
+  /** Credit split qty back to the parent as received_qty (never mutates qty). Parameters: [splitTotal, id] */
+  incrementReceivedQtyBySplit: `UPDATE purchase_orders SET received_qty = COALESCE(received_qty, 0) + ? WHERE id = ?`,
 
   /** Stamp email_sent_at on first send only. Parameters: [id] */
   setEmailSentAt: `UPDATE purchase_orders SET email_sent_at = NOW() WHERE id = ? AND email_sent_at IS NULL`,

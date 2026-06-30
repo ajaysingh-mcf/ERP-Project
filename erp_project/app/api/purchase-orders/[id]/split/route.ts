@@ -1,10 +1,10 @@
 // POST /api/purchase-orders/[id]/split
 // Split a raised PO into N child POs across (optionally different) manufacturers.
 //
-// Parent PO closing rules:
-//   splitTotal >= remaining → parent set to 'short_closed' (all qty handed off)
-//   splitTotal <  remaining → parent qty reduced by splitTotal; status unchanged
-//                             (original mfg still fulfils the leftover qty)
+// Parent PO closing rules (qty is NEVER mutated — it matches the email already sent):
+//   splitTotal >= remaining → received_qty += splitTotal  →  status = 'short_closed'
+//   splitTotal <  remaining → received_qty += splitTotal  →  status unchanged
+//                             (remaining bar shrinks; original mfg fulfils leftover)
 
 import { NextRequest, NextResponse } from "next/server"
 import type { PoolConnection } from "mysql2/promise"
@@ -14,6 +14,7 @@ import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { manufacturers as mfgsSql } from "@/lib/queries/manufacturers"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import logger from "@/lib/logger"
 
 const SPLITTABLE = new Set(["draft", "raised", "punched", "partially_received"])
 
@@ -54,7 +55,6 @@ export async function POST(
 
   const remaining  = Number(po.qty) - Number(po.received_qty ?? 0)
   const splitTotal = splits.reduce((sum, s) => sum + Number(s.qty), 0)
-  console.log(`[split] po_id=${poId} po.qty=${po.qty} received=${po.received_qty} remaining=${remaining} splitTotal=${splitTotal}`)
   if (splitTotal > remaining) {
     return NextResponse.json(
       { error: `Split total (${splitTotal}) exceeds remaining qty (${remaining}).` },
@@ -64,8 +64,10 @@ export async function POST(
 
   const userId = parseInt(session.user.id)
 
+  const ctx = { requestId: crypto.randomUUID(), userId, route: `/api/purchase-orders/${poId}/split` }
   const eventId = `po-split-${poId}-${Date.now()}`
-  console.log(`[events] PO split id=${poId} into ${splits.length} — firing raw event ${eventId}`)
+  const logCtx = { ...ctx, eventId, module: "PO_SPLIT" }
+  logger.info({ ...logCtx, parentPoId: poId, splitCount: splits.length, remaining, splitTotal, message: "PO split started" })
   recordRawEvent("PO_SPLIT", eventId, { parentPoId: poId, parentPoNo: po.po_no, splits })
 
   // Pre-fetch all unique manufacturer names needed for approval diffs
@@ -112,26 +114,29 @@ export async function POST(
       }
     }
 
-    // Close or trim the original PO
+    // Credit split qty to parent's received_qty — qty is never changed (it was emailed)
+    await conn.execute(purchaseOrdersSql.incrementReceivedQtyBySplit, [splitTotal, poId])
+    const newReceivedQty = Number(po.received_qty ?? 0) + splitTotal
+    const newRemaining   = Number(po.qty) - newReceivedQty
+
     let splitType: "full" | "partial"
-    if (splitTotal >= remaining) {
+    if (newRemaining <= 0) {
       splitType = "full"
-      console.log(`[split] FULL split — setting parent ${poId} to short_closed`)
       await conn.execute(purchaseOrdersSql.setStatus, ["short_closed", poId])
+      logger.info({ ...logCtx, parentPoId: poId, newReceivedQty, message: "Full split — parent short_closed" })
     } else {
       splitType = "partial"
-      const newQty = Number(po.qty) - splitTotal
-      console.log(`[split] PARTIAL split — reducing parent ${poId} qty from ${po.qty} to ${newQty}`)
-      await conn.execute(purchaseOrdersSql.setQty, [newQty, poId])
+      logger.info({ ...logCtx, parentPoId: poId, newReceivedQty, newRemaining, message: "Partial split — parent status unchanged" })
     }
 
     await conn.commit()
     recordProcessedEvent("PO_SPLIT", eventId, { parentPoId: poId, splitsCreated: splits.length, splitType })
+    logger.info({ ...logCtx, parentPoId: poId, splitsCreated: splits.length, splitType, message: "PO split succeeded" })
     return NextResponse.json({ ok: true, splits_created: splits.length, split_type: splitType })
   } catch (err: any) {
     await conn.rollback()
     recordFailedEvent("PO_SPLIT", eventId, { parentPoId: poId, splits }, err.message)
-    console.error("PO split error:", err)
+    logger.error({ ...logCtx, parentPoId: poId, error: err.message, message: "PO split failed" })
     return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
   } finally {
     conn.release()

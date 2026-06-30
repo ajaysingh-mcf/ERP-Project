@@ -8,7 +8,8 @@
 import { auth } from "@/lib/auth"
 import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
-import { parsePaginationParams, paginate } from "@/lib/pagination"
+import { parsePaginationParams } from "@/lib/pagination"
+import { timedQuery } from "@/lib/query-timing"
 import { bom } from "@/lib/queries/bom"
 import type { BOM } from "@/types/masters"
 import BOMMasterComponent from "./BOMMasterComponent"
@@ -39,14 +40,15 @@ export default async function BOMMasterPage({
   // ── DB query (paginated) ───────────────────────────────────────────────────
   // Param order: [like×3, type×2, status×2, LIMIT, OFFSET] (data)
   //              [like×3, type×2, status×2]                (count)
-  const { rows, total } = await paginate<BOM>(
-    bom.selectPaginated,
-    [like, like, like, type, type, status, status, size, offset],
-    bom.countAll,
-    [like, like, like, type, type, status, status],
-    page,
-    size
-  )
+  const pageStart = performance.now()
+  console.log(`[AUDIT] BOM Master load - page=${page}, size=${size}, search=${search || "none"}, type=${type || "all"}, status=${status || "all"}`)
+
+  const [rows, countRows] = await Promise.all([
+    timedQuery<BOM>(bom.selectPaginated, [like, like, like, type, type, status, status, size, offset], { label: "selectPaginated" }),
+    timedQuery<{ total: number }>(bom.countAll, [like, like, like, type, type, status, status], { label: "countAll" }),
+  ])
+  const total = Number(countRows[0]?.total ?? 0)
+  console.log(`[AUDIT] BOM Master complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
   return (
     <div className="p-6">

@@ -31,7 +31,6 @@ export async function timedQuery<T = Record<string, unknown>>(
   const result = await dbQuery<T>(sql, params)
   const duration = performance.now() - start
 
-  // Format output
   const durationStr = duration.toFixed(2)
   const isSlow = duration > warnThreshold
   const prefix = isSlow ? "🐢 [SLOW]" : "[QUERY]"

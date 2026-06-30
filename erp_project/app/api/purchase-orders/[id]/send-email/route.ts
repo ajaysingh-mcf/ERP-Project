@@ -9,6 +9,7 @@ import { auth } from "@/lib/auth"
 import { query, execute } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { sendPoEmail } from "@/lib/mailer"
+import logger from "@/lib/logger"
 
 export async function POST(
   _req: NextRequest,
@@ -20,6 +21,9 @@ export async function POST(
   const { id } = await params
   const poId = parseInt(id)
   if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
+
+  const ctx = { requestId: crypto.randomUUID(), userId: parseInt(session.user.id), route: `/api/purchase-orders/${poId}/send-email` }
+  logger.info({ ...ctx, poId, message: "Manual PO email send requested" })
 
   const rows = await query<{ status: string }>(purchaseOrdersSql.selectForEdit, [poId])
   if (!rows[0]) return NextResponse.json({ error: "PO not found" }, { status: 404 })
@@ -33,15 +37,17 @@ export async function POST(
   try {
     const sent = await sendPoEmail(poId, "manual")
     if (!sent) {
+      logger.warn({ ...ctx, poId, message: "PO email skipped — no manufacturer email on file" })
       return NextResponse.json(
         { error: "Manufacturer has no email address on file. Add an email in the Manufacturer master first." },
         { status: 422 }
       )
     }
     await execute(purchaseOrdersSql.setEmailSentAt, [poId])
+    logger.info({ ...ctx, poId, message: "Manual PO email sent successfully" })
     return NextResponse.json({ ok: true })
   } catch (err: any) {
-    console.error("[send-email] failed:", err)
+    logger.error({ ...ctx, poId, error: err.message, message: "Manual PO email send failed" })
     return NextResponse.json({ error: "Failed to send email: " + err.message }, { status: 500 })
   }
 }

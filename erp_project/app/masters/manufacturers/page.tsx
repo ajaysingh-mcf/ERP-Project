@@ -8,7 +8,8 @@
 import { auth } from "@/lib/auth"
 import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
-import { parsePaginationParams, paginate } from "@/lib/pagination"
+import { parsePaginationParams } from "@/lib/pagination"
+import { timedQuery } from "@/lib/query-timing"
 import { manufacturers } from "@/lib/queries/manufacturers"
 import type { Mfg } from "@/types/masters"
 import ManufacturersClient from "./ManufacturersClient"
@@ -31,14 +32,15 @@ export default async function ManufacturersPage({
   const search = String(sp.search ?? "")
   const fp     = manufacturers.filterParams(search || null)
 
-  const { rows, total } = await paginate<Mfg>(
-    manufacturers.selectPaginated,
-    [...fp, size, offset],
-    manufacturers.countAll,
-    fp,
-    page,
-    size
-  )
+  const pageStart = performance.now()
+  console.log(`[AUDIT] Manufacturers load - page=${page}, size=${size}, search=${search || "none"}`)
+
+  const [rows, countRows] = await Promise.all([
+    timedQuery<Mfg>(manufacturers.selectPaginated, [...fp, size, offset], { label: "selectPaginated" }),
+    timedQuery<{ total: number }>(manufacturers.countAll, fp, { label: "countAll" }),
+  ])
+  const total = Number(countRows[0]?.total ?? 0)
+  console.log(`[AUDIT] Manufacturers complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
   return (
     <div className="p-6">

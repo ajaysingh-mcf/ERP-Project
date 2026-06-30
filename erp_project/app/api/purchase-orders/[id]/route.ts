@@ -12,6 +12,7 @@ import { skus as skusSql } from "@/lib/queries/skus"
 import { manufacturers as mfgsSql } from "@/lib/queries/manufacturers"
 import { deleteFile } from "@/lib/s3"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import logger from "@/lib/logger"
 
 export async function PUT(
   req: NextRequest,
@@ -66,8 +67,10 @@ export async function PUT(
     return NextResponse.json({ error: "Only the original submitter can re-edit this PO." }, { status: 403 })
   }
 
-  const eventId = `po-${poId}-${Date.now()}`
-  console.log(`[events] PO edit id=${poId} — firing raw event ${eventId}`)
+  const ctx = { requestId: crypto.randomUUID(), userId, route: `/api/purchase-orders/${poId}` }
+  const eventId = `po-edit-${poId}-${Date.now()}`
+  const logCtx = { ...ctx, eventId, module: "PO_EDIT" }
+  logger.info({ ...logCtx, poId, mfg_id, sku_code, qty, message: "PO re-edit started" })
   recordRawEvent("PO", eventId, { poId, mfg_id, sku_code, qty, expected_on, destination, reason })
 
   const conn: PoolConnection = await pool.getConnection()
@@ -104,11 +107,12 @@ export async function PUT(
 
     await conn.commit()
     recordProcessedEvent("PO", eventId, { poId, approvalId })
+    logger.info({ ...logCtx, poId, approvalId, message: "PO re-edit submitted for approval" })
     return NextResponse.json({ ok: true, approval_id: approvalId })
   } catch (err: any) {
     await conn.rollback()
     recordFailedEvent("PO", eventId, { poId, mfg_id, sku_code, qty }, err.message)
-    console.error("PO re-edit error:", err)
+    logger.error({ ...logCtx, poId, error: err.message, message: "PO re-edit failed" })
     return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
   } finally {
     conn.release()
@@ -132,6 +136,9 @@ export async function PATCH(
 
   const { attachment_key } = await req.json()
 
+  const patchCtx = { requestId: crypto.randomUUID(), userId, route: `/api/purchase-orders/${poId}` }
+  logger.info({ ...patchCtx, poId, message: "PO attachment update started" })
+
   // Verify current user is the original submitter
   const raisedRows = await query<any>(purchaseOrdersSql.selectRaisedBy, [poId])
   const raisedBy = raisedRows[0]?.raised_by
@@ -144,10 +151,11 @@ export async function PATCH(
   const oldKey = existing[0]?.attachment_key ?? null
 
   await execute(s3FilesSql.updatePoAttachment, [attachment_key ?? null, poId])
+  logger.info({ ...patchCtx, poId, hasNewKey: !!attachment_key, message: "PO attachment updated" })
 
   // Eager cleanup: delete replaced file from S3 (fire-and-forget, don't block response)
   if (oldKey && oldKey !== attachment_key) {
-    deleteFile(oldKey).catch((err) => console.error("[s3] delete old attachment failed:", err))
+    deleteFile(oldKey).catch((err) => logger.error({ ...patchCtx, poId, error: err.message, message: "S3 old attachment delete failed" }))
   }
 
   return NextResponse.json({ ok: true })

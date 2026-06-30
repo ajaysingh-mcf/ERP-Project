@@ -40,8 +40,8 @@ export default async function SkusPage({
 
   // ── DB query (paginated) ───────────────────────────────────────────────────
   // Param order: [like×4, status×2, LIMIT, OFFSET] (data) / [like×4, status×2] (count)
-  console.log(`[AUDIT] SKUs page load - page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
   const pageStart = performance.now()
+  console.log(`[AUDIT] SKUs load - page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
 
   const [rows, countRows] = await Promise.all([
     timedQuery<Sku>(skuSql.selectPaginated, [like, like, like, like, status, status, size, offset], { label: "selectPaginated" }),
@@ -49,8 +49,7 @@ export default async function SkusPage({
   ])
 
   const total = Number(countRows[0]?.total ?? 0)
-  const pageTime = performance.now() - pageStart
-  console.log(`[AUDIT] SKUs page complete: ${pageTime.toFixed(2)}ms | fetched ${rows.length}/${total} rows`)
+  console.log(`[AUDIT] SKUs complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
   return (
     <div className="p-6">

@@ -46,8 +46,8 @@ export default async function RawMaterialsPage({
   const like   = search       ? `%${search}%` : null
   const status = statusFilter ? statusFilter  : null
 
-  console.log(`[AUDIT] Raw Materials page load - view=${isMfg ? "mfg" : "vendor"}, page=${page}, size=${size}, search=${search || "none"}`)
   const pageStart = performance.now()
+  console.log(`[AUDIT] Raw Materials load - view=${isMfg ? "mfg" : "vendor"}, page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
 
   // ── Parallel fetch: reference lists + paginated view data ─────────────────
   // vendorList and mfgList are fetched in full for the Add wizard dropdowns.
@@ -99,8 +99,7 @@ export default async function RawMaterialsPage({
     )
   }
 
-  const pageTime = performance.now() - pageStart
-  console.log(`[AUDIT] Raw Materials page complete: ${pageTime.toFixed(2)}ms`)
+  console.log(`[AUDIT] Raw Materials complete: ${(performance.now() - pageStart).toFixed(2)}ms`)
 
   return (
     <div className="p-6">

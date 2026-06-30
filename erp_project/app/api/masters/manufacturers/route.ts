@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
 
     const conn = await pool.getConnection()
     logger.info({ ...logCtx, mfg_id, name, message: "Manufacturer update started", })
-    recordRawEvent("MFG_Update", eventId, {
+    recordRawEvent("MFG_UPDATE", eventId, {
       code: mfg_id,
       name: name.trim(),
     })
@@ -267,7 +267,7 @@ export async function POST(req: NextRequest) {
       await conn.commit()
       logger.info({ ...logCtx, mfg_id, approvalId, message: "Manufacturer update submitted for approval", })
 
-      recordProcessedEvent("MFG_Update", eventId, { mfg_id, approvalId, })
+      recordProcessedEvent("MFG_UPDATE", eventId, { mfg_id, approvalId, })
 
       return NextResponse.json({
         ok: true,
@@ -276,7 +276,7 @@ export async function POST(req: NextRequest) {
     } catch (err: any) {
       await conn.rollback()
       logger.error({ ...logCtx, mfg_id, err: err.message, stack: err.stack, message: "Manufacturer update failed", })
-      recordFailedEvent("MFG_Update", eventId, { code: String(mfg_id), name: name.trim() }, err.message)
+      recordFailedEvent("MFG_UPDATE", eventId, { code: String(mfg_id), name: name.trim() }, err.message)
       return NextResponse.json(
         { error: "Database error" },
         { status: 500 }
@@ -349,13 +349,13 @@ export async function POST(req: NextRequest) {
       }
       await conn.commit()
       logger.info({ ...logCtx, inserted, skipped, message: "Transaction committed successfully" });
-      recordProcessedEvent("mfg-Update-CSV", eventId, { source: "s3", s3Key: key, inserted, skipped })
+      recordProcessedEvent("MFG_S3BULK", eventId, { source: "s3", s3Key: key, inserted, skipped })
       logger.info({ ...logCtx, inserted, skipped, message: "Processed event recorded" });
       return NextResponse.json({ inserted, skipped })
     } catch (err: any) {
       await conn.rollback()
       logger.warn({ ...logCtx, inserted, skipped, message: "Transaction rolled back" });
-      recordFailedEvent("mfg-Update-CSV", eventId, { source: "s3", s3Key: key }, err.message)
+      recordFailedEvent("MFG_S3BULK", eventId, { source: "s3", s3Key: key }, err.message)
       logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Manufacturer bulk insert failed" });
       return NextResponse.json({ error: "Import failed: " + err.message }, { status: 500 })
     } finally {
