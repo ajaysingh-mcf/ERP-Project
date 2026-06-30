@@ -31,7 +31,7 @@ export async function POST(
   }
 
   try {
-    const sent = await sendPoEmail(poId)
+    const sent = await sendPoEmail(poId, "manual")
     if (!sent) {
       return NextResponse.json(
         { error: "Manufacturer has no email address on file. Add an email in the Manufacturer master first." },

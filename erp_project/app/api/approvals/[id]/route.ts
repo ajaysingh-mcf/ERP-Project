@@ -19,51 +19,78 @@ import { MODULE_HANDLERS, type DiffItem } from "@/lib/approvals/module-handlers"
 import { APPROVAL_STATUS, STATUS } from "@/lib/constants"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 import { sendPoEmail } from "@/lib/mailer"
-
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+import logger from "@/lib/logger"
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
 
+  const ctx = {
+    requestId: crypto.randomUUID(),
+    userId: session ? Number(session.user.id) : undefined,
+    route: "/api/approval/[id]",
+  }
+  logger.info({ ...ctx, message: "Approval API request received" })
+
   const roles: string[] = session.user.roles ?? []
   if (!roles.some((r) => ["admin", "manager"].includes(r))) {
+    logger.warn({ ...ctx, message: "Approval action forbidden: insufficient role", roles })
     return NextResponse.json({ error: "Forbidden — admin or manager role required" }, { status: 403 })
   }
 
   const { id } = await params
   const approvalId = parseInt(id)
-  if (isNaN(approvalId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 })
+  if (isNaN(approvalId)) {
+    logger.error({ ...ctx, message: "Invalid approval id", rawId: id })
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 })
+  }
 
   const body = await req.json()
   const { action, remarks } = body as { action: string; remarks?: string }
+  const logCtx = { ...ctx, approvalId, action }
 
   if (action !== "approve" && action !== "reject") {
+    logger.warn({ ...logCtx, message: "Invalid action value", action })
     return NextResponse.json({ error: "action must be 'approve' or 'reject'" }, { status: 400 })
   }
   if (action === "reject" && !remarks?.trim()) {
+    logger.warn({ ...logCtx, message: "Rejection rejected: missing remarks" })
     return NextResponse.json({ error: "Rejection remarks are required" }, { status: 400 })
   }
 
   const approverId = parseInt(session.user.id)
 
   const [approval] = await query<any>(approvalsSql.getById, [approvalId])
-  if (!approval) return NextResponse.json({ error: "Approval not found" }, { status: 404 })
+  if (!approval) {
+    logger.warn({ ...logCtx, message: "Approval not found" })
+    return NextResponse.json({ error: "Approval not found" }, { status: 404 })
+  }
   if (approval.status !== APPROVAL_STATUS.PENDING) {
+    logger.warn({ ...logCtx, message: "Approval already actioned", module: approval.module, currentStatus: approval.status })
     return NextResponse.json({ error: "This approval has already been actioned" }, { status: 409 })
   }
 
   const handler = MODULE_HANDLERS[approval.module]
   if (!handler) {
+    logger.error({ ...logCtx, message: "Unknown module", module: approval.module })
     return NextResponse.json({ error: `Unknown module: ${approval.module}` }, { status: 422 })
   }
 
   const items = await query<DiffItem>(approvalsSql.getItems, [approvalId])
 
+  // ── Event S3 bucket ───────────────────────────────────────────────────
   const eventId = `approval-${approvalId}-${Date.now()}`
-  console.log(`[events] APPROVAL ${action} id=${approvalId} module=${approval.module} — firing raw event ${eventId}`)
-  recordRawEvent("APPROVAL", eventId, { approvalId, module: approval.module, entityId: approval.entity_id, action, remarks })
+  const eventLogCtx = { ...logCtx, eventId, module: approval.module, entityId: approval.entity_id }
+
+  recordRawEvent("APPROVAL", eventId, {
+    approvalId,
+    module:    approval.module,
+    entityId:  approval.entity_id,
+    approverId,
+    action,
+    remarks:   remarks?.trim() ?? null,
+    raisedBy:  approval.raised_by,
+    items,
+  })
 
   const conn: PoolConnection = await pool.getConnection()
   await conn.beginTransaction()
@@ -71,12 +98,17 @@ export async function POST(
     if (action === "approve") {
       await handler.applyAndArchive(conn, approval.entity_id, items, approverId)
       await conn.execute(approvalsSql.markApproved, [approverId, approvalId])
+      logger.info({ ...eventLogCtx, message: "Approval applied and archived", approverId })
     } else {
       await handler.setStatus(conn, approval.entity_id, STATUS.DRAFT)
       await conn.execute(approvalsSql.markRejected, [approverId, remarks!.trim(), approvalId])
+      logger.info({ ...eventLogCtx, message: "Approval rejected, entity reverted to draft", approverId })
     }
     await conn.commit()
-    recordProcessedEvent("APPROVAL", eventId, { approvalId, module: approval.module, entityId: approval.entity_id, action })
+
+    recordProcessedEvent("APPROVAL", eventId, {
+      approvalId, module: approval.module, entityId: approval.entity_id, approverId, action,
+    })
 
     // ── Auto-send PO email after impromptu PO approval ────────────────────
     // Fire-and-forget: don't block the approval response on email/PDF generation.
@@ -88,12 +120,12 @@ export async function POST(
           const sent = await sendPoEmail(poId)
           if (sent) {
             await execute(purchaseOrdersSql.setEmailSentAt, [poId])
-            console.log(`[approval] Auto-sent PO email for po_id=${poId}`)
+            logger.info({ ...eventLogCtx, message: "Auto-sent PO email", poId })
           } else {
-            console.warn(`[approval] PO po_id=${poId} approved but manufacturer has no email — skipped auto-send`)
+            logger.warn({ ...eventLogCtx, message: "PO approved but manufacturer has no email — skipped auto-send", poId })
           }
         } catch (err: any) {
-          console.error(`[approval] Auto-send email failed for po_id=${poId}:`, err.message)
+          logger.error({ ...eventLogCtx, message: "Auto-send PO email failed", poId, error: err.message })
         }
       })()
     }
@@ -101,11 +133,12 @@ export async function POST(
     return NextResponse.json({ ok: true })
   } catch (err: any) {
     await conn.rollback()
-    recordFailedEvent("APPROVAL", eventId, { approvalId, module: approval.module, action }, err.message)
-    console.error(
-      "[Approval] action=%s id=%d module=%s entity=%d user=%d error=%s",
-      action, approvalId, approval.module, approval.entity_id, approverId, err.message
-    )
+
+    logger.error({ ...eventLogCtx, message: "Approval transaction failed", approverId, error: err.message, code: err.code })
+    recordFailedEvent("APPROVAL", eventId, {
+      approvalId, module: approval.module, entityId: approval.entity_id, action,
+    }, err.message)
+
     return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
   } finally {
     conn.release()

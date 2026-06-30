@@ -198,8 +198,8 @@ export const rawMaterials = {
    * Parameters: [rm_id, vendor_id, vendor_code, curr_rate, moq, uom, effective_from, effective_to]
    */
   insertVendorRate: `
-    INSERT INTO rm_vrm_dynamic (rm_id, vendor_id, vendor_code, curr_rate, moq, uom, effective_from, effective_to)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO rm_vrm_dynamic (rm_id, vendor_id, vendor_code, curr_rate, moq, uom, effective_from, effective_to, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   /**
@@ -207,8 +207,8 @@ export const rawMaterials = {
    * Parameters: [rm_id, mfg_id, mfg_code, curr_rate, uom, approved_vendor_id, approved_vendor_code, effective_from]
    */
   insertMfgRate: `
-    INSERT INTO rm_mrm_fixed (rm_id, mfg_id, mfg_code, curr_rate, uom, approved_vendor_id, approved_vendor_code, effective_from)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO rm_mrm_fixed (rm_id, mfg_id, mfg_code, curr_rate, uom, approved_vendor_id, approved_vendor_code, effective_from, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   /**

@@ -4,109 +4,146 @@ import { execute, query, pool } from "@/lib/db"
 import { rawMaterials } from "@/lib/queries/raw-materials"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { parseS3Import } from "@/lib/import-s3"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import logger from "@/lib/logger"
 
 // Parameters for the rm table insert (base material).
-function toRmParams(r: any) {
+function toRmParams(r: any, status: string = "in_review") {
   return [
     r.rm_code?.trim() || null,
     r.name.trim(),
     r.make?.trim() || null,
     r.type?.trim() || null,
     r.uom?.trim() || null,
-    r.status || "active",
+    status,
     r.hsn_code?.trim() || null,
     r.inci_name?.trim() || null,
   ]
 }
 
 // Parameters for the rm_vrm (vendor rate) insert.
-function toVendorRateParams(rmId: number, r: any) {
+function toVendorRateParams(rmId: number, r: any, status: string = "in_review") {
   return [
     rmId,
     r.vendor_id ? Number(r.vendor_id) : null,
     r.vendor_code?.trim() || null,
-    r.curr_rate ? Number(r.curr_rate) : null,
+    r.curr_rate ? Number(r.curr_rate) : 0,
     r.moq ? Number(r.moq) : null,
     r.rate_uom?.trim() || null,
-    r.effective_from?.trim() || null,
+    r.effective_from?.trim() || new Date().toISOString().slice(0, 10),
     r.effective_to?.trim() || null,
+    status
   ]
 }
 
 // Parameters for the rm_mrm (manufacturer rate) insert.
-function toMfgRateParams(rmId: number, r: any) {
+function toMfgRateParams(rmId: number, r: any, status: string = "in_review") {
   return [
     rmId,
     r.mfg_id ? Number(r.mfg_id) : null,
     r.mfg_code?.trim() || null,
-    r.curr_rate ? Number(r.curr_rate) : null,
+    r.curr_rate ? Number(r.curr_rate) : 0,
     r.rate_uom?.trim() || null,
     r.approved_vendor_id ? Number(r.approved_vendor_id) : null,
     r.approved_vendor_code?.trim() || null,
-    r.effective_from?.trim() || null,
+    r.effective_from?.trim() || new Date().toISOString().slice(0, 10),
+    status
   ]
 }
 
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const userId = parseInt(session.user.id)
 
   const body = await req.json()
   const { action } = body
+
+  const ctx = { requestId: crypto.randomUUID(), userId, route: "/api/masters/raw-materials" }
+  logger.info({ ...ctx, action, message: "Raw Materials API request received" })
 
   if (action === "create") {
     if (!body.name?.trim()) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
 
+    const logCtx = { ...ctx, eventId: `rm-new-${Date.now()}`, module: "RM_Create" }
+    logger.info({ ...logCtx, name: body.name.trim(), message: "RM Create Started" })
+    recordRawEvent("RM_MAT", logCtx.eventId, { name: body.name.trim() })
+
     const hasVendorRate = !!body.vendor_code?.trim()
     const hasMfgRate = !!body.mfg_code?.trim()
-    
-    if (hasVendorRate || hasMfgRate) {
-      // Transactional insert: rm + rate master table.
-      const conn = await pool.getConnection()
-      await conn.beginTransaction()
-      try {
-        const [rmResult] = await conn.execute(rawMaterials.insert, toRmParams(body))
-        const rmId = (rmResult as any).insertId
 
-        if (hasVendorRate) {
-          await conn.execute(rawMaterials.insertVendorRate, toVendorRateParams(rmId, body))
-        } else {
-          await conn.execute(rawMaterials.insertMfgRate, toMfgRateParams(rmId, body))
-        }
-
-        await conn.commit()
-        return NextResponse.json({ id: rmId })
-      } catch (err: any) {
-        await conn.rollback()
-        console.error("Raw material + rate insert error:", err)
-        return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
-      } finally {
-        conn.release()
-      }
-    }
-
-    // No rate data — insert rm only (existing behaviour).
+    const conn = await pool.getConnection()
+    await conn.beginTransaction()
     try {
-      const result = await execute(rawMaterials.insert, toRmParams(body))
-      return NextResponse.json({ id: result.insertId })
-    } catch (err: any) {
-      if (err.code === "ER_DUP_ENTRY") {
-        return NextResponse.json(
-          { error: `RM code "${body.rm_code?.trim()}" already exists` },
-          { status: 409 }
-        )
+      const [rmResult] = await conn.execute(rawMaterials.insert, toRmParams(body, "in_review"))
+      const rmId = (rmResult as any).insertId
+
+      const [arRm] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", rmId])
+      const approvalIdRm = (arRm as any).insertId
+
+      const rmFields: [string, string][] = [
+        ["name", body.name.trim()],
+        ["make", body.make?.trim() || ""],
+        ["type", body.type?.trim() || ""],
+        ["uom", body.uom?.trim() || ""],
+        ["hsn_code", body.hsn_code?.trim() || ""],
+        ["inci_name", body.inci_name?.trim() || ""],
+      ]
+      for (const [field, newVal] of rmFields) {
+        if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalIdRm, field, "", newVal])
       }
-      console.error("Raw material create error:", err)
-      return NextResponse.json({ error: "Database error" }, { status: 500 })
+
+      if (hasVendorRate) {
+        const [vResult] = await conn.execute(rawMaterials.insertVendorRate, toVendorRateParams(rmId, body, "in_review"))
+        const vrmId = (vResult as any).insertId
+        const [arVrm] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_VRM", vrmId])
+        const approvalIdVrm = (arVrm as any).insertId
+        const vrmFields: [string, string][] = [
+          ["curr_rate", body.curr_rate ? String(body.curr_rate) : ""],
+          ["moq", body.moq ? String(body.moq) : ""],
+          ["uom", body.rate_uom?.trim() || ""],
+          ["effective_from", body.effective_from?.trim() || new Date().toISOString().slice(0, 10)],
+        ]
+        for (const [field, newVal] of vrmFields) {
+          if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalIdVrm, field, "", newVal])
+        }
+      } else if (hasMfgRate) {
+        const [mResult] = await conn.execute(rawMaterials.insertMfgRate, toMfgRateParams(rmId, body, "in_review"))
+        const mrmId = (mResult as any).insertId
+        const [arMrm] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_RATE", mrmId])
+        const approvalIdMrm = (arMrm as any).insertId
+        const mrmFields: [string, string][] = [
+          ["curr_rate", body.curr_rate ? String(body.curr_rate) : ""],
+          ["uom", body.rate_uom?.trim() || ""],
+          ["effective_from", body.effective_from?.trim() || new Date().toISOString().slice(0, 10)],
+        ]
+        for (const [field, newVal] of mrmFields) {
+          if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalIdMrm, field, "", newVal])
+        }
+      }
+
+      await conn.commit()
+      recordProcessedEvent("RM_MAT", logCtx.eventId, { id: rmId })
+      logger.info({ ...logCtx, rmId, message: "RM created in review" })
+      return NextResponse.json({ id: rmId })
+    } catch (err: any) {
+      await conn.rollback()
+      recordFailedEvent("RM_MAT", logCtx.eventId, { name: body.name.trim() }, err.message)
+      logger.error({ ...logCtx, error: err.message, message: "Raw material create error" })
+      if (err.code === "ER_DUP_ENTRY") {
+        return NextResponse.json({ error: `RM code "${body.rm_code?.trim()}" already exists` }, { status: 409 })
+      }
+      return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+    } finally {
+      conn.release()
     }
   }
 
   if (action === "check-RM") {
     const { name, make, inci_name } = body
-    // console.log("Inside route.ts: " , name ,make , inci_name);
-    if (!inci_name?.trim() || !name?.trim() || !make ) {
+    if (!inci_name?.trim() || !name?.trim() || !make) {
       return NextResponse.json({ error: "name, make, inci_name  are required" }, { status: 400 })
     }
     try {
@@ -117,16 +154,11 @@ export async function POST(req: NextRequest) {
       ])
       return NextResponse.json({ exists: rows.length > 0 })
     } catch (err: any) {
-      console.error("Raw material check error:", err)
+      logger.error({ ...ctx, error: err.message, message: "Raw material check error" })
       return NextResponse.json({ error: "Database error" }, { status: 500 })
     }
-
-
   }
 
-  // Wizard step 2: check if a vendor already has a rate for this material.
-  // Body: { name, make, inci_name, vendor_id }
-  // Returns: { exists: false } | { exists: true, existing: { curr_rate, moq, uom, effective_from } }
   if (action === "check-vendor") {
     const { name, make, inci_name, vendor_id } = body
     if (!name?.trim() || !vendor_id) {
@@ -149,7 +181,7 @@ export async function POST(req: NextRequest) {
         existing: { curr_rate: r.curr_rate, moq: r.moq, uom: r.uom, effective_from: r.effective_from },
       })
     } catch (err: any) {
-      console.error("Vendor rate check error:", err)
+      logger.error({ ...ctx, error: err.message, message: "Vendor rate check error" })
       return NextResponse.json({ error: "Database error" }, { status: 500 })
     }
   }
@@ -162,62 +194,82 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
 
+    const logCtx = { ...ctx, eventId: `rm-create-full-${Date.now()}`, module: "RM_CreateFull" }
+    logger.info({ ...logCtx, name: rm.name.trim(), vendors: vendorList.length, mfgs: mfgList.length, message: "RM Create-Full Started" })
+    recordRawEvent("RM_FULL", logCtx.eventId, { name: rm.name.trim(), vendorCount: vendorList.length, mfgCount: mfgList.length })
+
     const today = new Date().toISOString().slice(0, 10)
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     try {
-      const [rmResult] = await conn.execute(rawMaterials.insert, [
-        null,
-        rm.name.trim(),
-        rm.make?.trim() || null,
-        rm.type?.trim() || null,
-        rm.uom?.trim() || null,
-        rm.status || "active",
-        rm.hsn_code?.trim() || null,
-        rm.inci_name?.trim() || null,
-      ])
+      const [rmResult] = await conn.execute(rawMaterials.insert, toRmParams(rm, "in_review"))
       const rmId = (rmResult as any).insertId
+
+      const [arRm] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", rmId])
+      const approvalIdRm = (arRm as any).insertId
+
+      const rmFields: [string, string][] = [
+        ["name", rm.name.trim()],
+        ["make", rm.make?.trim() || ""],
+        ["type", rm.type?.trim() || ""],
+        ["uom", rm.uom?.trim() || ""],
+        ["hsn_code", rm.hsn_code?.trim() || ""],
+        ["inci_name", rm.inci_name?.trim() || ""],
+      ]
+      for (const [field, newVal] of rmFields) {
+        if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalIdRm, field, "", newVal])
+      }
 
       for (const v of vendorList) {
         const vendorId = v.vendor_id ? Number(v.vendor_id) : null
-
-        // Upsert: archive old rate to vrm_history if one exists, then update; else insert.
         const [existingRows] = await conn.execute(rawMaterials.checkVendorRate, [rmId, vendorId])
         const existing = (existingRows as any[])[0]
 
         if (existing) {
-          await conn.execute(rawMaterials.archiveVendorRate, [
-            rmId,
-            existing.vendor_id,
-            existing.curr_rate,
-            existing.moq,
-            existing.uom,
-            existing.effective_from,
-            existing.effective_to,
-            existing.status,
-          ])
-          await conn.execute(rawMaterials.archiveToHistoryVrm, [
-            rmId, existing.vendor_id, existing.curr_rate,
-            existing.effective_from, existing.effective_to, existing.status,
-          ])
-          await conn.execute(rawMaterials.updateVendorRate, [
-            v.curr_rate ? Number(v.curr_rate) : null,
-            v.moq ? Number(v.moq) : null,
-            v.rate_uom?.trim() || null,
-            today,
-            existing.id,
-          ])
+          if (existing.status === "in_review") continue
+          if (existing.status === "draft") {
+            const [latestRejectionRows] = await conn.execute(approvalsSql.selectLatestRejection, ["RM_VRM", existing.id])
+            const latestRejection = (latestRejectionRows as any[])[0]
+            if (latestRejection && latestRejection.raised_by !== userId) continue
+          }
+          const [pendingRows] = await conn.execute(approvalsSql.hasPending, ["RM_VRM", existing.id])
+          if ((pendingRows as any[])[0]?.cnt > 0) continue
+
+          const vrmFields: [string, unknown, unknown][] = [
+            ["curr_rate", existing.curr_rate, v.curr_rate],
+            ["moq", existing.moq, v.moq],
+            ["uom", existing.uom, v.rate_uom],
+            ["effective_from", existing.effective_from, v.effective_from ?? today],
+          ]
+          const diff = vrmFields.filter(([, oldVal, newVal]) => String(oldVal ?? "") !== String(newVal ?? ""))
+          if (diff.length === 0) continue
+
+          const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_VRM", existing.id])
+          const approvalId = (ar as any).insertId
+          for (const [field, oldVal, newVal] of diff) {
+            await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, String(oldVal ?? ""), String(newVal ?? "")])
+          }
+          await conn.execute(rawMaterials.setVendorRateStatus, ["in_review", existing.id])
         } else {
-          await conn.execute(rawMaterials.insertVendorRate, [
-            rmId,
-            vendorId,
-            v.vendor_code?.trim() || null,
-            v.curr_rate ? Number(v.curr_rate) : null,
+          const [vResult] = await conn.execute(rawMaterials.insertVendorRate, [
+            rmId, vendorId, v.vendor_code?.trim() || null,
+            v.curr_rate ? Number(v.curr_rate) : 0,
             v.moq ? Number(v.moq) : null,
             v.rate_uom?.trim() || null,
-            today,
-            null,
+            today, null, "in_review"
           ])
+          const vrmId = (vResult as any).insertId
+          const [arVrm] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_VRM", vrmId])
+          const approvalIdVrm = (arVrm as any).insertId
+          const vrmFields: [string, string][] = [
+            ["curr_rate", v.curr_rate ? String(v.curr_rate) : ""],
+            ["moq", v.moq ? String(v.moq) : ""],
+            ["uom", v.rate_uom?.trim() || ""],
+            ["effective_from", v.effective_from?.trim() || today],
+          ]
+          for (const [field, newVal] of vrmFields) {
+            if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalIdVrm, field, "", newVal])
+          }
         }
       }
 
@@ -227,44 +279,64 @@ export async function POST(req: NextRequest) {
         const existingMfg = (existingMfgRows as any[])[0]
 
         if (existingMfg) {
-          let historyVendorId = existingMfg.approved_vendor_id
-          if (!historyVendorId) {
-            const [vRows] = await conn.execute(rawMaterials.getVendorId, [rmId])
-            historyVendorId = (vRows as any[])[0]?.vendor_id ?? 0
+          if (existingMfg.status === "in_review") continue
+          if (existingMfg.status === "draft") {
+            const [latestRejectionRows] = await conn.execute(approvalsSql.selectLatestRejection, ["RM_RATE", existingMfg.id])
+            const latestRejection = (latestRejectionRows as any[])[0]
+            if (latestRejection && latestRejection.raised_by !== userId) continue
           }
-          await conn.execute(rawMaterials.archiveToHistoryMrm, [
-            existingMfg.mfg_id, rmId, historyVendorId,
-            existingMfg.curr_rate, existingMfg.effective_from, null,
-            existingMfg.status === "active" ? 1 : 0,
-          ])
-          await conn.execute(rawMaterials.updateMfgRate, [
-            m.curr_rate ? Number(m.curr_rate) : existingMfg.curr_rate,
-            m.rate_uom?.trim() || existingMfg.uom,
-            today,
-            existingMfg.id,
-          ])
+          const [pendingRows] = await conn.execute(approvalsSql.hasPending, ["RM_RATE", existingMfg.id])
+          if ((pendingRows as any[])[0]?.cnt > 0) continue
+
+          const rateFields: [string, unknown, unknown][] = [
+            ["curr_rate", existingMfg.curr_rate, m.curr_rate],
+            ["uom", existingMfg.uom, m.rate_uom],
+            ["effective_from", existingMfg.effective_from, m.effective_from ?? today],
+          ]
+          const diff = rateFields.filter(([, oldVal, newVal]) => String(oldVal ?? "") !== String(newVal ?? ""))
+          if (diff.length === 0) continue
+
+          const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_RATE", existingMfg.id])
+          const approvalId = (ar as any).insertId
+          for (const [field, oldVal, newVal] of diff) {
+            await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, String(oldVal ?? ""), String(newVal ?? "")])
+          }
+          await conn.execute(rawMaterials.setRateStatus, ["in_review", existingMfg.id])
         } else {
-          await conn.execute(rawMaterials.insertMfgApproval, [
-            rmId,
-            mfgId,
-            m.mfg_code?.trim() || null,
+          const [mResult] = await conn.execute(rawMaterials.insertMfgRate, [
+            rmId, mfgId, m.mfg_code?.trim() || null,
+            m.curr_rate ? Number(m.curr_rate) : 0,
+            m.rate_uom?.trim() || null,
+            null, null, today, "in_review"
           ])
+          const mrmId = (mResult as any).insertId
+          const [arMrm] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_RATE", mrmId])
+          const approvalIdMrm = (arMrm as any).insertId
+          const mrmFields: [string, string][] = [
+            ["curr_rate", m.curr_rate ? String(m.curr_rate) : ""],
+            ["uom", m.rate_uom?.trim() || ""],
+            ["effective_from", m.effective_from?.trim() || today],
+          ]
+          for (const [field, newVal] of mrmFields) {
+            if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalIdMrm, field, "", newVal])
+          }
         }
       }
 
       await conn.commit()
+      recordProcessedEvent("RM_FULL", logCtx.eventId, { id: rmId })
+      logger.info({ ...logCtx, rmId, message: "RM created full in review" })
       return NextResponse.json({ id: rmId })
     } catch (err: any) {
       await conn.rollback()
-      console.error("Raw material create-full error:", err)
+      recordFailedEvent("RM_FULL", logCtx.eventId, { name: rm.name.trim() }, err.message)
+      logger.error({ ...logCtx, error: err.message, message: "Raw material create-full error" })
       return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
     } finally {
       conn.release()
     }
   }
 
-  // Add vendor rates and/or mfg approvals to an EXISTING RM (no new rm row inserted).
-  // Body: { name, make, inci_name, vendors: [...], manufacturers: [...] }
   if (action === "add-rates") {
     const { name, make, inci_name } = body
     if (!name?.trim()) {
@@ -275,6 +347,11 @@ export async function POST(req: NextRequest) {
     if (vendorList.length === 0 && mfgList.length === 0) {
       return NextResponse.json({ error: "Provide at least one vendor rate or manufacturer" }, { status: 400 })
     }
+
+    const logCtx = { ...ctx, eventId: `rm-add-rates-${Date.now()}`, module: "RM_AddRates" }
+    logger.info({ ...logCtx, name: name.trim(), message: "RM Add Rates Started" })
+    recordRawEvent("RM_RATES", logCtx.eventId, { name: name.trim() })
+
     try {
       const rms = await query<{ id: number }>(rawMaterials.checkDuplicate, [
         name.trim(),
@@ -288,54 +365,56 @@ export async function POST(req: NextRequest) {
       const today = new Date().toISOString().slice(0, 10)
       const conn = await pool.getConnection()
       await conn.beginTransaction()
-      const userId = parseInt(session.user.id)
       try {
         for (const v of vendorList) {
           const vendorId = v.vendor_id ? Number(v.vendor_id) : null
           const [existingRows] = await conn.execute(rawMaterials.checkVendorRate, [rmId, vendorId])
           const existing = (existingRows as any[])[0]
           if (existing) {
-            // Skip if already locked for approval.
             if (existing.status === "in_review") continue
-
-            // For draft rows, only the original submitter may re-edit.
             if (existing.status === "draft") {
-              const [latestRejection] = await query<{ raised_by: number }>(
-                approvalsSql.selectLatestRejection, ["RM_VRM", existing.id]
-              )
+              const [latestRejectionRows] = await conn.execute(approvalsSql.selectLatestRejection, ["RM_VRM", existing.id])
+              const latestRejection = (latestRejectionRows as any[])[0]
               if (latestRejection && latestRejection.raised_by !== userId) continue
             }
-
-            const pending = await query(approvalsSql.hasPending, ["RM_VRM", existing.id])
-            if (pending.length > 0) continue
+            const [pendingRows] = await conn.execute(approvalsSql.hasPending, ["RM_VRM", existing.id])
+            if ((pendingRows as any[])[0]?.cnt > 0) continue
 
             const vrmFields: [string, unknown, unknown][] = [
-              ["curr_rate",      existing.curr_rate,      v.curr_rate],
-              ["moq",            existing.moq,            v.moq],
-              ["uom",            existing.uom,            v.rate_uom],
+              ["curr_rate", existing.curr_rate, v.curr_rate],
+              ["moq", existing.moq, v.moq],
+              ["uom", existing.uom, v.rate_uom],
               ["effective_from", existing.effective_from, v.effective_from ?? today],
             ]
-            const diff = vrmFields.filter(([, oldVal, newVal]) =>
-              String(oldVal ?? "") !== String(newVal ?? "")
-            )
+            const diff = vrmFields.filter(([, oldVal, newVal]) => String(oldVal ?? "") !== String(newVal ?? ""))
             if (diff.length === 0) continue
 
             const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_VRM", existing.id])
             const approvalId = (ar as any).insertId
             for (const [field, oldVal, newVal] of diff) {
-              await conn.execute(approvalsSql.insertApprovalItem, [
-                approvalId, field, String(oldVal ?? ""), String(newVal ?? ""),
-              ])
+              await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, String(oldVal ?? ""), String(newVal ?? "")])
             }
             await conn.execute(rawMaterials.setVendorRateStatus, ["in_review", existing.id])
           } else {
-            await conn.execute(rawMaterials.insertVendorRate, [
+            const [vResult] = await conn.execute(rawMaterials.insertVendorRate, [
               rmId, vendorId, v.vendor_code?.trim() || null,
-              v.curr_rate ? Number(v.curr_rate) : null,
+              v.curr_rate ? Number(v.curr_rate) : 0,
               v.moq ? Number(v.moq) : null,
               v.rate_uom?.trim() || null,
-              today, null,
+              today, null, "in_review"
             ])
+            const vrmId = (vResult as any).insertId
+            const [arVrm] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_VRM", vrmId])
+            const approvalIdVrm = (arVrm as any).insertId
+            const vrmFields: [string, string][] = [
+              ["curr_rate", v.curr_rate ? String(v.curr_rate) : ""],
+              ["moq", v.moq ? String(v.moq) : ""],
+              ["uom", v.rate_uom?.trim() || ""],
+              ["effective_from", v.effective_from?.trim() || today],
+            ]
+            for (const [field, newVal] of vrmFields) {
+              if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalIdVrm, field, "", newVal])
+            }
           }
         }
         for (const m of mfgList) {
@@ -344,62 +423,63 @@ export async function POST(req: NextRequest) {
           const existingMfg = (existingMfgRows as any[])[0]
 
           if (existingMfg) {
-            // Skip if the rate row is already in_review (pending approval).
             if (existingMfg.status === "in_review") continue
-
-            // For draft rows, only the original submitter may re-edit.
             if (existingMfg.status === "draft") {
-              const [latestRejection] = await query<{ raised_by: number }>(
-                approvalsSql.selectLatestRejection, ["RM_RATE", existingMfg.id]
-              )
+              const [latestRejectionRows] = await conn.execute(approvalsSql.selectLatestRejection, ["RM_RATE", existingMfg.id])
+              const latestRejection = (latestRejectionRows as any[])[0]
               if (latestRejection && latestRejection.raised_by !== userId) continue
             }
+            const [pendingRows] = await conn.execute(approvalsSql.hasPending, ["RM_RATE", existingMfg.id])
+            if ((pendingRows as any[])[0]?.cnt > 0) continue
 
-            // Check for a pending approval against this rate row.
-            const pending = await query(approvalsSql.hasPending, ["RM_RATE", existingMfg.id])
-            if (pending.length > 0) continue
-
-            // Compute field-level diff for rate fields.
             const rateFields: [string, unknown, unknown][] = [
-              ["curr_rate",      existingMfg.curr_rate,      m.curr_rate],
-              ["uom",            existingMfg.uom,            m.rate_uom],
+              ["curr_rate", existingMfg.curr_rate, m.curr_rate],
+              ["uom", existingMfg.uom, m.rate_uom],
               ["effective_from", existingMfg.effective_from, m.effective_from ?? today],
             ]
-            const diff = rateFields.filter(([, oldVal, newVal]) =>
-              String(oldVal ?? "") !== String(newVal ?? "")
-            )
+            const diff = rateFields.filter(([, oldVal, newVal]) => String(oldVal ?? "") !== String(newVal ?? ""))
             if (diff.length === 0) continue
 
-            // Create the approval record.
             const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_RATE", existingMfg.id])
             const approvalId = (ar as any).insertId
             for (const [field, oldVal, newVal] of diff) {
-              await conn.execute(approvalsSql.insertApprovalItem, [
-                approvalId, field, String(oldVal ?? ""), String(newVal ?? ""),
-              ])
+              await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, String(oldVal ?? ""), String(newVal ?? "")])
             }
-
-            // Lock the rate row.
             await conn.execute(rawMaterials.setRateStatus, ["in_review", existingMfg.id])
           } else {
-            await conn.execute(rawMaterials.insertMfgApproval, [
-              rmId,
-              mfgId,
-              m.mfg_code?.trim() || null,
+            const [mResult] = await conn.execute(rawMaterials.insertMfgRate, [
+              rmId, mfgId, m.mfg_code?.trim() || null,
+              m.curr_rate ? Number(m.curr_rate) : 0,
+              m.rate_uom?.trim() || null,
+              null, null, today, "in_review"
             ])
+            const mrmId = (mResult as any).insertId
+            const [arMrm] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_RATE", mrmId])
+            const approvalIdMrm = (arMrm as any).insertId
+            const mrmFields: [string, string][] = [
+              ["curr_rate", m.curr_rate ? String(m.curr_rate) : ""],
+              ["uom", m.rate_uom?.trim() || ""],
+              ["effective_from", m.effective_from?.trim() || today],
+            ]
+            for (const [field, newVal] of mrmFields) {
+              if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalIdMrm, field, "", newVal])
+            }
           }
         }
         await conn.commit()
+        recordProcessedEvent("RM_RATES", logCtx.eventId, { rmId })
+        logger.info({ ...logCtx, rmId, message: "RM rates added in review" })
         return NextResponse.json({ rmId })
       } catch (err: any) {
         await conn.rollback()
-        console.error("Raw material add-rates error:", err)
+        recordFailedEvent("RM_RATES", logCtx.eventId, { name: name.trim() }, err.message)
+        logger.error({ ...logCtx, error: err.message, message: "Raw material add-rates transaction error" })
         return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
       } finally {
         conn.release()
       }
     } catch (err: any) {
-      console.error("Raw material add-rates lookup error:", err)
+      logger.error({ ...ctx, error: err.message, message: "Raw material add-rates lookup error" })
       return NextResponse.json({ error: "Database error" }, { status: 500 })
     }
   }
@@ -410,6 +490,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No rows provided" }, { status: 400 })
     }
 
+    const logCtx = { ...ctx, eventId: `rm-bulk-${Date.now()}`, module: "RM_Bulk" }
+    logger.info({ ...logCtx, rowCount: rows.length, message: "RM Bulk Insert Started" })
+    recordRawEvent("RM_BULK", logCtx.eventId, { rowCount: rows.length })
+
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     let inserted = 0
@@ -419,7 +503,23 @@ export async function POST(req: NextRequest) {
       for (const row of rows) {
         if (!row.name?.trim()) continue
         try {
-          await conn.execute(rawMaterials.insert, toRmParams(row))
+          const [rmResult] = await conn.execute(rawMaterials.insert, toRmParams(row, "in_review"))
+          const rmId = (rmResult as any).insertId
+
+          const [arRm] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", rmId])
+          const approvalIdRm = (arRm as any).insertId
+
+          const rmFields: [string, string][] = [
+            ["name", row.name.trim()],
+            ["make", row.make?.trim() || ""],
+            ["type", row.type?.trim() || ""],
+            ["uom", row.uom?.trim() || ""],
+            ["hsn_code", row.hsn_code?.trim() || ""],
+            ["inci_name", row.inci_name?.trim() || ""],
+          ]
+          for (const [field, newVal] of rmFields) {
+            if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalIdRm, field, "", newVal])
+          }
           inserted++
         } catch (err: any) {
           if (err.code === "ER_DUP_ENTRY") {
@@ -430,10 +530,13 @@ export async function POST(req: NextRequest) {
         }
       }
       await conn.commit()
+      recordProcessedEvent("RM_BULK", logCtx.eventId, { inserted, skipped })
+      logger.info({ ...logCtx, inserted, skipped, message: "RM bulk completed" })
       return NextResponse.json({ inserted, skipped })
     } catch (err: any) {
       await conn.rollback()
-      console.error("Raw material bulk insert error:", err)
+      recordFailedEvent("RM_BULK", logCtx.eventId, { rowCount: rows.length }, err.message)
+      logger.error({ ...logCtx, error: err.message, message: "Raw material bulk insert error" })
       return NextResponse.json({ error: "Bulk insert failed: " + err.message }, { status: 500 })
     } finally {
       conn.release()
@@ -444,34 +547,64 @@ export async function POST(req: NextRequest) {
     const { key } = body
     if (!key?.trim()) return NextResponse.json({ error: "key is required" }, { status: 400 })
 
+    const logCtx = { ...ctx, eventId: `rm-s3bulk-${Date.now()}`, module: "RM_S3Bulk" }
+    logger.info({ ...logCtx, s3Key: key, message: "RM S3 Bulk Import Started" })
+    recordRawEvent("RM_S3BULK", logCtx.eventId, { s3Key: key, rowCount: null })
+
     let rawRows
     try {
       rawRows = await parseS3Import(key)
     } catch (err: any) {
+      recordFailedEvent("RM_S3BULK", logCtx.eventId, { s3Key: key }, err.message)
+      logger.error({ ...logCtx, s3Key: key, error: err.message, message: "RM S3 bulk: failed to parse file" })
       return NextResponse.json({ error: "Failed to parse file: " + err.message }, { status: 400 })
     }
 
-    if (rawRows.length === 0) return NextResponse.json({ error: "File is empty or has no data rows" }, { status: 400 })
+    if (rawRows.length === 0) {
+      recordFailedEvent("RM_S3BULK", logCtx.eventId, { s3Key: key, rowCount: 0 }, "File is empty or has no data rows")
+      logger.warn({ ...logCtx, s3Key: key, message: "RM S3 bulk: file empty or no data rows" })
+      return NextResponse.json({ error: "File is empty or has no data rows" }, { status: 400 })
+    }
 
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     let inserted = 0
-    let skipped  = 0
+    let skipped = 0
 
     try {
       for (const row of rawRows) {
         if (!row["name"]?.trim()) continue
         try {
-          await conn.execute(rawMaterials.insert, toRmParams(row))
+          const [rmResult] = await conn.execute(rawMaterials.insert, toRmParams(row, "in_review"))
+          const rmId = (rmResult as any).insertId
+
+          const [arRm] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", rmId])
+          const approvalIdRm = (arRm as any).insertId
+
+          const rmFields: [string, string][] = [
+            ["name", row["name"].trim()],
+            ["make", row["make"]?.trim() || ""],
+            ["type", row["type"]?.trim() || ""],
+            ["uom", row["uom"]?.trim() || ""],
+            ["hsn_code", row["hsn_code"]?.trim() || ""],
+            ["inci_name", row["inci_name"]?.trim() || ""],
+          ]
+          for (const [field, newVal] of rmFields) {
+            if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalIdRm, field, "", newVal])
+          }
           inserted++
         } catch (err: any) {
           if (err.code === "ER_DUP_ENTRY") { skipped++ } else { throw err }
         }
       }
       await conn.commit()
+      recordProcessedEvent("RM_S3BULK", logCtx.eventId, { s3Key: key, inserted, skipped })
+      logger.info({ ...logCtx, inserted, skipped, message: "RM S3 bulk completed" })
       return NextResponse.json({ inserted, skipped })
     } catch (err: any) {
       await conn.rollback()
+      recordFailedEvent("RM_S3BULK", logCtx.eventId, { s3Key: key }, err.message)
+      logger.error({ ...logCtx, error: err.message, message: "Raw material S3 bulk error" })
       return NextResponse.json({ error: "Import failed: " + err.message }, { status: 500 })
     } finally {
       conn.release()

@@ -4,7 +4,8 @@ import { query, pool } from "@/lib/db"
 import { rawMaterials } from "@/lib/queries/raw-materials"
 import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
 import { approvalsSql } from "@/lib/queries/approvals"
-
+import logger from "@/lib/logger"
+import { recordRawEvent, recordFailedEvent, recordProcessedEvent } from "@/lib/events"
 // ─── Param builders ──────────────────────────────────────────────────────────
 
 /**
@@ -47,7 +48,15 @@ export async function POST(req: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const ctx = {
+    requestId: crypto.randomUUID(),
+    userId: session
+      ? Number(session.user.id)
+      : undefined,
+    route: "/masters/material-master",
+  };
 
+  logger.info({ ...ctx, message: "Material Master API request received", });
   const body = await req.json()
   const { action, material } = body
 
@@ -57,45 +66,70 @@ export async function POST(req: NextRequest) {
 
     if (material === "rm") {
       const { name, make, inci_name, type, uom, hsn_code } = body
-      if (!name?.trim())      return NextResponse.json({ error: "Name is required." }, { status: 400 })
-      if (!make?.trim())      return NextResponse.json({ error: "Make is required." }, { status: 400 })
-      if (!inci_name?.trim()) return NextResponse.json({ error: "INCI Name is required." }, { status: 400 })
-
-      const dupRows = await query<{ id: number }>(rawMaterials.checkDuplicate, [name, make, inci_name])
-      if (dupRows.length > 0) {
-        return NextResponse.json({ error: "A raw material with this code already exists." }, { status: 409 })
+      if (!name?.trim() || !make?.trim() || !inci_name?.trim()) {
+        logger.warn({ ...ctx, message: "Validation failed. Name and Inci Name and Make is required." })
+        return NextResponse.json({ error: "Name and Inci Name and Make is required." }, { status: 400 })
       }
+      const eventId = `rm-create-${Date.now()}`
+      const logCtx = { ...ctx, eventId, module: "RM_CREATE" }
+      logger.info({ ...logCtx, name, make, inci_name, message: "Raw material create started", })
+      recordRawEvent("RM_CREATE", eventId, { name: name.trim(), make: make.trim(), inci_name: inci_name.trim(), })
+      const dupRows = await query<{ id: number }>(rawMaterials.checkDuplicate, [name, make, inci_name])
 
+      if (dupRows.length > 0) {
+        logger.warn({ ...logCtx, name, make, inci_name, message: "Duplicate raw material found" })
+        return NextResponse.json(
+          { error: "A raw material with this code already exists." },
+          { status: 409 }
+        )
+      }
       const userId = parseInt(session.user.id)
       const conn = await pool.getConnection()
       await conn.beginTransaction()
       try {
         const [rmResult] = await conn.execute(rawMaterials.insert, [
-          null, name.trim(), make.trim(), type?.trim() || null,
-          uom?.trim() || null, "in_review", hsn_code?.trim() || null, inci_name.trim(),
+          null,
+          name.trim(),
+          make.trim(),
+          type?.trim() || null,
+          uom?.trim() || null,
+          "in_review",
+          hsn_code?.trim() || null,
+          inci_name.trim(),
         ])
         const rmId = (rmResult as any).insertId
-
-        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", rmId])
+        const [ar] = await conn.execute(
+          approvalsSql.insertApproval,
+          [userId, "RM_MAT", rmId]
+        )
         const approvalId = (ar as any).insertId
-
         const newFields: [string, string][] = [
-          ["name",      name.trim()],
-          ["make",      make.trim()],
+          ["name", name.trim()],
+          ["make", make.trim()],
           ["inci_name", inci_name.trim()],
-          ["type",      type?.trim()      || ""],
-          ["uom",       uom?.trim()       || ""],
-          ["hsn_code",  hsn_code?.trim()  || ""],
+          ["type", type?.trim() || ""],
+          ["uom", uom?.trim() || ""],
+          ["hsn_code", hsn_code?.trim() || ""],
         ]
         for (const [field, newVal] of newFields) {
-          if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, "", newVal])
+          if (newVal) {
+            await conn.execute(
+              approvalsSql.insertApprovalItem,
+              [approvalId, field, "", newVal]
+            )
+          }
         }
-
         await conn.commit()
-        return NextResponse.json({ ok: true, approval_id: approvalId })
+        recordProcessedEvent("RM_CREATE", eventId, { rmId, approvalId })
+        logger.info({ ...logCtx, rmId, approvalId, message: "Raw material created successfully", })
+        return NextResponse.json({
+          ok: true,
+          approval_id: approvalId,
+        })
       } catch (err: any) {
         await conn.rollback()
-        console.error("Material master RM create error:", err)
+        recordFailedEvent("RM_CREATE", eventId, { name: name.trim() }, err.message)
+        logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Raw material create failed", })
         return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
       } finally {
         conn.release()
@@ -104,53 +138,104 @@ export async function POST(req: NextRequest) {
 
     if (material === "pm") {
       const { name, type, uom, hsn_code } = body
-      if (!name?.trim()) return NextResponse.json({ error: "Name is required." }, { status: 400 })
-      if (!type?.trim()) return NextResponse.json({ error: "Type is required." }, { status: 400 })
 
-      const dupRows = await query<{ id: number }>(PMMaterials.checkDuplicate, [name, type])
+      if (!name?.trim()) {
+        logger.warn({ ...ctx, message: "Validation failed. Name is required." })
+        return NextResponse.json({ error: "Name is required." }, { status: 400 })
+      }
+
+      if (!type?.trim()) {
+        logger.warn({ ...ctx, name, message: "Validation failed. Type is required." })
+        return NextResponse.json({ error: "Type is required." }, { status: 400 })
+      }
+
+      const eventId = `pm-create-${Date.now()}`
+      const logCtx = { ...ctx, eventId, module: "PM_CREATE" }
+
+      logger.info({ ...logCtx, name, type, message: "Packing material create started", })
+      recordRawEvent("PM_CREATE", eventId, { name: name.trim(), type: type.trim() })
+
+      const dupRows = await query<{ id: number }>(
+        PMMaterials.checkDuplicate,
+        [name, type]
+      )
+
       if (dupRows.length > 0) {
-        return NextResponse.json({ error: "A packing material with this code already exists." }, { status: 409 })
+        logger.warn({ ...logCtx, name, type, message: "Duplicate packing material found", })
+        return NextResponse.json(
+          { error: "A packing material with this code already exists." },
+          { status: 409 }
+        )
       }
 
       const userId = parseInt(session.user.id)
       const conn = await pool.getConnection()
+
       await conn.beginTransaction()
+
       try {
         const [pmResult] = await conn.execute(PMMaterials.insert, [
-          null, name.trim(), type.trim(), hsn_code?.trim() || null,
-          uom?.trim() || null, "in_review",
+          null,
+          name.trim(),
+          type.trim(),
+          hsn_code?.trim() || null,
+          uom?.trim() || null,
+          "in_review",
         ])
+
         const pmId = (pmResult as any).insertId
 
-        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PM_MAT", pmId])
+        const [ar] = await conn.execute(
+          approvalsSql.insertApproval,
+          [userId, "PM_MAT", pmId]
+        )
+
         const approvalId = (ar as any).insertId
 
         const newFields: [string, string][] = [
-          ["name",     name.trim()],
-          ["type",     type.trim()],
-          ["uom",      uom?.trim()      || ""],
+          ["name", name.trim()],
+          ["type", type.trim()],
+          ["uom", uom?.trim() || ""],
           ["hsn_code", hsn_code?.trim() || ""],
         ]
+
         for (const [field, newVal] of newFields) {
-          if (newVal) await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, "", newVal])
+          if (newVal) {
+            await conn.execute(
+              approvalsSql.insertApprovalItem,
+              [approvalId, field, "", newVal]
+            )
+          }
         }
 
         await conn.commit()
-        return NextResponse.json({ ok: true, approval_id: approvalId })
+        recordProcessedEvent("PM_CREATE", eventId, { pmId, approvalId })
+        logger.info({ ...logCtx, pmId, approvalId, message: "Packing material created successfully", })
+
+        return NextResponse.json({
+          ok: true,
+          approval_id: approvalId,
+        })
       } catch (err: any) {
         await conn.rollback()
-        console.error("Material master PM create error:", err)
-        return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+        recordFailedEvent("PM_CREATE", eventId, { name: name.trim(), type: type.trim() }, err.message)
+        logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Packing material create failed", })
+
+        return NextResponse.json(
+          { error: "Database error: " + err.message },
+          { status: 500 }
+        )
       } finally {
         conn.release()
       }
     }
 
-    // material value was neither "rm" nor "pm".
-    return NextResponse.json({ error: 'material must be "rm" or "pm".' }, { status: 400 })
+    logger.warn({ ...ctx, material, message: 'Invalid material type. Expected "rm" or "pm".', })
+    return NextResponse.json(
+      { error: 'material must be "rm" or "pm".' },
+      { status: 400 }
+    )
   }
-
-  return NextResponse.json({ error: "Invalid action." }, { status: 400 })
 }
 
 // ─── PUT: submit an edit for approval ────────────────────────────────────────
@@ -164,71 +249,95 @@ export async function PUT(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const userId = parseInt(session.user.id)
-  const body   = await req.json()
+  const body = await req.json()
   const { material, id } = body
+  const ctx = {
+    requestId: crypto.randomUUID(),
+    userId: session
+      ? Number(session.user.id)
+      : undefined,
+    route: "/masters/material-master",
+  };
 
+  logger.info({ ...ctx, message: "Material Master API request received", });
   if (!id) return NextResponse.json({ error: "Record ID is required." }, { status: 400 })
-
   if (material === "rm") {
     const { name, make, type, uom, status, hsn_code, inci_name } = body
-    if (!name?.trim())      return NextResponse.json({ error: "Name is required." }, { status: 400 })
-    if (!make?.trim())      return NextResponse.json({ error: "Make is required." }, { status: 400 })
-    if (!inci_name?.trim()) return NextResponse.json({ error: "INCI Name is required." }, { status: 400 })
-
+    if (!make?.trim() || !inci_name?.trim() || !name.trim()) {
+      logger.warn({ ...ctx, id, name, make, inci_name, message: "Validation failed. Name, make and Inci Name is required." })
+      return NextResponse.json({ error: "Name, make and Inci Name  is required." }, { status: 400 })
+    }
+    const eventId = `rm-update-${Date.now()}`
+    const logCtx = { ...ctx, eventId, module: "RM_UPDATE" }
+    logger.info({ ...logCtx, id, name, make, inci_name, message: "Raw material update started", })
     // Fetch current row.
     const curRows = await query<any>(rawMaterials.selectBaseById, [id])
     const cur = curRows[0]
-    if (!cur) return NextResponse.json({ error: "Record not found." }, { status: 404 })
-
-    if (cur.status === "in_review") {
-      return NextResponse.json({ error: "This record is already pending approval." }, { status: 409 })
+    if (!cur) {
+      logger.warn({ ...logCtx, id, message: "Raw material not found" })
+      return NextResponse.json({ error: "Record not found." }, { status: 404 })
     }
-
+    if (cur.status === "in_review") {
+      logger.warn({ ...logCtx, id, message: "Raw material already pending approval" })
+      return NextResponse.json(
+        { error: "This record is already pending approval." },
+        { status: 409 }
+      )
+    }
     // For draft rows, only the original submitter may re-edit.
     if (cur.status === "draft") {
       const rejRows = await query<{ raised_by: number }>(approvalsSql.selectLatestRejection, ["RM_MAT", id])
       if (rejRows[0] && rejRows[0].raised_by !== userId) {
+        logger.warn({ ...logCtx, id, userId, message: "Unauthorized draft edit attempt", })
         return NextResponse.json({ error: "Only the original submitter can re-edit a rejected record." }, { status: 403 })
       }
     }
-
-    // Guard against double-submit.
     const pending = await query(approvalsSql.hasPending, ["RM_MAT", id])
     if (pending.length > 0) {
-      return NextResponse.json({ error: "An approval is already pending for this record." }, { status: 409 })
+      logger.warn({ ...logCtx, id, message: "Approval already pending for raw material", })
+      return NextResponse.json(
+        { error: "An approval is already pending for this record." },
+        { status: 409 }
+      )
     }
-
-    // Compute field-level diff.
+    recordRawEvent("RM_UPDATE", eventId, { id, name: name.trim() })
     const proposed: Record<string, string | null> = {
-      name:      name.trim(),
-      make:      make.trim(),
+      name: name.trim(),
+      make: make.trim(),
       inci_name: inci_name.trim(),
-      type:      type?.trim() || null,
-      uom:       uom?.trim() || null,
-      hsn_code:  hsn_code?.trim() || null,
-      status:    status || "active",
+      type: type?.trim() || null,
+      uom: uom?.trim() || null,
+      hsn_code: hsn_code?.trim() || null,
+      status: status || "active",
     }
     const diff = Object.entries(proposed).filter(
       ([k, v]) => String(cur[k] ?? "") !== String(v ?? "")
     )
-    if (diff.length === 0) return NextResponse.json({ ok: true, message: "No changes detected." })
-
+    if (diff.length === 0) {
+      logger.warn({ ...logCtx, message: "No changes detected." })
+      return NextResponse.json({
+        ok: true,
+        message: "No changes detected.",
+      })
+    }
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     try {
-      const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", id])
+      const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", id]
+      )
       const approvalId = (ar as any).insertId
       for (const [field, newVal] of diff) {
-        await conn.execute(approvalsSql.insertApprovalItem, [
-          approvalId, field, String(cur[field] ?? ""), String(newVal ?? ""),
-        ])
+        await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, String(cur[field] ?? ""), String(newVal ?? ""),])
       }
       await conn.execute(rawMaterials.setBaseStatus, ["in_review", id])
       await conn.commit()
-      return NextResponse.json({ ok: true, approval_id: approvalId })
+      recordProcessedEvent("RM_UPDATE", eventId, { id, approvalId, })
+      logger.info({ ...logCtx, id, approvalId, message: "Raw material update submitted for approval", })
+      return NextResponse.json({ ok: true, approval_id: approvalId, })
     } catch (err: any) {
       await conn.rollback()
-      console.error("Material master RM approval submit error:", err)
+      recordFailedEvent("RM_UPDATE", eventId, { id, name: name.trim() }, err.message)
+      logger.error({ ...logCtx, id, err: err.message, stack: err.stack, message: "Raw material update failed", })
       return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
     } finally {
       conn.release()
@@ -237,62 +346,95 @@ export async function PUT(req: NextRequest) {
 
   if (material === "pm") {
     const { name, type, uom, status, hsn_code } = body
-    if (!name?.trim()) return NextResponse.json({ error: "Name is required." }, { status: 400 })
-    if (!type?.trim()) return NextResponse.json({ error: "Type is required." }, { status: 400 })
-
+    if (!name?.trim() || !type?.trim()) {
+      logger.warn({ ...ctx, id, message: "Validation failed. Name and Type is required." })
+      return NextResponse.json({ error: "Name and Type is required." }, { status: 400 })
+    }
+    const eventId = `pm-update-${Date.now()}`
+    const logCtx = { ...ctx, eventId, module: "PM_UPDATE" }
+    logger.info({ ...logCtx, id, name, type, message: "Packing material update started", })
     const curRows = await query<any>(PMMaterials.selectBaseById, [id])
     const cur = curRows[0]
-    if (!cur) return NextResponse.json({ error: "Record not found." }, { status: 404 })
-
+    if (!cur) {
+      logger.warn({ ...logCtx, id, message: "Packing material not found" })
+      return NextResponse.json({ error: "Record not found." }, { status: 404 })
+    }
     if (cur.status === "in_review") {
+      logger.warn({ ...logCtx, id, message: "Packing material already pending approval", })
       return NextResponse.json({ error: "This record is already pending approval." }, { status: 409 })
     }
-
     if (cur.status === "draft") {
       const rejRows = await query<{ raised_by: number }>(approvalsSql.selectLatestRejection, ["PM_MAT", id])
+      logger.info({ ...logCtx, id, userId, message: "Draft saved in approval table." })
       if (rejRows[0] && rejRows[0].raised_by !== userId) {
+        logger.warn({ ...logCtx, id, userId, message: "Unauthorized draft edit attempt", })
         return NextResponse.json({ error: "Only the original submitter can re-edit a rejected record." }, { status: 403 })
       }
     }
-
     const pending = await query(approvalsSql.hasPending, ["PM_MAT", id])
     if (pending.length > 0) {
-      return NextResponse.json({ error: "An approval is already pending for this record." }, { status: 409 })
+      logger.warn({ ...logCtx, id, message: "Approval already pending for packing material", })
+      return NextResponse.json({ error: "An approval is already pending for this record." }, { status: 409 }
+      )
     }
-
+    recordRawEvent("PM_UPDATE", eventId, { id, name: name.trim(), type: type.trim(), })
     const proposed: Record<string, string | null> = {
-      name:     name.trim(),
-      type:     type.trim(),
-      uom:      uom?.trim() || null,
+      name: name.trim(),
+      type: type.trim(),
+      uom: uom?.trim() || null,
       hsn_code: hsn_code?.trim() || null,
-      status:   status || "active",
+      status: status || "active",
     }
     const diff = Object.entries(proposed).filter(
       ([k, v]) => String(cur[k] ?? "") !== String(v ?? "")
     )
-    if (diff.length === 0) return NextResponse.json({ ok: true, message: "No changes detected." })
+    if (diff.length === 0) {
+      logger.warn({ ...logCtx, id, userId, message: "No chnages detected." })
+      return NextResponse.json({
+        ok: true,
+        message: "No changes detected.",
+      })
+    }
 
     const conn = await pool.getConnection()
     await conn.beginTransaction()
+
     try {
       const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PM_MAT", id])
       const approvalId = (ar as any).insertId
       for (const [field, newVal] of diff) {
         await conn.execute(approvalsSql.insertApprovalItem, [
-          approvalId, field, String(cur[field] ?? ""), String(newVal ?? ""),
+          approvalId,
+          field,
+          String(cur[field] ?? ""),
+          String(newVal ?? ""),
         ])
       }
       await conn.execute(PMMaterials.setBaseStatus, ["in_review", id])
       await conn.commit()
-      return NextResponse.json({ ok: true, approval_id: approvalId })
+      recordProcessedEvent("PM_UPDATE", eventId, { id, approvalId, })
+      logger.info({ ...logCtx, id, approvalId, message: "Packing material update submitted for approval", })
+      return NextResponse.json({
+        ok: true,
+        approval_id: approvalId,
+      })
     } catch (err: any) {
       await conn.rollback()
-      console.error("Material master PM approval submit error:", err)
-      return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+      recordFailedEvent("PM_UPDATE", eventId, {
+        id,
+        name: name.trim(),
+        type: type.trim(),
+      },
+        err.message
+      )
+      logger.error({ ...logCtx, id, err: err.message, stack: err.stack, message: "Packing material update failed", })
+      return NextResponse.json(
+        { error: "Database error: " + err.message },
+        { status: 500 }
+      )
     } finally {
       conn.release()
     }
   }
-
   return NextResponse.json({ error: 'material must be "rm" or "pm".' }, { status: 400 })
 }

@@ -21,6 +21,7 @@ import { vendors as vendorSql } from "@/lib/queries/vendors"
 import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { getFileBuffer } from "@/lib/s3"
+import { recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 import { STATUS } from "@/lib/constants"
 
 export type DiffItem = { field_name: string; old_value: string; new_value: string }
@@ -369,28 +370,41 @@ const poBulkHandler: ModuleHandler = {
     console.log(`[PO_BULK] ${rows.length} valid rows to insert`)
 
     // ── DB work: count, look up MFG IDs, insert POs ───────────────────────
+    const eventId = `po-bulk-apply-${Date.now()}`
     const year = new Date().getFullYear()
     const [cntRows] = await conn.execute(
       `SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE 'PO-%'`, []
     )
     let seq = Number((cntRows as any[])[0]?.cnt ?? 0)
+    const initialSeq = seq
 
-    for (const row of rows) {
-      const [mfgRows] = await conn.execute(
-        `SELECT id FROM master_mfgs WHERE code = ? LIMIT 1`, [row.mfg_code]
-      )
-      const mfg = (mfgRows as any[])[0]
-      if (!mfg) throw new Error(`PO_BULK: manufacturer not found for code="${row.mfg_code}" — check mfg_code column`)
+    try {
+      for (const row of rows) {
+        const [mfgRows] = await conn.execute(
+          `SELECT id FROM master_mfgs WHERE code = ? LIMIT 1`, [row.mfg_code]
+        )
+        const mfg = (mfgRows as any[])[0]
+        if (!mfg) throw new Error(`PO_BULK: manufacturer not found for code="${row.mfg_code}" — check mfg_code column`)
 
-      seq++
-      const po_no = `PO-${year}-${seq.toString().padStart(3, "0")}`
-      await conn.execute(purchaseOrdersSql.insertBulkPo, [
-        po_no, mfg.id, row.sku_code, row.qty, row.expected_on, row.destination, s3Key,
-      ])
-      console.log(`[PO_BULK] inserted ${po_no} (mfg=${row.mfg_code} sku=${row.sku_code} qty=${row.qty})`)
+        seq++
+        const po_no = `PO-${year}-${seq.toString().padStart(3, "0")}`
+        await conn.execute(purchaseOrdersSql.insertBulkPo, [
+          po_no, mfg.id, row.sku_code, row.qty, row.expected_on, row.destination, s3Key,
+        ])
+        console.log(`[PO_BULK] inserted ${po_no} (mfg=${row.mfg_code} sku=${row.sku_code} qty=${row.qty})`)
+      }
+
+      console.log(`[PO_BULK] all ${rows.length} POs inserted, awaiting commit`)
+      recordProcessedEvent("PO_BULK", eventId, {
+        s3Key,
+        totalDataRows:   rows.length,
+        insertedCount:   seq - initialSeq,
+        skippedDataRows: dataRows.length - rows.length,
+      })
+    } catch (err: any) {
+      recordFailedEvent("PO_BULK", eventId, { s3Key, totalDataRows: rows.length }, err.message)
+      throw err
     }
-
-    console.log(`[PO_BULK] all ${rows.length} POs inserted, awaiting commit`)
   },
 }
 

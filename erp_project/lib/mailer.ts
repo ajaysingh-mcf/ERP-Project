@@ -5,6 +5,7 @@ import { generatePoPdf, type PoEmailData } from "@/lib/pdf/po-document"
 import { uploadFile } from "@/lib/s3"
 import { s3FilesSql } from "@/lib/queries/s3-files"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -43,7 +44,10 @@ export async function fetchPoData(poId: number): Promise<PoEmailData | null> {
  * Returns true if the email was sent, false if the manufacturer has no email on file.
  * Throws on actual send/PDF failures.
  */
-export async function sendPoEmail(poId: number): Promise<boolean> {
+export async function sendPoEmail(
+  poId: number,
+  trigger: "auto_approval" | "manual" = "auto_approval"
+): Promise<boolean> {
   const data = await fetchPoData(poId)
 
   if (!data) {
@@ -55,12 +59,22 @@ export async function sendPoEmail(poId: number): Promise<boolean> {
     return false
   }
 
+  const eventId = `po-email-${poId}-${Date.now()}`
+  recordRawEvent("PO_EMAIL", eventId, {
+    poId,
+    po_no:     data.po_no,
+    mfg_name:  data.mfg_name,
+    mfg_email: data.mfg_email,
+    trigger,
+  })
+
   let pdfBuffer: Buffer
   try {
     pdfBuffer = await generatePoPdf(data)
     console.log(`[mailer] PDF generated for PO ${data.po_no} (${pdfBuffer.length} bytes)`)
   } catch (pdfErr: any) {
     console.error("[mailer] PDF generation failed:", pdfErr)
+    recordFailedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no }, "PDF generation failed: " + pdfErr.message)
     throw new Error("PDF generation failed: " + pdfErr.message)
   }
 
@@ -81,43 +95,55 @@ export async function sendPoEmail(poId: number): Promise<boolean> {
     ? new Date(data.expected_on).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
     : "TBD"
 
-  await transporter.sendMail({
-    from: `mcaffeine ERP <${from}>`,
-    to: data.mfg_email,
-    subject: `Purchase Order ${data.po_no} — mcaffeine`,
-    html: `
-      <div style="font-family:sans-serif;max-width:560px;margin:auto;color:#111">
-        <h2 style="margin-bottom:4px">Purchase Order: ${data.po_no}</h2>
-        <p style="color:#555;margin-top:0">Please find your PO details attached as a PDF.</p>
-        <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px">
-          <tr style="background:#f5f5f5">
-            <td style="padding:8px 12px;font-weight:600">SKU</td>
-            <td style="padding:8px 12px">${data.sku_code} — ${data.sku_name ?? ""}</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 12px;font-weight:600">Quantity</td>
-            <td style="padding:8px 12px">${Number(data.qty).toLocaleString("en-IN")}</td>
-          </tr>
-          <tr style="background:#f5f5f5">
-            <td style="padding:8px 12px;font-weight:600">Expected Dispatch</td>
-            <td style="padding:8px 12px">${dispatchDate}</td>
-          </tr>
-          ${data.destination ? `<tr><td style="padding:8px 12px;font-weight:600">Destination</td><td style="padding:8px 12px">${data.destination}</td></tr>` : ""}
-        </table>
-        <p style="font-size:12px;color:#888">
-          This is an auto-generated email from the mcaffeine ERP system.
-          Please confirm receipt by replying to this email.
-        </p>
-      </div>
-    `,
-    attachments: [
-      {
-        filename: `PO-${data.po_no}.pdf`,
-        content: pdfBuffer,
-      },
-    ],
-  })
+  try {
+    await transporter.sendMail({
+      from: `mcaffeine ERP <${from}>`,
+      to: data.mfg_email,
+      subject: `Purchase Order ${data.po_no} — mcaffeine`,
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:auto;color:#111">
+          <h2 style="margin-bottom:4px">Purchase Order: ${data.po_no}</h2>
+          <p style="color:#555;margin-top:0">Please find your PO details attached as a PDF.</p>
+          <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px">
+            <tr style="background:#f5f5f5">
+              <td style="padding:8px 12px;font-weight:600">SKU</td>
+              <td style="padding:8px 12px">${data.sku_code} — ${data.sku_name ?? ""}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px;font-weight:600">Quantity</td>
+              <td style="padding:8px 12px">${Number(data.qty).toLocaleString("en-IN")}</td>
+            </tr>
+            <tr style="background:#f5f5f5">
+              <td style="padding:8px 12px;font-weight:600">Expected Dispatch</td>
+              <td style="padding:8px 12px">${dispatchDate}</td>
+            </tr>
+            ${data.destination ? `<tr><td style="padding:8px 12px;font-weight:600">Destination</td><td style="padding:8px 12px">${data.destination}</td></tr>` : ""}
+          </table>
+          <p style="font-size:12px;color:#888">
+            This is an auto-generated email from the mcaffeine ERP system.
+            Please confirm receipt by replying to this email.
+          </p>
+        </div>
+      `,
+      attachments: [
+        {
+          filename: `PO-${data.po_no}.pdf`,
+          content: pdfBuffer,
+        },
+      ],
+    })
+  } catch (sendErr: any) {
+    console.error("[mailer] sendMail failed:", sendErr)
+    recordFailedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no }, sendErr.message)
+    throw sendErr
+  }
 
   console.log(`[mailer] PO ${data.po_no} sent to ${data.mfg_email}`)
+  recordProcessedEvent("PO_EMAIL", eventId, {
+    poId,
+    po_no:     data.po_no,
+    mfg_email: data.mfg_email,
+    s3PdfKey:  s3Key,
+  })
   return true
 }

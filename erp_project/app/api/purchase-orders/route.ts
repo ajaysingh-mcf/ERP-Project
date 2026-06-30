@@ -7,7 +7,7 @@ import { skus as skusSql } from "@/lib/queries/skus"
 import { manufacturers as mfgsSql } from "@/lib/queries/manufacturers"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 import type { PoolConnection } from "mysql2/promise"
-
+import logger from "@/lib/logger"
 // GET /api/purchase-orders — list all POs with MFG + SKU details
 export async function GET() {
   const session = await auth()
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
   const userId = parseInt(session.user.id)
-
+  
   const body = await req.json()
 
   // ── bulk_csv: store S3 key + filename in approval_items, one approval for the batch ──

@@ -68,7 +68,7 @@ export function AddPackingMaterialWizard({
   const [quickMfgOpen, setQuickMfgOpen] = useState(false)
 
   const isDirty = pmData.name !== "" || pmData.type !== "" || step > 1
-
+  
   function resetAll() {
     setStep(1)
     setError(null)
