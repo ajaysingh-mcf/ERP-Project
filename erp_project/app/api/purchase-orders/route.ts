@@ -32,9 +32,6 @@ export async function POST(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
   const userId = parseInt(session.user.id)
 
-  const ctx = { requestId: crypto.randomUUID(), userId, route: "/api/purchase-orders" }
-  logger.info({ ...ctx, message: "PO API request received" })
-
   const body = await req.json()
 
   // ── bulk_csv: store S3 key + filename in approval_items, one approval for the batch ──
@@ -43,11 +40,6 @@ export async function POST(req: NextRequest) {
     const { key, filename } = body
     if (!key)      return NextResponse.json({ error: "S3 key is required." }, { status: 400 })
     if (!filename) return NextResponse.json({ error: "Filename is required." }, { status: 400 })
-
-    const eventId = `po-bulk-csv-${Date.now()}`
-    const logCtx = { ...ctx, eventId, module: "PO_BULK" }
-    logger.info({ ...logCtx, filename, s3Key: key, message: "PO bulk CSV submission started" })
-    recordRawEvent("PO_BULK", eventId, { userId, filename, s3Key: key })
 
     const conn: PoolConnection = await pool.getConnection()
     await conn.beginTransaction()
@@ -64,13 +56,10 @@ export async function POST(req: NextRequest) {
       }
 
       await conn.commit()
-      recordProcessedEvent("PO_BULK", eventId, { approvalId, filename, s3Key: key })
-      logger.info({ ...logCtx, approvalId, message: "PO bulk CSV submitted for approval" })
       return NextResponse.json({ ok: true, approval_id: approvalId })
     } catch (err: any) {
       await conn.rollback()
-      recordFailedEvent("PO_BULK", eventId, { userId, filename, s3Key: key }, err.message)
-      logger.error({ ...logCtx, error: err.message, message: "PO bulk CSV submission failed" })
+      console.error("Bulk CSV PO create error:", err)
       return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
     } finally {
       conn.release()
@@ -96,7 +85,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Generate po_no based on type
+  // Generate po_no based on type 
   let po_no: string
   const year = new Date().getFullYear()
   if (po_type === "normal") {
@@ -110,8 +99,6 @@ export async function POST(req: NextRequest) {
   }
 
   const eventId = `po-new-${Date.now()}`
-  const logCtx = { ...ctx, eventId, module: "PO_CREATE" }
-  logger.info({ ...logCtx, mfg_id, sku_code, qty, po_type, message: "PO create started" })
   recordRawEvent("PO", eventId, { mfg_id, sku_code, qty, expected_on, destination, reason, po_type })
 
   // ── Normal PO: insert directly as raised, no approval needed ──────────────
@@ -125,12 +112,10 @@ export async function POST(req: NextRequest) {
       const poId = (poResult as any).insertId
       await conn.commit()
       recordProcessedEvent("PO", eventId, { poId, po_no })
-      logger.info({ ...logCtx, poId, po_no, message: "Normal PO created" })
       return NextResponse.json({ ok: true, po_no })
     } catch (err: any) {
       await conn.rollback()
       recordFailedEvent("PO", eventId, { mfg_id, sku_code, qty, expected_on, destination }, err.message)
-      logger.error({ ...logCtx, error: err.message, message: "Normal PO creation failed" })
       if (err.code === "ER_DUP_ENTRY") {
         return NextResponse.json({ error: "PO number already exists, please retry." }, { status: 409 })
       }
@@ -170,12 +155,10 @@ export async function POST(req: NextRequest) {
 
     await conn.commit()
     recordProcessedEvent("PO", eventId, { poId, po_no, approvalId })
-    logger.info({ ...logCtx, poId, po_no, approvalId, message: "Impromptu PO submitted for approval" })
     return NextResponse.json({ ok: true, approval_id: approvalId, po_no })
   } catch (err: any) {
     await conn.rollback()
     recordFailedEvent("PO", eventId, { mfg_id, sku_code, qty, expected_on, destination, reason }, err.message)
-    logger.error({ ...logCtx, error: err.message, message: "Impromptu PO creation failed" })
     if (err.code === "ER_DUP_ENTRY") {
       return NextResponse.json({ error: "PO number already exists, please retry." }, { status: 409 })
     }
