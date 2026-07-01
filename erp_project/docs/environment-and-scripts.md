@@ -6,6 +6,8 @@
 
 All variables are read at server startup. Changes require a server restart.
 
+### Core
+
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
 | `DB_HOST` | Yes | — | MariaDB hostname (AWS RDS endpoint) |
@@ -16,6 +18,35 @@ All variables are read at server startup. Changes require a server restart.
 | `AUTH_SECRET` | Yes | — | Signs and verifies NextAuth JWT cookies. Changing this invalidates all active sessions. |
 | `GOOGLE_CLIENT_ID` | Yes | — | Google OAuth 2.0 client ID |
 | `GOOGLE_CLIENT_SECRET` | Yes | — | Google OAuth 2.0 client secret |
+
+### AWS S3
+
+Required for file uploads, bulk Excel imports, PO PDF storage, and event logging.
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `AWS_REGION` | Yes | — | AWS region (e.g. `ap-south-1`) |
+| `AWS_ACCESS_KEY_ID` | Yes | — | IAM access key |
+| `AWS_SECRET_ACCESS_KEY` | Yes | — | IAM secret key |
+| `AWS_S3_BUCKET_FILES` | Yes | — | Bucket for file uploads and PO attachments (e.g. `mcaffeine-erp-files`) |
+| `AWS_S3_BUCKET_EVENTS` | Yes | — | Bucket for raw/processed/failed event logs (e.g. `mcaffeine-erp-events`) |
+
+See [S3 Integration](./s3-integration.md) for the full key/prefix conventions.
+
+### Email (PO dispatch)
+
+Required to send PO PDFs to manufacturers via Gmail SMTP.
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `GMAIL_USER` | Yes | — | Gmail address used as the sender (e.g. `procurement@mcaffeine.com`) |
+| `GMAIL_APP_PASSWORD` | Yes | — | [Gmail App Password](https://support.google.com/accounts/answer/185833) — not the account password. 2FA must be enabled on the account. |
+
+### Observability
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `LOG_LEVEL` | No | `info` | Winston log level: `error`, `warn`, `info`, `debug`. Set to `debug` for verbose query/request tracing in development. |
 
 ### Database connection pool settings
 
@@ -78,8 +109,12 @@ A private or organisation-restricted sheet returns a 403/401 from Google, which 
 
 ```ts
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["mysql2"],
+  serverExternalPackages: [
+    "mysql2",
+    "@react-pdf/renderer", "fontkit", "pdfkit", "nodemailer",
+    "@aws-sdk/client-s3", "@aws-sdk/s3-request-presigner",
+  ],
 };
 ```
 
-`serverExternalPackages: ["mysql2"]` tells Next.js not to bundle `mysql2` into the server bundle. `mysql2` is a native Node.js module that uses binary addons; bundling it causes runtime failures. **Do not remove this setting.**
+`serverExternalPackages` tells Next.js not to bundle these packages into the server bundle. `mysql2`, the AWS SDK, and `@react-pdf/renderer` all use native Node.js APIs or binary addons that fail when bundled. **Do not remove any entry from this list.**

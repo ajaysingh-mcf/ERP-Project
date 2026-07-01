@@ -20,11 +20,24 @@ AWS_S3_BUCKET_EVENTS="mcaffeine-erp-events"  # raw-events, processed-events, fai
 
 ## Database Migration Required
 
-Run this SQL against MariaDB **once** before using PO attachments:
+Run these SQL statements against MariaDB **once** to add all PO-related columns:
 
 ```sql
+-- PO file attachment
 ALTER TABLE purchase_orders
   ADD COLUMN attachment_key TEXT NULL AFTER reason;
+
+-- PO type flag (normal vs impromptu)
+ALTER TABLE purchase_orders
+  ADD COLUMN po_type ENUM('normal','impromptu') NOT NULL DEFAULT 'impromptu' AFTER status;
+
+-- Track which bulk-CSV S3 key this PO was created from (null for manual POs)
+ALTER TABLE purchase_orders
+  ADD COLUMN csv_source_key TEXT NULL AFTER po_type;
+
+-- Email send timestamp (stamped on first send only)
+ALTER TABLE purchase_orders
+  ADD COLUMN email_sent_at DATETIME NULL AFTER csv_source_key;
 ```
 
 Then regenerate the Prisma client:
@@ -184,17 +197,21 @@ model purchase_orders {
 ---
 
 ### `lib/queries/purchase-orders.ts`
-Added `po.attachment_key` to the `selectAll` query column list so it is loaded into every `PoRow`.
+Added `po.attachment_key`, `po.po_type`, `po.csv_source_key`, and `po.email_sent_at` to the `selectAll` and `selectPaginated` query column lists so they are available in every `PoRow`. Also added `mfg_email` (from `details_mfg`) to power the auto-send-on-approval flow.
 
 ---
 
 ### `app/po-tracking/po-procurement/po-types.ts`
-Added `attachment_key` to the `PoRow` type:
+Added new fields to the `PoRow` type:
 
 ```typescript
 export type PoRow = {
   // ... existing fields ...
-  attachment_key: string | null   // ← added
+  attachment_key:  string | null   // S3 key for attached PDF/doc
+  po_type:         "normal" | "impromptu"
+  csv_source_key:  string | null   // set when PO was created from a bulk CSV
+  email_sent_at:   string | null   // ISO timestamp of first email send
+  mfg_email:       string | null   // manufacturer contact email
 }
 ```
 
@@ -248,13 +265,16 @@ Extended to support `.xlsx` files:
 
 ## S3 Key / Prefix Conventions
 
-| Prefix | Usage |
-|--------|-------|
-| `purchase-orders/{mfg_name}/{yyyy-mm}/PO-{po_no}.pdf` | Auto-generated PO PDF on approval |
-| `imports/{module}/{yyyy-mm}/{filename}_{ts}.{ext}` | CSV/Excel files uploaded for bulk imports |
-| `raw-events/{module}/YYYY-MM-DD/` | Events bucket — pre-DB-write payloads |
-| `processed-events/{module}/YYYY-MM-DD/` | Events bucket — successful DB writes |
-| `failed-events/{module}/YYYY-MM-DD/` | Events bucket — failed DB writes |
+| Prefix | Bucket | Usage |
+|--------|--------|-------|
+| `purchase-orders/{mfg_name}/{yyyy-mm}/PO-{po_no}.pdf` | FILES | Auto-generated PO PDF — uploaded on approval, attached to the email |
+| `attachments/purchase-orders/{id}/{field}.{ext}` | FILES | Manual PO attachment uploaded via `FileUpload` component |
+| `imports/{module}/{yyyy-mm}/{filename}_{ts}.{ext}` | FILES | CSV/Excel files for bulk imports (masters and PO bulk CSV) |
+| `raw-events/{module}/YYYY-MM-DD/` | EVENTS | Pre-DB-write payloads |
+| `processed-events/{module}/YYYY-MM-DD/` | EVENTS | Successful DB writes |
+| `failed-events/{module}/YYYY-MM-DD/` | EVENTS | Failed DB writes |
+
+**Module codes used in event keys:** `SKU`, `VENDOR`, `MFG`, `RM`, `PM`, `PO`, `PO_BULK`, `PO_SPLIT`.
 
 New prefixes can be added at any time — no AWS Console changes required.
 

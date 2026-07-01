@@ -28,6 +28,14 @@ Create a `.env` file in the project root. The table below lists every required v
 | `AUTH_SECRET` | Yes | — | Run `openssl rand -hex 32` or any 32-char random string |
 | `GOOGLE_CLIENT_ID` | Yes | — | Google Cloud Console → Credentials → OAuth 2.0 client |
 | `GOOGLE_CLIENT_SECRET` | Yes | — | Same as above |
+| `AWS_REGION` | Yes | — | e.g. `ap-south-1` |
+| `AWS_ACCESS_KEY_ID` | Yes | — | IAM user credentials (team lead) |
+| `AWS_SECRET_ACCESS_KEY` | Yes | — | IAM user credentials (team lead) |
+| `AWS_S3_BUCKET_FILES` | Yes | — | S3 bucket for uploads/attachments (team lead) |
+| `AWS_S3_BUCKET_EVENTS` | Yes | — | S3 bucket for event logs (team lead) |
+| `GMAIL_USER` | Yes | — | Gmail address for sending PO emails |
+| `GMAIL_APP_PASSWORD` | Yes | — | [Gmail App Password](https://support.google.com/accounts/answer/185833) (not your account password) |
+| `LOG_LEVEL` | No | `info` | `error` / `warn` / `info` / `debug` |
 
 Example `.env`:
 ```
@@ -39,6 +47,14 @@ DB_NAME=erp_db
 AUTH_SECRET=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
 GOOGLE_CLIENT_ID=123456789-abcde.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-abc123def456
+AWS_REGION=ap-south-1
+AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+AWS_S3_BUCKET_FILES=mcaffeine-erp-files
+AWS_S3_BUCKET_EVENTS=mcaffeine-erp-events
+GMAIL_USER=procurement@mcaffeine.com
+GMAIL_APP_PASSWORD=abcd efgh ijkl mnop
+LOG_LEVEL=info
 ```
 
 > **Google OAuth redirect URI:** Add `http://localhost:3000/api/auth/callback/google` to the Authorized Redirect URIs in the Google Cloud Console for local development.

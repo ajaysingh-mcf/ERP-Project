@@ -86,7 +86,7 @@ export async function POST(
 
     for (let i = 0; i < splits.length; i++) {
       const { mfg_id, destination, qty } = splits[i]
-      const childPoNo = `${po.po_no}-S${i + 1}`
+      const childPoNo = `${po.po_no}-S${String(i + 1).padStart(3, "0")}`
       const mfg = mfgMap[mfg_id]
 
       const [childResult] = await conn.execute(

@@ -622,6 +622,224 @@ Process: Transaction — INSERT into `bom`, then INSERT each `details` row into 
 
 ---
 
+## Purchase Orders
+
+All PO routes are under `app/api/purchase-orders/`.
+
+---
+
+### `GET /api/purchase-orders`
+
+**File:** `app/api/purchase-orders/route.ts`
+
+Returns all purchase orders joined with manufacturer name, SKU name, and email.
+
+```json
+// Response 200 — array of PoRow objects
+[
+  {
+    "id": 1, "po_no": "PO-2026-001", "po_type": "normal",
+    "status": "raised", "email_sent_at": "2026-06-15T09:23:00Z",
+    "mfg_id": 3, "mfg_code": "MFG003", "mfg_name": "Plant A", "mfg_email": "plant@example.com",
+    "sku_code": "SKU001", "sku_name": "Face Wash", "qty": 500,
+    "expected_on": "2026-07-01", "attachment_key": null
+  }
+]
+```
+
+---
+
+### `POST /api/purchase-orders`
+
+**File:** `app/api/purchase-orders/route.ts`
+
+Handles three modes via the body's `action` or `po_type` field.
+
+#### Mode 1 — Normal PO (direct raise, no approval)
+
+```json
+// Request body
+{
+  "po_type": "normal",
+  "mfg_id": 3,
+  "sku_code": "SKU001",
+  "qty": 500,
+  "expected_on": "2026-07-01",
+  "destination": "Warehouse A"
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `po_type` | Yes | `"normal"` |
+| `mfg_id` | Yes | number |
+| `sku_code` | Yes | must be `active` |
+| `qty` | Yes | > 0 |
+| `expected_on` | No | date string |
+| `destination` | No | string |
+
+Process: inserts directly as `raised`; no approval record created. PO number format: `PO-YYYY-NNN`.
+
+```json
+// Response 200
+{ "ok": true, "po_no": "PO-2026-001" }
+```
+
+#### Mode 2 — Impromptu PO (draft → approval → raised)
+
+```json
+{
+  "po_type": "impromptu",
+  "mfg_id": 3,
+  "sku_code": "SKU001",
+  "qty": 200,
+  "expected_on": "2026-07-15",
+  "destination": "Warehouse B",
+  "reason": "Urgent restock"
+}
+```
+
+Process: inserts PO as `draft`, creates an `approvals` record with `approval_items` showing the full diff. On approval the PO status moves to `raised` and an email with the PDF is auto-sent. PO number format: `IMP-YYYY-NNN`.
+
+```json
+// Response 200
+{ "ok": true, "approval_id": 42, "po_no": "IMP-2026-007" }
+```
+
+#### Mode 3 — Bulk CSV upload (approval gated)
+
+```json
+{
+  "action": "bulk_csv",
+  "key": "imports/purchase-orders/2026-06/bulk_1718000000.csv",
+  "filename": "june_orders.csv"
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `action` | Yes | `"bulk_csv"` |
+| `key` | Yes | S3 object key returned by `POST /api/upload` |
+| `filename` | Yes | Original filename (shown in the approval diff) |
+
+Process: saves the S3 key + filename as `approval_items` under module `PO_BULK`. When an approver approves the record, the server fetches the file, parses each row, and inserts POs directly as `raised`. No individual PO approval records are created.
+
+```json
+// Response 200
+{ "ok": true, "approval_id": 55 }
+```
+
+**Common error responses:**
+
+```json
+// 400 — missing / invalid field
+{ "error": "Manufacturer is required." }
+{ "error": "SKU not found." }
+{ "error": "SKU is not active." }
+
+// 409 — duplicate PO number (rare race condition)
+{ "error": "PO number already exists, please retry." }
+```
+
+---
+
+### `PATCH /api/purchase-orders/[id]`
+
+**File:** `app/api/purchase-orders/[id]/route.ts`
+
+Update the S3 attachment key on a PO. If a previous key exists it is deleted from S3 before the new one is saved.
+
+```json
+// Request body
+{ "attachment_key": "attachments/purchase-orders/1/attachment.pdf" }
+// or null to remove the attachment
+{ "attachment_key": null }
+```
+
+```json
+// Response 200
+{ "ok": true }
+```
+
+---
+
+### `POST /api/purchase-orders/[id]/split`
+
+**File:** `app/api/purchase-orders/[id]/split/route.ts`
+
+Split a PO into N child POs, each optionally destined for a different manufacturer and warehouse. At least 2 split rows are required.
+
+```json
+// Request body
+{
+  "splits": [
+    { "mfg_id": 3, "destination": "Warehouse A", "qty": 200 },
+    { "mfg_id": 5, "destination": "Warehouse B", "qty": 150 }
+  ]
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `splits` | Yes | array, min 2 entries |
+| `splits[].mfg_id` | Yes | manufacturer for this child PO |
+| `splits[].qty` | Yes | > 0 |
+| `splits[].destination` | No | warehouse name |
+
+**Parent PO closing rules** (the parent's `qty` is never changed — it matches the email already sent):
+
+| Condition | Result |
+|-----------|--------|
+| `splitTotal >= remaining` | `received_qty += splitTotal` → status → `short_closed` |
+| `splitTotal < remaining` | `received_qty += splitTotal` → status unchanged (partial split) |
+
+Child PO statuses mirror the parent: `draft` parents → `draft` children; raised/punched parents → `raised` children. Child PO numbers: `{parent_po_no}-S1`, `{parent_po_no}-S2`, …
+
+```json
+// Response 200
+{ "ok": true, "splits_created": 2, "split_type": "full" }
+// split_type: "full" (parent short_closed) | "partial" (parent status unchanged)
+
+// 400 — validation failures
+{ "error": "At least 2 split rows are required." }
+{ "error": "Each split row must have a manufacturer selected." }
+{ "error": "Split total (350) exceeds remaining quantity (300)." }
+
+// 409 — PO status prevents splitting
+{ "error": "PO status 'received' cannot be split." }
+```
+
+---
+
+### `GET /api/purchase-orders/[id]/preview-pdf`
+
+Streams the generated PO PDF inline so the user can review it in a new browser tab before sending the email. No DB changes.
+
+```
+GET /api/purchase-orders/42/preview-pdf
+```
+
+**Response:** `Content-Type: application/pdf` byte stream.
+
+---
+
+### `POST /api/purchase-orders/[id]/send-email`
+
+Manually (re-)send the PO email to the manufacturer. Can be called on any `raised` PO. Stamps `email_sent_at` on first send only (subsequent calls do not overwrite it).
+
+```json
+// Response 200
+{ "ok": true }
+
+// 404
+{ "error": "PO not found." }
+
+// 500 — email or PDF generation failure
+{ "error": "Failed to send email." }
+```
+
+---
+
 ## Utility Endpoints
 
 ### `GET /api/google-sheet`

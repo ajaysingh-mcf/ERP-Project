@@ -23,11 +23,12 @@ import logger from "@/lib/logger"
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
+  const { id } = await params
 
   const ctx = {
     requestId: crypto.randomUUID(),
     userId: session ? Number(session.user.id) : undefined,
-    route: "/api/approval/[id]",
+    route: `/api/approval/[${id}]`,
   }
   logger.info({ ...ctx, message: "Approval API request received" })
 
@@ -37,7 +38,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Forbidden — admin or manager role required" }, { status: 403 })
   }
 
-  const { id } = await params
   const approvalId = parseInt(id)
   if (isNaN(approvalId)) {
     logger.error({ ...ctx, message: "Invalid approval id", rawId: id })

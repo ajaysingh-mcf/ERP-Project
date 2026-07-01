@@ -142,6 +142,8 @@ try {
 | `PM_MAT` | PM base record | `master_pm` |
 | `VENDOR` | Vendor master | `master_vendors` + `details_vendor` |
 | `MFG` | Manufacturer master | `master_mfgs` + `details_mfg` |
+| `PO` | Purchase Order (impromptu) | `purchase_orders` — status → `raised`; triggers email send on approval |
+| `PO_BULK` | Bulk CSV PO upload | `purchase_orders` — parses S3 CSV and inserts each row as `raised` |
 
 ---
 
@@ -221,7 +223,9 @@ This eliminates `any` type noise and gives full IntelliSense on `conn.execute`, 
 | `lib/queries/manufacturers.ts` | Manufacturer master — master_mfgs + details_mfg |
 | `lib/queries/packing-materials.ts` | PM master — master_pm, pm_mrm, pm_vrm |
 | `lib/queries/permissions.ts` | RBAC — page_permissions, user_page_permissions |
+| `lib/queries/purchase-orders.ts` | Purchase orders — full CRUD, split, email, PDF, bulk CSV |
 | `lib/queries/raw-materials.ts` | RM master — master_rm, rm_mrm, rm_vrm |
+| `lib/queries/s3-files.ts` | S3 attachment operations — attachment_key on purchase_orders |
 | `lib/queries/skus.ts` | SKU master — master_skus, sku_history |
 | `lib/queries/vendors.ts` | Vendor master — master_vendors + details_vendor |
 

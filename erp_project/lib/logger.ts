@@ -17,15 +17,7 @@ const SKIP = new Set(["service", "stack", "splat", "pid"]);
 
 // ── pretty format (console only) ──────────────────────────────────────────
 
-const prettyFormat = winston.format.printf(({
-  timestamp,
-  level,
-  message,
-  requestId,
-  module,
-  deltaMs,
-  stack,
-  ...meta
+const prettyFormat = winston.format.printf(({ timestamp, level, message, requestId, module, deltaMs, stack, ...meta
 }: any) => {
   const ts    = new Date(timestamp).toISOString().substring(11, 23);
   const req   = requestId ? String(requestId).substring(0, 8) : "--------";

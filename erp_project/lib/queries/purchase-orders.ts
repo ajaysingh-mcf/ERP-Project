@@ -82,14 +82,19 @@ export const purchaseOrdersSql = {
     WHERE (? IS NULL OR po.po_no LIKE ? OR m.code LIKE ? OR m.name LIKE ? OR po.sku_code LIKE ? OR sk.name LIKE ?)
   `,
 
-  /** Count of impromptu POs (identified by IMP- prefix) — used for number generation. */
+  /** Count of impromptu POs (identified by IMP- prefix) — kept for historical reporting. */
   countImpromptu: `
     SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE 'IMP-%'
   `,
 
-  /** Count of normal POs (PO- prefix) — used for PO-YYYY-NNN number generation. */
+  /** Count of normal POs (PO- prefix) — kept for historical reporting. */
   countNormal: `
     SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE 'PO-%'
+  `,
+
+  /** Count POs matching a brand+type+month prefix — used for brand-scoped PO number generation. Parameters: ['MCA-PO-202606-%'] */
+  countByPrefix: `
+    SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE ?
   `,
 
   /** Insert an impromptu PO as draft (pending approval). Parameters: [po_no, mfg_id, sku_code, qty, expected_on, po_type, destination] */

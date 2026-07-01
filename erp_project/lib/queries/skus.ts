@@ -107,4 +107,7 @@ export const skus = {
 
   /** Fetch SKU status by sku_code — used to gate PO creation. Parameters: [sku_code] */
   selectStatusByCode: `SELECT status FROM master_skus WHERE sku_code = ? LIMIT 1`,
+
+  /** Fetch SKU status + brand by sku_code — used for PO number generation. Parameters: [sku_code] */
+  selectStatusAndBrandByCode: `SELECT status, brand FROM master_skus WHERE sku_code = ? LIMIT 1`,
 }

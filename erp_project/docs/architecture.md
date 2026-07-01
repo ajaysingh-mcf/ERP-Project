@@ -92,13 +92,19 @@ sequenceDiagram
 | `lib/db.ts` | mysql2 connection pool singleton with `query()` and `execute()` helpers |
 | `lib/auth.ts` | NextAuth configuration, callbacks, and session management |
 | `lib/permissions.ts` | `resolveAccess()` — the RBAC decision function |
+| `lib/logger.ts` | Winston structured logger — console (pretty) + daily-rotate file transports. Import as `import logger from "@/lib/logger"` in any route or server-side file. |
+| `lib/mailer.ts` | PO email dispatch via Gmail SMTP (nodemailer). `fetchPoData()` shared between email send and PDF preview. |
+| `lib/s3.ts` | S3 helpers: presigned URLs, file upload/download, fire-and-forget event writes |
+| `lib/events.ts` | Thin wrappers around `putEvent` — `recordRawEvent`, `recordProcessedEvent`, `recordFailedEvent` |
 | `lib/utils.ts` | `cn()` — Tailwind class name utility |
 | `lib/constants.ts` | Typed `STATUS` and `APPROVAL_STATUS` const objects — use these instead of raw string literals across the codebase |
 | `lib/queries/` | SQL statement strings grouped by domain |
 | `lib/approvals/module-handlers.ts` | Strategy pattern registry — each approval module (`SKU`, `RM_RATE`, `PM_VRM`, etc.) owns its `setStatus` and `applyAndArchive` logic here; adding a new module requires adding one entry, the route never changes |
+| `lib/pdf/po-document.tsx` | React PDF template for PO documents — renders branded A4 PDF, used by preview and email send |
 | `types/` | TypeScript types for database row shapes and NextAuth session augmentation |
 | `prisma/` | `schema.prisma` (source of truth for DB models) + migration history |
 | `scripts/` | One-off utility scripts (seed, test-connection) |
+| `logs/` | Winston log output — `app-YYYY-MM-DD.log` (all levels, 14-day retention) and `error-YYYY-MM-DD.log` (errors only, 30-day retention). Gitignored. |
 | `public/` | Static assets served directly by Next.js |
 
 ## The Prisma / mysql2 Split
@@ -138,5 +144,7 @@ The following modules have an `app/<module>/page.tsx` file showing a "Coming soo
 - `app/manufacturing/`
 - `app/sales-crm/`
 - `app/reports/`
+
+> `app/po-tracking/` is **fully implemented** — see [API Reference](./api-reference.md#purchase-orders) for the PO API surface.
 
 See [Adding a New Module](./adding-a-new-module.md) for how to implement one from scratch, and [docs/architecture-evolution.md](./architecture-evolution.md) for the planned gateway + events pattern to adopt when building them.

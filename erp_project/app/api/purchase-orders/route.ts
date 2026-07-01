@@ -75,8 +75,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid po_type." }, { status: 400 })
   }
 
-  // Verify SKU is active
-  const skuRows = await query<{ status: string }>(skusSql.selectStatusByCode, [sku_code])
+  // Resolve brand from SKU and validate status in one query
+  const skuRows = await query<{ status: string; brand: string | null }>(
+    skusSql.selectStatusAndBrandByCode, [sku_code]
+  )
   if (!skuRows[0]) return NextResponse.json({ error: "SKU not found." }, { status: 400 })
   if (skuRows[0].status !== "active") {
     return NextResponse.json(
@@ -85,18 +87,22 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Generate po_no based on type 
-  let po_no: string
-  const year = new Date().getFullYear()
-  if (po_type === "normal") {
-    const countRows = await query<{ cnt: number }>(purchaseOrdersSql.countNormal, [])
-    const seq = (Number(countRows[0]?.cnt ?? 0) + 1).toString().padStart(3, "0")
-    po_no = `PO-${year}-${seq}`
-  } else {
-    const countRows = await query<{ cnt: number }>(purchaseOrdersSql.countImpromptu, [])
-    const seq = (Number(countRows[0]?.cnt ?? 0) + 1).toString().padStart(3, "0")
-    po_no = `IMP-${year}-${seq}`
+  // Map known brand names to their short PO codes (case-insensitive)
+  const BRAND_CODES: Record<string, string> = {
+    mcaffeine: "MCAFF",
+    hyphen:    "HYP",
   }
+  const rawBrand = skuRows[0].brand?.trim() || sku_code.split("-")[0]
+  const brand    = (BRAND_CODES[rawBrand.toLowerCase()] ?? rawBrand).toUpperCase()
+
+  // Generate po_no: {Brand}-{PO|IMP}-{yyyymm}-{nnnn}, sequence scoped per brand+type+month
+  const year    = new Date().getFullYear()
+  const month   = String(new Date().getMonth() + 1).padStart(2, "0")
+  const typeTag = po_type === "normal" ? "PO" : "IMP"
+  const poPrefix = `${brand}-${typeTag}-${year}${month}`
+  const countRows = await query<{ cnt: number }>(purchaseOrdersSql.countByPrefix, [`${poPrefix}-%`])
+  const seq  = (Number(countRows[0]?.cnt ?? 0) + 1).toString().padStart(3, "0")
+  const po_no = `${poPrefix}-${seq}`
 
   const eventId = `po-new-${Date.now()}`
   recordRawEvent("PO", eventId, { mfg_id, sku_code, qty, expected_on, destination, reason, po_type })
