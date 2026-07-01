@@ -73,4 +73,4 @@ export const EMPTY_FORM: ImpromptuForm = {
   sku_code: "", mfg_id: "", qty: "", expected_on: "", destination: "", reason: "",
 }
 
-export type SplitRow = { mfg_id: string; destination: string; qty: string }
+export type SplitRow = { destination: string; qty: string }

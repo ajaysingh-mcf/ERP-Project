@@ -6,6 +6,8 @@ import { uploadFile } from "@/lib/s3"
 import { s3FilesSql } from "@/lib/queries/s3-files"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import logger from "@/lib/logger"
+import crypto from "crypto"
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -13,7 +15,13 @@ const transporter = nodemailer.createTransport({
     user: GMAIL_USER,
     pass: GMAIL_APP_PASSWORD,
   },
+  secure: true,
 })
+
+const ctx = {
+  module: "MAILER",
+  requestId: crypto.randomUUID(),
+}
 
 export async function fetchPoData(poId: number): Promise<PoEmailData | null> {
   const rows = await query<any>(purchaseOrdersSql.selectForEmail, [poId])
@@ -73,7 +81,7 @@ export async function sendPoEmail(
     pdfBuffer = await generatePoPdf(data)
     console.log(`[mailer] PDF generated for PO ${data.po_no} (${pdfBuffer.length} bytes)`)
   } catch (pdfErr: any) {
-    console.error("[mailer] PDF generation failed:", pdfErr)
+    logger.error({ ...ctx, err: pdfErr.message, stack: pdfErr.stack, message: "PO email PDF generation failed" })
     recordFailedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no }, "PDF generation failed: " + pdfErr.message)
     throw new Error("PDF generation failed: " + pdfErr.message)
   }
@@ -133,12 +141,13 @@ export async function sendPoEmail(
       ],
     })
   } catch (sendErr: any) {
-    console.error("[mailer] sendMail failed:", sendErr)
+    logger.error({ ...ctx, err: sendErr.message, stack: sendErr.stack, message: "PO email send failed" })
+    // console.error("[mailer] sendMail failed:", sendErr)
     recordFailedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no }, sendErr.message)
     throw sendErr
   }
-
-  console.log(`[mailer] PO ${data.po_no} sent to ${data.mfg_email}`)
+  logger.info({ ...ctx, poId, po_no: data.po_no, mfg_email: data.mfg_email, message: "PO email sent successfully" })
+  // console.log(`[mailer] PO ${data.po_no} sent to ${data.mfg_email}`)
   recordProcessedEvent("PO_EMAIL", eventId, {
     poId,
     po_no:     data.po_no,

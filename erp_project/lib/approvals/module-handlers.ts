@@ -255,6 +255,10 @@ const vendorHandler: ModuleHandler = {
 
 // ── MFG (manufacturer master — spans master_mfgs + details_mfg) ───────────────
 
+const MFG_DOC_FIELDS = new Set([
+  "gst_certificate_key", "cancelled_cheque_key", "pan_card_key", "misc_document_key",
+])
+
 const mfgHandler: ModuleHandler = {
   async setStatus(conn, entityId, status) {
     await conn.execute(mfgSql.setStatus, [status, entityId])
@@ -265,22 +269,41 @@ const mfgHandler: ModuleHandler = {
     const cur = (rows as any[])[0]
     if (!cur) throw new Error(`Manufacturer ${entityId} not found`)
 
-    await conn.execute(mfgSql.updateMfg, [
-      fieldMap.name ?? cur.name,
-      entityId,
-    ])
-    await conn.execute(mfgSql.updateMfgDetails, [
-      fieldMap.location        ?? cur.location        ?? null,
-      fieldMap.gst_number      ?? cur.gst_number      ?? null,
-      STATUS.ACTIVE,
-      fieldMap.registered_name ?? cur.registered_name ?? null,
-      fieldMap.zone            ?? cur.zone            ?? null,
-      fieldMap.bank_name       ?? cur.bank_name       ?? null,
-      fieldMap.ifsc_number     ?? cur.ifsc_number     ?? null,
-      fieldMap.account_number  ?? cur.account_number  ?? null,
-      fieldMap.email           ?? cur.email           ?? null,
-      entityId,
-    ])
+    const hasFieldChange = items.some((i) => !MFG_DOC_FIELDS.has(i.field_name))
+    const hasDocChange   = items.some((i) =>  MFG_DOC_FIELDS.has(i.field_name))
+
+    if (hasFieldChange) {
+      await conn.execute(mfgSql.updateMfg, [fieldMap.name ?? cur.name, entityId])
+      await conn.execute(mfgSql.updateMfgDetails, [
+        fieldMap.location        ?? cur.location        ?? null,
+        fieldMap.gst_number      ?? cur.gst_number      ?? null,
+        STATUS.ACTIVE,
+        fieldMap.registered_name ?? cur.registered_name ?? null,
+        fieldMap.zone            ?? cur.zone            ?? null,
+        fieldMap.bank_name       ?? cur.bank_name       ?? null,
+        fieldMap.ifsc_number     ?? cur.ifsc_number     ?? null,
+        fieldMap.account_number  ?? cur.account_number  ?? null,
+        fieldMap.email           ?? cur.email           ?? null,
+        entityId,
+      ])
+    }
+
+    if (hasDocChange) {
+      // Approval items store null as "" — convert back before writing to DB
+      const docVal = (field: string) => fieldMap[field] || cur[field] || null
+      await conn.execute(mfgSql.updateDocuments, [
+        docVal("gst_certificate_key"),
+        docVal("cancelled_cheque_key"),
+        docVal("pan_card_key"),
+        docVal("misc_document_key"),
+        entityId,
+      ])
+    }
+
+    // If only doc fields changed, updateMfgDetails wasn't called — set active explicitly
+    if (!hasFieldChange) {
+      await conn.execute(mfgSql.setStatus, [STATUS.ACTIVE, entityId])
+    }
   },
 }
 

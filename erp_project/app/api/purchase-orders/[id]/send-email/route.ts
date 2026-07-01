@@ -4,50 +4,44 @@
 
 export const runtime = "nodejs"
 
-import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { NextResponse } from "next/server"
 import { query, execute } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { sendPoEmail } from "@/lib/mailer"
 import logger from "@/lib/logger"
+import { withGateway } from "@/lib/gateway/with-gateway"
+import { ApiError } from "@/lib/gateway/errors"
+import { poIdParamSchema } from "@/lib/validation/purchase-order-detail"
 
-export async function POST(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await auth()
-  if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
+export const POST = withGateway({
+  paramsSchema: poIdParamSchema,
+  handler: async ({ params, ctx }) => {
+    const poId = params.id
+    logger.info({ ...ctx, poId, message: "Manual PO email send requested" })
 
-  const { id } = await params
-  const poId = parseInt(id)
-  if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
-
-  const ctx = { requestId: crypto.randomUUID(), userId: parseInt(session.user.id), route: `/api/purchase-orders/${poId}/send-email` }
-  logger.info({ ...ctx, poId, message: "Manual PO email send requested" })
-
-  const rows = await query<{ status: string }>(purchaseOrdersSql.selectForEdit, [poId])
-  if (!rows[0]) return NextResponse.json({ error: "PO not found" }, { status: 404 })
-  if (rows[0].status !== "raised") {
-    return NextResponse.json(
-      { error: "Email can only be sent for POs in 'raised' status." },
-      { status: 409 }
-    )
-  }
-
-  try {
-    const sent = await sendPoEmail(poId, "manual")
-    if (!sent) {
-      logger.warn({ ...ctx, poId, message: "PO email skipped — no manufacturer email on file" })
-      return NextResponse.json(
-        { error: "Manufacturer has no email address on file. Add an email in the Manufacturer master first." },
-        { status: 422 }
-      )
+    const rows = await query<{ status: string }>(purchaseOrdersSql.selectForEdit, [poId])
+    if (!rows[0]) throw new ApiError(404, "not_found", "PO not found")
+    if (rows[0].status !== "raised") {
+      throw new ApiError(409, "not_raised", "Email can only be sent for POs in 'raised' status.")
     }
-    await execute(purchaseOrdersSql.setEmailSentAt, [poId])
-    logger.info({ ...ctx, poId, message: "Manual PO email sent successfully" })
-    return NextResponse.json({ ok: true })
-  } catch (err: any) {
-    logger.error({ ...ctx, poId, error: err.message, message: "Manual PO email send failed" })
-    return NextResponse.json({ error: "Failed to send email: " + err.message }, { status: 500 })
-  }
-}
+
+    try {
+      const sent = await sendPoEmail(poId, "manual")
+      if (!sent) {
+        logger.warn({ ...ctx, poId, message: "PO email skipped — no manufacturer email on file" })
+        throw new ApiError(
+          422,
+          "no_email",
+          "Manufacturer has no email address on file. Add an email in the Manufacturer master first."
+        )
+      }
+      await execute(purchaseOrdersSql.setEmailSentAt, [poId])
+      logger.info({ ...ctx, poId, message: "Manual PO email sent successfully" })
+      return NextResponse.json({ ok: true })
+    } catch (err: any) {
+      if (err instanceof ApiError) throw err
+      logger.error({ ...ctx, poId, error: err.message, message: "Manual PO email send failed" })
+      throw new ApiError(500, "internal", "Failed to send email: " + err.message)
+    }
+  },
+})

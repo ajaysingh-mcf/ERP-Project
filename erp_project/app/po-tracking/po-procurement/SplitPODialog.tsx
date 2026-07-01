@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import type { MfgOption, PoRow, SplitRow, WarehouseOption } from "./po-types"
+import type { PoRow, SplitRow, WarehouseOption } from "./po-types"
 import { fmtInt, num } from "./po-utils"
 
 function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
@@ -63,30 +63,26 @@ function RemainingCard({ remaining, splitTotal, originalMfg }: {
 }
 
 export default function SplitPODialog({
-  open, onClose, po, warehouseOptions, mfgOptions, onSplit,
+  open, onClose, po, warehouseOptions, onSplit,
 }: {
   open: boolean
   onClose: () => void
   po: PoRow | null
   warehouseOptions: WarehouseOption[]
-  mfgOptions: MfgOption[]
   onSplit: () => void
 }) {
-  const defaultMfgId = po ? String(po.mfg_id) : ""
-
   const [rows, setRows]             = useState<SplitRow[]>([
-    { mfg_id: defaultMfgId, destination: "", qty: "" },
-    { mfg_id: defaultMfgId, destination: "", qty: "" },
+    { destination: "", qty: "" },
+    { destination: "", qty: "" },
   ])
   const [submitting, setSubmitting] = useState(false)
   const [apiError, setApiError]     = useState("")
 
   useEffect(() => {
     if (open && po) {
-      const id = String(po.mfg_id)
       setRows([
-        { mfg_id: id, destination: "", qty: "" },
-        { mfg_id: id, destination: "", qty: "" },
+        { destination: "", qty: "" },
+        { destination: "", qty: "" },
       ])
       setApiError("")
     }
@@ -105,7 +101,7 @@ export default function SplitPODialog({
     setApiError("")
   }
 
-  const addRow    = () => setRows((p) => [...p, { mfg_id: po ? String(po.mfg_id) : "", destination: "", qty: "" }])
+  const addRow    = () => setRows((p) => [...p, { destination: "", qty: "" }])
   const removeRow = (i: number) => {
     if (rows.length <= 2) return
     setRows((p) => p.filter((_, idx) => idx !== i))
@@ -113,10 +109,6 @@ export default function SplitPODialog({
 
   async function handleSplit() {
     if (!po) return
-    if (rows.some((r) => !r.mfg_id)) {
-      setApiError("Each row must have a manufacturer selected.")
-      return
-    }
     if (rows.some((r) => !r.qty || num(r.qty) <= 0)) {
       setApiError("Each row must have a quantity greater than 0.")
       return
@@ -131,7 +123,7 @@ export default function SplitPODialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          splits: rows.map((r) => ({ mfg_id: Number(r.mfg_id), destination: r.destination, qty: Number(r.qty) })),
+          splits: rows.map((r) => ({ mfg_id: po.mfg_id, destination: r.destination, qty: Number(r.qty) })),
         }),
       })
       const data = await res.json()
@@ -158,7 +150,8 @@ export default function SplitPODialog({
           </DialogTitle>
           <p className="text-xs text-muted-foreground pt-0.5">
             <span className="font-mono font-semibold">{po.po_no}</span>
-            {po.sku_name && <span className="ml-1.5">— {po.sku_name}</span>}
+            {po.sku_name && <span className="ml-1.5">— {po.sku_name}</span> && 
+            <span className="ml-1.5 text-muted-foreground"> {po.mfg_name}</span>}
           </p>
         </DialogHeader>
 
@@ -174,18 +167,6 @@ export default function SplitPODialog({
           {rows.map((row, i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="w-5 text-center text-xs text-muted-foreground flex-shrink-0">{i + 1}</span>
-              <select
-                value={row.mfg_id}
-                onChange={(e) => setRow(i, "mfg_id", e.target.value)}
-                className={selectCls}
-              >
-                <option value="">— Manufacturer —</option>
-                {mfgOptions.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.code} — {m.name}
-                  </option>
-                ))}
-              </select>
               <select
                 value={row.destination}
                 onChange={(e) => setRow(i, "destination", e.target.value)}

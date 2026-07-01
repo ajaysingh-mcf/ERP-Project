@@ -248,6 +248,10 @@ model details_mfg {
   ifsc_number     String?             @db.VarChar(11)
   account_number  String?             @db.VarChar(50)
   email           String?             @db.VarChar(255)
+  gst_certificate_key  String?        @db.Text
+  cancelled_cheque_key String?        @db.Text
+  pan_card_key         String?        @db.Text
+  misc_document_key    String?        @db.Text
   master_mfgs     master_mfgs         @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "details_mfg_ibfk_1")
 
   @@index([mfg_id], map: "mfg_id")

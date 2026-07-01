@@ -49,18 +49,6 @@ const PM_FIELDS: MasterField[] = [
     sample: "39235010",
   },
   { key: "uom", label: "UOM", placeholder: "e.g. pcs", sample: "pcs" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    default: "active",
-    colSpan: 2,
-    sample: "active",
-    options: [
-      { value: "active", label: "Active" },
-      { value: "discontinued", label: "Discontinued" },
-    ],
-  },
 ]
 
 export default function PackingMaterialsClient({

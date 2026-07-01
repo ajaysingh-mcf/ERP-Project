@@ -140,7 +140,7 @@ export default function AddPODialog({
             <div className="grid gap-1.5">
               <Label htmlFor="apo-qty">PO Quantity <span className="text-destructive">*</span></Label>
               <Input
-                id="apo-qty" type="number" min={1} placeholder="e.g. 5000"
+                id="apo-qty" type="number" min={0} placeholder="e.g. 5000"
                 value={form.qty} onChange={(e) => set("qty", e.target.value)}
               />
               {errors.qty && <p className="text-xs text-destructive">{errors.qty}</p>}

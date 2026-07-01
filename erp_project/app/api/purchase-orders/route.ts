@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { query, pool } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
@@ -8,6 +8,10 @@ import { manufacturers as mfgsSql } from "@/lib/queries/manufacturers"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 import type { PoolConnection } from "mysql2/promise"
 import logger from "@/lib/logger"
+import { withGateway } from "@/lib/gateway/with-gateway"
+import { ApiError } from "@/lib/gateway/errors"
+import { poActionSchema } from "@/lib/validation/purchase-orders"
+
 // GET /api/purchase-orders — list all POs with MFG + SKU details
 export async function GET() {
   const session = await auth()
@@ -27,19 +31,16 @@ export async function GET() {
 //   (default) — { mfg_id, sku_code, qty, expected_on, destination, reason, po_type? }
 //     Creates a single PO as draft and submits it for approval.
 //
-export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
-  const userId = parseInt(session.user.id)
-
-  const body = await req.json()
+// Auth + body validation handled by withGateway (see lib/gateway/with-gateway.ts).
+export const POST = withGateway({
+  schema: poActionSchema,
+  handler: async ({ body, session, ctx }) => {
+  const userId = Number(session.user.id)
 
   // ── bulk_csv: store S3 key + filename in approval_items, one approval for the batch ──
   // entity_id = uploading user's id (no separate table needed).
-  if (body.action === "bulk_csv") {
+  if ("key" in body) {
     const { key, filename } = body
-    if (!key)      return NextResponse.json({ error: "S3 key is required." }, { status: 400 })
-    if (!filename) return NextResponse.json({ error: "Filename is required." }, { status: 400 })
 
     const conn: PoolConnection = await pool.getConnection()
     await conn.beginTransaction()
@@ -59,31 +60,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, approval_id: approvalId })
     } catch (err: any) {
       await conn.rollback()
-      console.error("Bulk CSV PO create error:", err)
-      return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+      logger.error({ ...ctx, err: err.message, stack: err.stack, message: "Bulk CSV PO create failed" })
+      throw new ApiError(500, "internal", "Database error: " + err.message)
     } finally {
       conn.release()
     }
   }
   // ── end bulk_csv ────────────────────────────────────────────────────────────
-  const { mfg_id, sku_code, qty, expected_on, destination, reason, po_type = "impromptu" } = body
-
-  if (!mfg_id)                   return NextResponse.json({ error: "Manufacturer is required." }, { status: 400 })
-  if (!sku_code)                  return NextResponse.json({ error: "SKU is required." }, { status: 400 })
-  if (!qty || Number(qty) <= 0)  return NextResponse.json({ error: "Quantity must be greater than 0." }, { status: 400 })
-  if (!["normal", "impromptu"].includes(po_type)) {
-    return NextResponse.json({ error: "Invalid po_type." }, { status: 400 })
-  }
+  const { mfg_id, sku_code, qty, expected_on, destination, reason, po_type } = body
 
   // Resolve brand from SKU and validate status in one query
   const skuRows = await query<{ status: string; brand: string | null }>(
     skusSql.selectStatusAndBrandByCode, [sku_code]
   )
-  if (!skuRows[0]) return NextResponse.json({ error: "SKU not found." }, { status: 400 })
+  if (!skuRows[0]) throw new ApiError(400, "sku_not_found", "SKU not found.")
   if (skuRows[0].status !== "active") {
-    return NextResponse.json(
-      { error: `SKU is currently '${skuRows[0].status.replace(/_/g, " ")}' and cannot be used for a new PO.` },
-      { status: 400 }
+    throw new ApiError(
+      400,
+      "sku_not_active",
+      `SKU is currently '${skuRows[0].status.replace(/_/g, " ")}' and cannot be used for a new PO.`
     )
   }
 
@@ -121,11 +116,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, po_no })
     } catch (err: any) {
       await conn.rollback()
+      logger.error({ ...ctx, err: err.message, stack: err.stack, message: "Normal PO create failed" })
       recordFailedEvent("PO", eventId, { mfg_id, sku_code, qty, expected_on, destination }, err.message)
       if (err.code === "ER_DUP_ENTRY") {
-        return NextResponse.json({ error: "PO number already exists, please retry." }, { status: 409 })
+        throw new ApiError(409, "duplicate", "PO number already exists, please retry.")
       }
-      return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+      throw new ApiError(500, "internal", "Database error: " + err.message)
     } finally {
       conn.release()
     }
@@ -166,10 +162,11 @@ export async function POST(req: NextRequest) {
     await conn.rollback()
     recordFailedEvent("PO", eventId, { mfg_id, sku_code, qty, expected_on, destination, reason }, err.message)
     if (err.code === "ER_DUP_ENTRY") {
-      return NextResponse.json({ error: "PO number already exists, please retry." }, { status: 409 })
+      throw new ApiError(409, "duplicate", "PO number already exists, please retry.")
     }
-    return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+    throw new ApiError(500, "internal", "Database error: " + err.message)
   } finally {
     conn.release()
   }
-}
+  },
+})

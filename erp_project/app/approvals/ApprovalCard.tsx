@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { ChevronDown, ChevronRight, Check, X, Clock, FileText, ExternalLink, Loader2 as SpinIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -43,27 +44,92 @@ function CsvFileCard({ approvalId, items, openingFileFor, onOpen }: {
   )
 }
 
+// ── Doc key fields — rendered as view buttons instead of raw S3 keys ──────────
+
+const DOC_FIELDS = new Set([
+  "gst_certificate_key", "cancelled_cheque_key", "pan_card_key", "misc_document_key",
+])
+
+function DocViewButton({ s3Key, variant }: { s3Key: string; variant: "old" | "new" }) {
+  const [opening, setOpening] = useState(false)
+  const [failed,  setFailed]  = useState(false)
+
+  async function handleView() {
+    setOpening(true)
+    setFailed(false)
+    try {
+      const res  = await fetch(`/api/files/presign?key=${encodeURIComponent(s3Key)}`)
+      const data = await res.json()
+      if (data.url) window.open(data.url, "_blank", "noopener,noreferrer")
+      else setFailed(true)
+    } catch {
+      setFailed(true)
+    } finally {
+      setOpening(false)
+    }
+  }
+
+  const filename = s3Key.split("/").pop() ?? s3Key
+  const isOld    = variant === "old"
+
+  return (
+    <button
+      onClick={handleView}
+      disabled={opening}
+      title={s3Key}
+      className={[
+        "flex-1 min-w-0 flex items-center gap-1.5 rounded border px-2 py-1 text-xs font-medium transition-colors",
+        isOld
+          ? "bg-red-50 border-red-100 text-red-700 hover:bg-red-100"
+          : "bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100",
+        "disabled:opacity-60",
+      ].join(" ")}
+    >
+      {opening
+        ? <SpinIcon className="h-3 w-3 shrink-0 animate-spin" />
+        : <ExternalLink className="h-3 w-3 shrink-0" />
+      }
+      <span className="truncate">{failed ? "Error opening" : filename}</span>
+    </button>
+  )
+}
+
 // ── FieldDiffGrid ─────────────────────────────────────────────────────────────
 
 function FieldDiffGrid({ items }: { items: Approval["items"] }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-      {items.map((item) => (
-        <div key={item.field_name} className="rounded-md border border-border bg-background p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-            {item.field_name.replace(/_/g, " ")}
-          </p>
-          <div className="flex items-center gap-1.5">
-            <span className="flex-1 min-w-0 rounded bg-red-50 border border-red-100 px-2 py-1 text-xs text-red-700 font-medium truncate">
-              {item.old_value || "—"}
-            </span>
-            <span className="shrink-0 text-muted-foreground font-mono text-[11px]">→</span>
-            <span className="flex-1 min-w-0 rounded bg-emerald-50 border border-emerald-100 px-2 py-1 text-xs text-emerald-700 font-medium truncate">
-              {item.new_value || "—"}
-            </span>
+      {items.map((item) => {
+        const isDoc  = DOC_FIELDS.has(item.field_name)
+        const label  = item.field_name
+          .replace(/_key$/, "")
+          .replace(/_/g, " ")
+
+        return (
+          <div key={item.field_name} className="rounded-md border border-border bg-background p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+              {label}
+            </p>
+            <div className="flex items-center gap-1.5">
+              {isDoc && item.old_value ? (
+                <DocViewButton s3Key={item.old_value} variant="old" />
+              ) : (
+                <span className="flex-1 min-w-0 rounded bg-red-50 border border-red-100 px-2 py-1 text-xs text-red-700 font-medium truncate">
+                  {item.old_value || "—"}
+                </span>
+              )}
+              <span className="shrink-0 text-muted-foreground font-mono text-[11px]">→</span>
+              {isDoc && item.new_value ? (
+                <DocViewButton s3Key={item.new_value} variant="new" />
+              ) : (
+                <span className="flex-1 min-w-0 rounded bg-emerald-50 border border-emerald-100 px-2 py-1 text-xs text-emerald-700 font-medium truncate">
+                  {item.new_value || "—"}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

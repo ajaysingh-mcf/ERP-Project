@@ -80,6 +80,10 @@ export function QuickCreateManufacturerModal({ open, onClose, onSuccess }: Props
         ifsc_number: null,
         account_number: null,
         email: null,
+        gst_certificate_key: null,
+        cancelled_cheque_key: null,
+        pan_card_key: null,
+        misc_document_key: null,
       }
       toast({ title: "Manufacturer created", description: newMfg.name, variant: "success" })
       onSuccess(newMfg)

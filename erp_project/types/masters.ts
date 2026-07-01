@@ -48,6 +48,10 @@ export type Mfg = {
   ifsc_number: string | null
   account_number: string | null
   email: string | null
+  gst_certificate_key: string | null
+  cancelled_cheque_key: string | null
+  pan_card_key: string | null
+  misc_document_key: string | null
 }
 
 /** `vendors` table — Suppliers. `type` is one of: "rm" | "pm" | "both". Used by app/masters/vendors. */

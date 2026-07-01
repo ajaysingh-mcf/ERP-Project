@@ -74,13 +74,6 @@ const PM_FIELDS: MasterField[] = [
   { key: "type",    label: "Type",    placeholder: "e.g. Label / Carton", sample: "Label" },
   { key: "hsn_code", label: "HSN Code", placeholder: "e.g. 48191000", sample: "48191000" },
   { key: "uom",     label: "UOM",     placeholder: "e.g. pcs", sample: "pcs" },
-  {
-    key: "status", label: "Status", type: "select", default: "active", colSpan: 2, sample: "active",
-    options: [
-      { value: "active",       label: "Active"       },
-      { value: "discontinued", label: "Discontinued" },
-    ],
-  },
 ]
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -196,14 +189,14 @@ export function PmRateTable({
             endpoint="/api/masters/packing-materials/export"
             label="Packing Materials"
           />
-          <CsvImportDialog
+          {/* <CsvImportDialog
             entityLabel="Packing Material"
             entityLabelPlural="Packing Materials"
             endpoint="/api/masters/packing-materials"
             templateFilename="packing_material_template.csv"
             fields={PM_FIELDS}
             onSuccess={refresh}
-          />
+          /> */}
           <AddPackingMaterialWizard
             vendors={vendors}
             manufacturers={manufacturers}

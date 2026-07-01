@@ -13,29 +13,49 @@ const ACCEPT_MAP = {
 }
 
 type FileUploadProps = {
-  currentKey:  string | null
-  folder:      string
-  field:       string
-  label:       string
-  accept:      "image" | "document" | "any"
-  disabled?:   boolean
-  onChange:    (key: string | null) => void
+  currentKey:      string | null
+  folder:          string
+  field:           string
+  label:           string
+  accept:          "image" | "document" | "any"
+  disabled?:       boolean
+  onChange:        (key: string | null) => void
+  /** When true, file is NOT uploaded on pick — held client-side until parent decides to upload. */
+  deferred?:       boolean
+  /** Controlled pending file (parent holds it; shown as local preview in deferred mode). */
+  pendingFile?:    File | null
+  /** Called in deferred mode when user picks or removes a file. */
+  onFileSelected?: (file: File | null) => void
 }
 
-export function FileUpload({ currentKey, folder, field, label, accept, disabled, onChange }: FileUploadProps) {
+export function FileUpload({
+  currentKey, folder, field, label, accept, disabled, onChange,
+  deferred, pendingFile, onFileSelected,
+}: FileUploadProps) {
   const inputRef               = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress]   = useState(0)
   const [error, setError]         = useState<string | null>(null)
   const [localKey, setLocalKey]   = useState<string | null>(currentKey)
 
+  // In deferred mode the parent controls the pending file; derive display state from it.
+  const hasPending = deferred && !!pendingFile
+  const hasFile    = hasPending || !!localKey
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setError(null)
+    e.target.value = ""
 
     const MAX = 10 * 1024 * 1024
     if (file.size > MAX) { setError("File exceeds 10 MB limit"); return }
+
+    if (deferred) {
+      // Hold client-side — no S3 upload yet
+      onFileSelected?.(file)
+      return
+    }
 
     const form = new FormData()
     form.append("file",   file)
@@ -66,8 +86,6 @@ export function FileUpload({ currentKey, folder, field, label, accept, disabled,
     xhr.onerror = () => { setUploading(false); setError("Upload failed — check your connection") }
 
     xhr.send(form)
-    // Reset input so the same file can be re-uploaded after removal
-    e.target.value = ""
   }
 
   async function handleView() {
@@ -82,8 +100,12 @@ export function FileUpload({ currentKey, folder, field, label, accept, disabled,
   }
 
   function handleRemove() {
-    setLocalKey(null)
-    onChange(null)
+    if (hasPending) {
+      onFileSelected?.(null)
+    } else {
+      setLocalKey(null)
+      onChange(null)
+    }
     setError(null)
   }
 
@@ -91,7 +113,7 @@ export function FileUpload({ currentKey, folder, field, label, accept, disabled,
     <div className="space-y-1.5">
       <Label>{label}</Label>
 
-      {!localKey && !uploading && (
+      {!hasFile && !uploading && (
         <label
           className={cn(
             "flex flex-col items-center justify-center h-20 rounded-lg border-2 border-dashed border-border",
@@ -126,22 +148,29 @@ export function FileUpload({ currentKey, folder, field, label, accept, disabled,
         </div>
       )}
 
-      {localKey && !uploading && (
+      {hasFile && !uploading && (
         <div className="flex items-center gap-2 rounded-lg border px-3 py-2">
           <FileIcon className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="text-xs text-foreground flex-1 truncate">
-            {localKey.split("/").pop()}
+            {hasPending ? pendingFile!.name : localKey!.split("/").pop()}
           </span>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6 shrink-0"
-            onClick={handleView}
-            title="View file"
-            type="button"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Button>
+          {hasPending && (
+            <span className="text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 shrink-0">
+              Pending
+            </span>
+          )}
+          {!hasPending && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6 shrink-0"
+              onClick={handleView}
+              title="View file"
+              type="button"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Button>
+          )}
           {!disabled && (
             <Button
               size="icon"

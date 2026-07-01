@@ -11,6 +11,8 @@ export const manufacturers = {
     SELECT mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
       mfgd.gst_number, mfgd.registered_name, mfgd.zone,
       mfgd.bank_name, mfgd.ifsc_number, mfgd.account_number,
+      mfgd.gst_certificate_key, mfgd.cancelled_cheque_key,
+      mfgd.pan_card_key, mfgd.misc_document_key,
       mfg.code, mfg.name
     FROM master_mfgs AS mfg
     INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
@@ -28,7 +30,8 @@ export const manufacturers = {
       mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
       mfgd.gst_number, mfgd.registered_name, mfgd.zone,
       mfgd.bank_name, mfgd.ifsc_number, mfgd.account_number,
-      mfgd.email, mfg.code, mfg.name
+      mfgd.email, mfgd.gst_certificate_key, mfgd.cancelled_cheque_key,
+      mfgd.pan_card_key, mfgd.misc_document_key, mfg.code, mfg.name
     FROM master_mfgs AS mfg
     INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     WHERE (? IS NULL OR mfg.code LIKE ? OR mfg.name LIKE ?)
@@ -74,6 +77,9 @@ export const manufacturers = {
     INSERT INTO master_mfgs (code, name) VALUES (?, ?)
   `,
 
+  /** Total manufacturer count — used to seed the next auto-generated code serial. */
+  countTotal: `SELECT COUNT(*) AS total FROM master_mfgs`,
+
   /**
    * Insert manufacturer details record.
    * Parameters: [mfg_id, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number, email]
@@ -89,6 +95,17 @@ export const manufacturers = {
   /** Update manufacturer name. Parameters: [name, id] */
   updateMfg: `
     UPDATE master_mfgs SET name = ? WHERE id = ?
+  `,
+
+  /**
+   * Apply approved S3 keys for a manufacturer's reference documents.
+   * Called by mfgHandler.applyAndArchive — not used for direct writes.
+   * Parameters: [gst_certificate_key, cancelled_cheque_key, pan_card_key, misc_document_key, mfg_id]
+   */
+  updateDocuments: `
+    UPDATE details_mfg
+    SET gst_certificate_key = ?, cancelled_cheque_key = ?, pan_card_key = ?, misc_document_key = ?
+    WHERE mfg_id = ?
   `,
 
   /** Update manufacturer details. Parameters: [location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number, email, mfg_id] */
@@ -110,7 +127,8 @@ export const manufacturers = {
       mfg.id, mfgd.mfg_id, mfgd.status, mfgd.location,
       mfgd.gst_number, mfgd.registered_name, mfgd.zone,
       mfgd.bank_name, mfgd.ifsc_number, mfgd.account_number,
-      mfgd.email, mfg.code, mfg.name
+      mfgd.email, mfgd.gst_certificate_key, mfgd.cancelled_cheque_key,
+      mfgd.pan_card_key, mfgd.misc_document_key, mfg.code, mfg.name
     FROM master_mfgs AS mfg
     INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     WHERE mfg.id = ? LIMIT 1

@@ -25,16 +25,19 @@ import {
   MasterToolbarActions,
 } from "@/components/masters/MasterToolbar"
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
-import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
+import { AddMfgDialog } from "./AddMfgDialog"
 import { DownloadButton } from "@/components/masters/DownloadButton"
 import type { MasterField } from "@/components/masters/field-config"
 import type { Mfg } from "@/types/masters"
 import { useState } from "react"
-import { Pencil } from "lucide-react"
+import { Pencil, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EditMfgDialog } from "./EditMfgDialog"
-const MFG_FIELDS: MasterField[] = [
-  { key: "code",            label: "Code",            required: true, placeholder: "e.g. MFG-001",            sample: "MFG-001" },
+import { ManufacturerDocumentsDialog } from "./ManufacturerDocumentsDialog"
+// Common fields shared by the Add dialog and the CSV import.
+// `code` is auto-generated server-side on both single-record create AND bulk
+// import (MFG-<serial>-<XX>), so it's never collected from the user.
+const MFG_COMMON_FIELDS: MasterField[] = [
   { key: "name",            label: "Name",            required: true, colSpan: 2, placeholder: "Manufacturer name", sample: "Acme Manufacturing" },
   { key: "registered_name", label: "Registered Name", placeholder: "Legal registered name",         sample: "Acme Manufacturing Pvt Ltd" },
   { key: "location",        label: "Location",        placeholder: "e.g. Mumbai",                  sample: "Mumbai" },
@@ -43,8 +46,9 @@ const MFG_FIELDS: MasterField[] = [
   { key: "bank_name",       label: "Bank Name",       placeholder: "e.g. HDFC Bank",               sample: "HDFC Bank" },
   { key: "ifsc_number",     label: "IFSC Number",     placeholder: "e.g. HDFC0001234",             sample: "HDFC0001234" },
   { key: "account_number",  label: "Account Number",  placeholder: "e.g. 12345678901234",          sample: "12345678901234" },
-  { key: "status",          label: "Status",          placeholder: "e.g. active/inactive",         sample: "active" },
 ]
+
+const MFG_CSV_FIELDS: MasterField[] = MFG_COMMON_FIELDS
 
 export default function ManufacturersClient({
   rows,
@@ -63,6 +67,7 @@ export default function ManufacturersClient({
   // router.refresh() re-runs the server page with current URL — keeps page + filters.
   const refresh = () => router.refresh()
   const [editMfg, setEditMfg] = useState<Mfg | null>(null)
+  const [docsMfg, setDocsMfg] = useState<Mfg | null>(null)
   return (
     <>
       {/* ── Toolbar ── */}
@@ -80,15 +85,10 @@ export default function ManufacturersClient({
             entityLabel="Manufacturer"
             endpoint="/api/masters/manufacturers"
             templateFilename="manufacturer_template.csv"
-            fields={MFG_FIELDS}
+            fields={MFG_CSV_FIELDS}
             onSuccess={refresh}
           />
-          <AddRecordDialog
-            entityLabel="Manufacturer"
-            endpoint="/api/masters/manufacturers"
-            fields={MFG_FIELDS}
-            onSuccess={refresh}
-          />
+          <AddMfgDialog onSuccess={refresh} />
         </MasterToolbarActions>
       </MasterToolbar>
 
@@ -155,15 +155,25 @@ export default function ManufacturersClient({
                       )}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setEditMfg(row)}
-                        disabled={row.status === "in_review"}
-                        title={row.status === "in_review" ? "Pending approval — cannot edit" : "Edit"}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setEditMfg(row)}
+                          disabled={row.status === "in_review"}
+                          title={row.status === "in_review" ? "Pending approval — cannot edit" : "Edit"}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setDocsMfg(row)}
+                          title="Documents"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -178,6 +188,11 @@ export default function ManufacturersClient({
         mfg={editMfg}
         onSuccess={refresh}
         onClose={() => setEditMfg(null)}
+      />
+      <ManufacturerDocumentsDialog
+        mfg={docsMfg}
+        onSuccess={refresh}
+        onClose={() => setDocsMfg(null)}
       />
     </>
   )

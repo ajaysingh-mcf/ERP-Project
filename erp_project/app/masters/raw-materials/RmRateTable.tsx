@@ -200,14 +200,14 @@ export function RmRateTable({
             endpoint="/api/masters/raw-materials/export"
             label="Raw Materials"
           />
-          <CsvImportDialog
+          {/* <CsvImportDialog
             entityLabel="Raw Material"
             entityLabelPlural="Raw Materials"
             endpoint="/api/masters/raw-materials"
             templateFilename="raw_material_template.csv"
             fields={RM_FIELDS}
             onSuccess={refresh}
-          />
+          /> */}
           <AddRawMaterialWizard
             vendors={vendors}
             manufacturers={manufacturers}

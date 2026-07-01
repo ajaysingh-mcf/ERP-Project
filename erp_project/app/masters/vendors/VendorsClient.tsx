@@ -45,9 +45,8 @@ import { useState } from "react"
 import { Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EditVendorDialog } from "./EditVendorDialog"
-// Field definitions shared by the Add form and the CSV importer.
-const VENDOR_FIELDS: MasterField[] = [
-  { key: "code",            label: "Code",            required: true, placeholder: "e.g. VEN-001",    sample: "VEN-001" },
+// Common fields shared by the Add form and the CSV importer.
+const VENDOR_COMMON_FIELDS: MasterField[] = [
   { key: "name",            label: "Name",            required: true, placeholder: "Vendor name",      sample: "Acme Pvt Ltd" },
   {
     key: "type", label: "Type", type: "select", required: true, default: "rm", colSpan: 2, sample: "rm",
@@ -60,16 +59,12 @@ const VENDOR_FIELDS: MasterField[] = [
   { key: "registered_name", label: "Registered Name", placeholder: "Legal registered name", sample: "Acme Pvt Ltd" },
   { key: "location",        label: "Location",        placeholder: "e.g. Mumbai",           sample: "Mumbai" },
   { key: "zone",            label: "Zone",            placeholder: "e.g. West",             sample: "West" },
-  {
-    key: "status", label: "Status", type: "select", required: false, default: "active", colSpan: 2, sample: "active",
-    options: [
-      { value: "active",       label: "Active"       },
-      { value: "inactive",     label: "Inactive"     },
-      { value: "blacklisted",  label: "Blacklisted"  },
-      { value: "discontinued", label: "Discontinued" },
-    ],
-  },
 ]
+
+// `code` is auto-generated server-side on both single-record create AND bulk
+// import (VEN-<serial>-<XX>), so it's never collected from the user.
+const VENDOR_FIELDS: MasterField[] = VENDOR_COMMON_FIELDS
+const VENDOR_CSV_FIELDS: MasterField[] = VENDOR_COMMON_FIELDS
 
 export default function VendorsClient({
   rows,
@@ -139,7 +134,7 @@ export default function VendorsClient({
             entityLabel="Vendor"
             endpoint="/api/masters/vendors"
             templateFilename="vendor_template.csv"
-            fields={VENDOR_FIELDS}
+            fields={VENDOR_CSV_FIELDS}
             onSuccess={refresh}
           />
           <AddRecordDialog

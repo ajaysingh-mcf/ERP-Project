@@ -10,7 +10,7 @@ function toPmParams(r: any): any[] {
   return [
     r.pm_code?.trim() || null, r.name.trim(),
     r.type?.trim() || null, r.hsn_code?.trim() || null,
-    r.uom?.trim() || null, r.status || "active",
+    r.uom?.trim() || null, "active",
   ]
 }
 

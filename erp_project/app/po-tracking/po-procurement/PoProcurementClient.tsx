@@ -189,7 +189,6 @@ export default function PoProcurementClient({
         onClose={() => setSplitTarget(null)}
         po={splitTarget}
         warehouseOptions={warehouseOptions}
-        mfgOptions={mfgOptions}
         onSplit={afterAction}
       />
     </div>
