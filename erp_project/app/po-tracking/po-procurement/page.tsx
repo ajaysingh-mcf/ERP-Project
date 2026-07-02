@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
 import { purchaseOrdersSql, buildFilterParams, buildStatusCountParams } from "@/lib/queries/purchase-orders"
+import { getPoDropdownOptions } from "@/lib/cached-reference-data"
 import type { PoRow } from "./po-types"
 import PoProcurementClient from "./PoProcurementClient"
 
@@ -41,15 +42,14 @@ export default async function PoProcurementPage({
   const pageStart = performance.now()
   console.log(`[AUDIT] PO Procurement load - page=${page}, size=${size}, search=${search || "none"}, status=${status ?? "all"}, sortBy=${sortBy}, sortDir=${sortDir}`)
 
-  const [rows, countRows, statusCountRows, summaryRows, skus, mfgs, warehouses] = await Promise.all([
+  const [rows, countRows, statusCountRows, summaryRows, dropdownOptions] = await Promise.all([
     timedQuery<PoRow>(purchaseOrdersSql.buildSelectPaginated(sortBy, sortDir), [...filterParams, size, offset], { label: "selectPaginated" }),
     timedQuery<{ total: number }>(purchaseOrdersSql.countPaginated, filterParams, { label: "countPaginated" }),
     timedQuery<{ status: string; cnt: number }>(purchaseOrdersSql.statusCounts, statusCountParams, { label: "statusCounts" }),
     timedQuery<any>(purchaseOrdersSql.summaryStats, statusCountParams, { label: "summaryStats" }),
-    timedQuery<any>(purchaseOrdersSql.skuOptions, [], { label: "skuOptions" }),
-    timedQuery<any>(purchaseOrdersSql.mfgOptions, [], { label: "mfgOptions" }),
-    timedQuery<any>(purchaseOrdersSql.warehouseOptions, [], { label: "warehouseOptions" }),
+    getPoDropdownOptions(),
   ])
+  const { skus, mfgs, warehouses } = dropdownOptions
 
   const total = Number(countRows[0]?.total ?? 0)
   console.log(`[AUDIT] PO Procurement complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)

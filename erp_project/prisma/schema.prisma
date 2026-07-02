@@ -465,6 +465,9 @@ model master_pm {
   pantone_color  String?           @db.VarChar(50)
   pm_mrm_fixed   pm_mrm_fixed[]
   pm_vrm_dynamic pm_vrm_dynamic[]
+
+  @@index([status, name], map: "idx_master_pm_status_name")
+  @@index([status, type], map: "idx_master_pm_status_type")
 }
 
 model master_rm {
@@ -479,6 +482,10 @@ model master_rm {
   inci_name      String?           @db.VarChar(50)
   rm_mrm_fixed   rm_mrm_fixed[]
   rm_vrm_dynamic rm_vrm_dynamic[]
+
+  @@index([status, name], map: "idx_master_rm_status_name")
+  @@index([status, make], map: "idx_master_rm_status_make")
+  @@index([status, type], map: "idx_master_rm_status_type")
 }
 
 model master_skus {
@@ -543,6 +550,8 @@ model pm_mrm_fixed {
 
   @@index([mfg_id], map: "mfg_id")
   @@index([pm_id], map: "pm_id")
+  @@index([status, effective_from], map: "idx_pm_mrm_status_eff")
+  @@index([status, curr_rate], map: "idx_pm_mrm_status_rate")
 }
 
 model pm_vrm_dynamic {
@@ -562,6 +571,8 @@ model pm_vrm_dynamic {
 
   @@index([pm_id], map: "pm_id")
   @@index([vendor_id], map: "vendor_id")
+  @@index([status, effective_from], map: "idx_pm_vrm_status_eff")
+  @@index([status, curr_rate], map: "idx_pm_vrm_status_rate")
 }
 
 model rm_mrm_fixed {
@@ -585,6 +596,8 @@ model rm_mrm_fixed {
   @@index([approved_vendor_id], map: "approved_vendor_id")
   @@index([mfg_id], map: "mfg_id")
   @@index([rm_id], map: "rm_id")
+  @@index([status, effective_from], map: "idx_rm_mrm_status_eff")
+  @@index([status, curr_rate], map: "idx_rm_mrm_status_rate")
 }
 
 model rm_vrm_dynamic {
@@ -606,6 +619,8 @@ model rm_vrm_dynamic {
 
   @@index([rm_id], map: "rm_id")
   @@index([vendor_id], map: "vendor_id")
+  @@index([status, effective_from], map: "idx_rm_vrm_status_eff")
+  @@index([status, curr_rate], map: "idx_rm_vrm_status_rate")
 }
 
 enum approvals_status {

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import logger from "@/lib/logger"
-import { query } from "@/lib/db"
-import { rawMaterials } from "@/lib/queries/raw-materials"
+import { getRmDistinctMakes, getRmDistinctInciNames } from "@/lib/cached-reference-data"
 import {
   rmCreate, rmCheckDuplicate, rmCheckVendor,
   rmCreateFull, rmAddRates, rmBulk, rmS3Bulk,
@@ -27,11 +26,11 @@ export async function POST(req: NextRequest) {
   if (action === "bulk_from_s3") return rmS3Bulk(body, userId, ctx)
 
   if (action === "get-makes") {
-    const rows = await query<{ make: string }>(rawMaterials.selectDistinctMakes, [])
+    const rows = await getRmDistinctMakes()
     return NextResponse.json({ makes: rows.map((r) => r.make) })
   }
   if (action === "get-inci-names") {
-    const rows = await query<{ inci_name: string }>(rawMaterials.selectDistinctInciNames, [])
+    const rows = await getRmDistinctInciNames()
     return NextResponse.json({ inciNames: rows.map((r) => r.inci_name) })
   }
 

@@ -17,9 +17,11 @@ import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
 import { rawMaterials } from "@/lib/queries/raw-materials"
-import { vendors as vendorSql } from "@/lib/queries/vendors"
-import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
-import type { RM, RMByMfg, Vendor, Mfg } from "@/types/masters"
+import {
+  getVendorReferenceList, getManufacturerReferenceList,
+  getRmDistinctMakes, getRmDistinctTypes,
+} from "@/lib/cached-reference-data"
+import type { RM, RMByMfg } from "@/types/masters"
 import { ViewToggle } from "./ViewToggle"
 import VendorRawMaterialsClient from "./VendorRawMaterialsClient"
 import ManufacturerRawMaterialsClient from "./ManufacturerRawMaterialsClient"
@@ -61,9 +63,10 @@ export default async function RawMaterialsPage({
 
   // ── Parallel fetch: reference lists + paginated view data ─────────────────
   // vendorList and mfgList are fetched in full for the Add wizard dropdowns.
+  // Cached (see lib/cached-reference-data.ts) — these barely change request to request.
   const [vendorList, mfgList] = await Promise.all([
-    timedQuery<Vendor>(vendorSql.selectAll, [], { label: "vendors.selectAll" }),
-    timedQuery<Mfg>(mfgSql.selectAll, [], { label: "manufacturers.selectAll" }),
+    getVendorReferenceList(),
+    getManufacturerReferenceList(),
   ])
 
   let body: React.ReactNode
@@ -77,7 +80,7 @@ export default async function RawMaterialsPage({
     const [rows, countRows, typeRows] = await Promise.all([
       timedQuery<RMByMfg>(rawMaterials.selectMfgPaginated, [...mfp, size, offset], { label: "selectMfgPaginated" }),
       timedQuery<{ total: number }>(rawMaterials.countMfg, mfp, { label: "countMfg" }),
-      timedQuery<{ type: string }>(rawMaterials.selectDistinctTypes, [], { label: "selectDistinctTypes" }),
+      getRmDistinctTypes(),
     ])
     const total = Number(countRows[0]?.total ?? 0)
     const types = typeRows.map((r) => r.type)
@@ -109,8 +112,8 @@ export default async function RawMaterialsPage({
     const [rows, countRows, makeRows, typeRows] = await Promise.all([
       timedQuery<RM>(rawMaterials.selectVendorPaginated, [...vfp, size, offset], { label: "selectVendorPaginated" }),
       timedQuery<{ total: number }>(rawMaterials.countVendor, vfp, { label: "countVendor" }),
-      timedQuery<{ make: string }>(rawMaterials.selectDistinctMakes, [], { label: "selectDistinctMakes" }),
-      timedQuery<{ type: string }>(rawMaterials.selectDistinctTypes, [], { label: "selectDistinctTypes" }),
+      getRmDistinctMakes(),
+      getRmDistinctTypes(),
     ])
     const total = Number(countRows[0]?.total ?? 0)
     const makes = makeRows.map((r) => r.make)

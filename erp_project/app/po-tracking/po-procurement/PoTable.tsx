@@ -29,7 +29,7 @@ function ProgressCell({ value, total }: { value: string | number | null; total: 
   const t = num(total)
   const pct = t > 0 ? Math.min(100, Math.round((v / t) * 100)) : 0
   return (
-    <div className="min-w-[72px]">
+    <div className="min-w-18">
       <div className="text-xs font-medium tabular-nums">{fmtInt(v)}</div>
       <div className="mt-1 h-1.5 w-full rounded-full bg-muted overflow-hidden">
         <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
@@ -134,7 +134,7 @@ function ActionMenu({ actions }: { actions: MenuAction[] }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 min-w-[180px] rounded-md border border-border bg-popover shadow-md">
+        <div className="absolute right-0 top-full mt-1 z-50 min-w-45 rounded-md border border-border bg-popover shadow-md">
           {actions.map((action, i) => (
             action.disabled ? (
               <div
@@ -324,7 +324,7 @@ export default function PoTable({
                         {/* SKU */}
                         <TableCell className="whitespace-nowrap">
                           <div className="font-mono text-xs font-medium">{r.sku_code ?? "—"}</div>
-                          <div className="text-xs text-muted-foreground max-w-[140px] truncate">{r.sku_name ?? ""}</div>
+                          <div className="text-xs text-muted-foreground max-w-35 truncate">{r.sku_name ?? ""}</div>
                         </TableCell>
 
                         {/* SKU status */}

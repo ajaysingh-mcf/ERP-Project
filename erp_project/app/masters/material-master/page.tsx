@@ -16,6 +16,7 @@ import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
 import { rawMaterials } from "@/lib/queries/raw-materials"
 import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
+import { getRmDistinctMakes, getRmDistinctTypes, getPmDistinctTypes } from "@/lib/cached-reference-data"
 import { MaterialToggle } from "./MaterialToggle"
 import MaterialMasterClient from "./MaterialMasterClient"
 
@@ -68,12 +69,8 @@ export default async function MaterialMasterPage({
       isPm ? pmParams : rmParams,
       { label: "countAll" }
     ),
-    isPm
-      ? timedQuery<{ make: string }>(PMMaterials.selectDistinctMakes, [], { label: "selectDistinctMakes" })
-      : timedQuery<{ make: string }>(rawMaterials.selectDistinctMakes, [], { label: "selectDistinctMakes" }),
-    isPm
-      ? Promise.resolve([] as { type: string }[])
-      : timedQuery<{ type: string }>(rawMaterials.selectDistinctTypes, [], { label: "selectDistinctTypes" }),
+    isPm ? getPmDistinctTypes() : getRmDistinctMakes(),
+    isPm ? Promise.resolve([] as { type: string }[]) : getRmDistinctTypes(),
   ])
   const total = Number(countRows[0]?.total ?? 0)
   const makes = (makeRows as { make: string }[]).map((r) => r.make)

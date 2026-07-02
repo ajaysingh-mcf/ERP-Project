@@ -17,9 +17,10 @@ import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
 import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
-import { vendors as vendorSql } from "@/lib/queries/vendors"
-import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
-import type { PMVendor, PMByMfg, Vendor, Mfg } from "@/types/masters"
+import {
+  getVendorReferenceList, getManufacturerReferenceList, getPmDistinctTypes,
+} from "@/lib/cached-reference-data"
+import type { PMVendor, PMByMfg } from "@/types/masters"
 import { ViewToggle } from "./ViewToggle"
 import VendorPackingMaterialsClient from "./VendorPackingMaterialsClient"
 import ManufacturerPackingMaterialsClient from "./ManufacturerPackingMaterialsClient"
@@ -56,9 +57,10 @@ export default async function PackingMaterialsPage({
   console.log(`[AUDIT] Packing Materials load - view=${isMfg ? "mfg" : "vendor"}, page=${page}, size=${size}, search=${search || "none"},}`)
 
   // ── Parallel fetch: reference lists + paginated view data ─────────────────
+  // Cached (see lib/cached-reference-data.ts) — these barely change request to request.
   const [vendorList, mfgList] = await Promise.all([
-    timedQuery<Vendor>(vendorSql.selectAll, [], { label: "vendors.selectAll" }),
-    timedQuery<Mfg>(mfgSql.selectAll, [], { label: "manufacturers.selectAll" }),
+    getVendorReferenceList(),
+    getManufacturerReferenceList(),
   ])
 
   let body: React.ReactNode
@@ -74,7 +76,7 @@ export default async function PackingMaterialsPage({
     const [rows, countRows, typeRows] = await Promise.all([
       timedQuery<PMByMfg>(PMMaterials.selectMfgPaginated, [...mfp, size, offset], { label: "selectMfgPaginated" }),
       timedQuery<{ total: number }>(PMMaterials.countMfg, mfp, { label: "countMfg" }),
-      timedQuery<{ make: string }>(PMMaterials.selectDistinctMakes, [], { label: "selectDistinctMakes" }),
+      getPmDistinctTypes(),
     ])
     finalRowCount = rows.length
     finalTotal = Number(countRows[0]?.total ?? 0)
@@ -107,7 +109,7 @@ export default async function PackingMaterialsPage({
     const [rows, countRows, makeRows] = await Promise.all([
       timedQuery<PMVendor>(PMMaterials.selectVendorPaginated, [...vfp, size, offset], { label: "selectVendorPaginated" }),
       timedQuery<{ total: number }>(PMMaterials.countVendor, vfp, { label: "countVendor" }),
-      timedQuery<{ make: string }>(PMMaterials.selectDistinctMakes, [], { label: "selectDistinctMakes" }),
+      getPmDistinctTypes(),
     ])
     finalRowCount = rows.length
     finalTotal = Number(countRows[0]?.total ?? 0)
