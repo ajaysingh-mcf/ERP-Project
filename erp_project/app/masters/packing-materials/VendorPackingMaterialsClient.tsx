@@ -33,9 +33,8 @@ const VENDOR_COLUMNS: ColumnDef[] = [
   { key: "type",           label: "Type",           sortAs: "text" },
   { key: "hsn_code",       label: "HSN Code",       sortAs: "text" },
   { key: "vendor_code",    label: "Vendor Code",    sortAs: "text" },
-  { key: "vendor_id",      label: "Vendor ID",      sortAs: "num"  },
-  { key: "curr_rate",      label: "Current Rate",   sortAs: "num"  },
-  { key: "moq",            label: "MOQ",            sortAs: "num"  },
+  { key: "curr_rate",      label: "Current Rate",   sortAs: "num",  render: (r) => r.curr_rate != null ? Number(r.curr_rate).toFixed(2) : "—" },
+  { key: "moq",            label: "MOQ",            sortAs: "num",  render: (r) => r.moq != null ? String(Math.round(Number(r.moq))) : "—" },
   { key: "uom",            label: "UOM",            sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
   { key: "status",         label: "Status",         sortAs: "text", render: vrmStatusBadge },
   { key: "effective_from", label: "Effective From", sortAs: "date", render: (r) => fmtDate(r.effective_from) },
@@ -51,6 +50,12 @@ export default function VendorPackingMaterialsClient({
   pageSize,
   currentSearch,
   currentStatus,
+  currentMake,
+  makes,
+  currentVendorCode,
+  currentRateMin,
+  currentRateMax,
+  currentEffectiveFrom,
 }: {
   rows: PMVendor[]
   vendors: Vendor[]
@@ -60,6 +65,12 @@ export default function VendorPackingMaterialsClient({
   pageSize: number
   currentSearch: string
   currentStatus: string
+  currentMake: string
+  makes: string[]
+  currentVendorCode: string
+  currentRateMin: string
+  currentRateMax: string
+  currentEffectiveFrom: string
 }) {
   const [selectedRow, setSelectedRow] = useState<PMVendor | null>(null)
   const [editRow, setEditRow] = useState<PMVendor | null>(null)
@@ -76,6 +87,12 @@ export default function VendorPackingMaterialsClient({
         pageSize={pageSize}
         currentSearch={currentSearch}
         currentStatus={currentStatus}
+        currentMake={currentMake}
+        makes={makes}
+        currentVendorCode={currentVendorCode}
+        currentRateMin={currentRateMin}
+        currentRateMax={currentRateMax}
+        currentEffectiveFrom={currentEffectiveFrom}
         actionColumn={(row) => {
           const typedRow = row as unknown as PMVendor
           const isLocked = typedRow.status === "in_review"

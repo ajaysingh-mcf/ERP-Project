@@ -33,12 +33,11 @@ const VENDOR_COLUMNS: ColumnDef[] = [
   { key: "inci_name",      label: "INCI Name",      sortAs: "text" },
   { key: "make",           label: "Make",           sortAs: "text" },
   { key: "type",           label: "Type",           sortAs: "text" },
-  { key: "curr_rate",      label: "Current Rate",   sortAs: "num"  },
+  { key: "curr_rate",      label: "Current Rate",   sortAs: "num",  render: (r) => r.curr_rate != null ? Number(r.curr_rate).toFixed(2) : "—" },
   { key: "vendor_code",    label: "Vendor Code",    sortAs: "text" },
-  { key: "vendor_id",      label: "Vendor Id",      sortAs: "text" },
   { key: "hsn_code",       label: "HSN Code",       sortAs: "text" },
   { key: "vrm_status",     label: "Status",         sortAs: "text", render: vrmStatusBadge },
-  { key: "moq",            label: "MOQ",            sortAs: "num"  },
+  { key: "moq",            label: "MOQ",            sortAs: "num",  render: (r) => r.moq != null ? String(Math.round(Number(r.moq))) : "—" },
   { key: "uom",            label: "UOM",            sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
   { key: "effective_from", label: "Effective From", sortAs: "date", render: (r) => fmtDate(r.effective_from) },
   { key: "effective_to",   label: "Effective To",   sortAs: "date", render: (r) => fmtDate(r.effective_to) },
@@ -53,6 +52,12 @@ export default function VendorRawMaterialsClient({
   pageSize,
   currentSearch,
   currentStatus,
+  currentMake,
+  makes,
+  currentVendorCode,
+  currentRateMin,
+  currentRateMax,
+  currentEffectiveFrom,
 }: {
   rows: RM[]
   vendors: Vendor[]
@@ -62,6 +67,12 @@ export default function VendorRawMaterialsClient({
   pageSize: number
   currentSearch: string
   currentStatus: string
+  currentMake: string
+  makes: string[]
+  currentVendorCode: string
+  currentRateMin: string
+  currentRateMax: string
+  currentEffectiveFrom: string
 }) {
   const [selectedRow, setSelectedRow] = useState<RM | null>(null)
   const [editRow, setEditRow] = useState<RM | null>(null)
@@ -78,6 +89,12 @@ export default function VendorRawMaterialsClient({
         pageSize={pageSize}
         currentSearch={currentSearch}
         currentStatus={currentStatus}
+        currentMake={currentMake}
+        makes={makes}
+        currentVendorCode={currentVendorCode}
+        currentRateMin={currentRateMin}
+        currentRateMax={currentRateMax}
+        currentEffectiveFrom={currentEffectiveFrom}
         actionColumn={(row) => {
           const typedRow = row as unknown as RM
           const isLocked = typedRow.vrm_status === "in_review"

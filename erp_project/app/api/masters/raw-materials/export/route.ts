@@ -37,17 +37,51 @@ export async function GET(req: NextRequest) {
   const search  = sp.get("search") ?? ""
   const status  = sp.get("status") ?? ""
 
-  const like        = search ? `%${search}%` : null
-  const statusParam = status || null
+  const columns   = isMfg ? RM_MFG_EXPORT_COLUMNS      : RM_VENDOR_EXPORT_COLUMNS
+  const countSql  = isMfg ? rmSql.countMfg              : rmSql.countVendor
+  const dataSql   = isMfg ? rmSql.selectMfgAllFiltered  : rmSql.selectVendorAllFiltered
+  const viewLabel = isMfg ? "manufacturer"              : "vendor"
+  const sheetName = isMfg ? "RM - Manufacturer Rates"   : "RM - Vendor Rates"
 
-  // Params match selectVendorPaginated / selectMfgPaginated: [like×3, status×2]
-  const filterParams = [like, like, like, statusParam, statusParam]
-
-  const columns  = isMfg ? RM_MFG_EXPORT_COLUMNS : RM_VENDOR_EXPORT_COLUMNS
-  const countSql = isMfg ? rmSql.countMfg         : rmSql.countVendor
-  const dataSql  = isMfg ? rmSql.selectMfgAllFiltered : rmSql.selectVendorAllFiltered
-  const viewLabel = isMfg ? "manufacturer" : "vendor"
-  const sheetName = isMfg ? "RM - Manufacturer Rates" : "RM - Vendor Rates"
+  let filterParams: unknown[]
+  let filename: string
+  if (isMfg) {
+    const mfgCode    = sp.get("mfg_code")           ?? ""
+    const mfgRateMin = sp.get("mfg_rate_min")        ?? ""
+    const mfgRateMax = sp.get("mfg_rate_max")        ?? ""
+    const mfgEffFrom = sp.get("mfg_effective_from")  ?? ""
+    filterParams = rmSql.mfgFilterParams(
+      search || null, status || null, mfgCode || null,
+      mfgRateMin || null, mfgRateMax || null, mfgEffFrom || null
+    )
+    filename = buildExportFilename(`raw_materials_${viewLabel}`, format, {
+      search:             search      || null,
+      status:             status      || null,
+      mfg_code:           mfgCode     || null,
+      mfg_rate_min:       mfgRateMin  || null,
+      mfg_rate_max:       mfgRateMax  || null,
+      mfg_effective_from: mfgEffFrom  || null,
+    })
+  } else {
+    const make           = sp.get("make")           ?? ""
+    const vendorCode     = sp.get("vendor_code")    ?? ""
+    const rateMin        = sp.get("rate_min")        ?? ""
+    const rateMax        = sp.get("rate_max")        ?? ""
+    const effectiveFrom  = sp.get("effective_from") ?? ""
+    filterParams = rmSql.vendorFilterParams(
+      search || null, status || null, make || null,
+      vendorCode || null, rateMin || null, rateMax || null, effectiveFrom || null
+    )
+    filename = buildExportFilename(`raw_materials_${viewLabel}`, format, {
+      search:         search         || null,
+      status:         status         || null,
+      make:           make           || null,
+      vendor_code:    vendorCode     || null,
+      rate_min:       rateMin        || null,
+      rate_max:       rateMax        || null,
+      effective_from: effectiveFrom  || null,
+    })
+  }
 
   try {
     const [{ total }] = await query<{ total: number }>(countSql, filterParams)
@@ -59,8 +93,6 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await query<Record<string, unknown>>(dataSql, filterParams)
-
-    const filename = buildExportFilename(`raw_materials_${viewLabel}`, format, { search: search || null, status: status || null })
 
     if (format === "xlsx") {
       const buffer = await buildXlsx(sheetName, columns, rows)

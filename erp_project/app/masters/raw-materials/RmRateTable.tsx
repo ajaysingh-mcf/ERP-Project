@@ -15,9 +15,9 @@
  * Client-side sort applies on top of that to order within the current page.
  */
 
-import { useMemo, useState, type ReactNode } from "react"
+import { useMemo, useState, useEffect, useRef, type ReactNode } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import { ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react"
+import { ArrowUp, ArrowDown, ChevronsUpDown, SlidersHorizontal, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -99,6 +99,18 @@ export function RmRateTable({
   pageSize,
   currentSearch,
   currentStatus,
+  // Vendor-specific filter props (not rendered by mfg view):
+  currentMake,
+  makes,
+  currentVendorCode,
+  currentRateMin,
+  currentRateMax,
+  currentEffectiveFrom,
+  // Mfg-specific filter props (not rendered by vendor view):
+  currentMfgCode,
+  currentMfgRateMin,
+  currentMfgRateMax,
+  currentMfgEffectiveFrom,
 }: {
   rows: AnyRow[]
   columns: ColumnDef[]
@@ -111,6 +123,18 @@ export function RmRateTable({
   pageSize: number
   currentSearch: string
   currentStatus: string
+  // Vendor-specific filter props (omit for mfg view):
+  currentMake?: string
+  makes?: string[]
+  currentVendorCode?: string
+  currentRateMin?: string
+  currentRateMax?: string
+  currentEffectiveFrom?: string
+  // Mfg-specific filter props (omit for vendor view):
+  currentMfgCode?: string
+  currentMfgRateMin?: string
+  currentMfgRateMax?: string
+  currentMfgEffectiveFrom?: string
 }) {
   const router       = useRouter()
   const pathname     = usePathname()
@@ -119,6 +143,40 @@ export function RmRateTable({
   // Client-side sort state (sorts within the current DB page only).
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  // Filter panel open/close.
+  const [showFilters, setShowFilters] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Close panel on outside click.
+  useEffect(() => {
+    function onMouseDown(e: MouseEvent) {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setShowFilters(false)
+      }
+    }
+    if (showFilters) document.addEventListener("mousedown", onMouseDown)
+    return () => document.removeEventListener("mousedown", onMouseDown)
+  }, [showFilters])
+
+  // Local state for debounced vendor filter inputs.
+  const [localVendorCode, setLocalVendorCode] = useState(currentVendorCode ?? "")
+  const [localRateMin, setLocalRateMin]       = useState(currentRateMin ?? "")
+  const [localRateMax, setLocalRateMax]       = useState(currentRateMax ?? "")
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  // Sync local state when URL-driven prop changes (e.g. Clear filters).
+  useEffect(() => { setLocalVendorCode(currentVendorCode ?? "") }, [currentVendorCode])
+  useEffect(() => { setLocalRateMin(currentRateMin ?? "") }, [currentRateMin])
+  useEffect(() => { setLocalRateMax(currentRateMax ?? "") }, [currentRateMax])
+
+  // Local state for debounced mfg filter inputs.
+  const [localMfgCode, setLocalMfgCode]       = useState(currentMfgCode ?? "")
+  const [localMfgRateMin, setLocalMfgRateMin] = useState(currentMfgRateMin ?? "")
+  const [localMfgRateMax, setLocalMfgRateMax] = useState(currentMfgRateMax ?? "")
+  useEffect(() => { setLocalMfgCode(currentMfgCode ?? "") }, [currentMfgCode])
+  useEffect(() => { setLocalMfgRateMin(currentMfgRateMin ?? "") }, [currentMfgRateMin])
+  useEffect(() => { setLocalMfgRateMax(currentMfgRateMax ?? "") }, [currentMfgRateMax])
 
   // Click a header: same column → flip direction; new column → sort ascending.
   const toggleSort = (key: string) => {
@@ -171,8 +229,32 @@ export function RmRateTable({
   }, [rows, columns, sortKey, sortDir])
 
   const hasFilters = currentSearch || currentStatus
-  // router.refresh() re-runs the server page with current URL — keeps page + filters.
+    || currentMake || currentVendorCode || currentRateMin || currentRateMax || currentEffectiveFrom
+    || currentMfgCode || currentMfgRateMin || currentMfgRateMax || currentMfgEffectiveFrom
   const refresh    = () => router.refresh()
+
+  // Debounced navigate for text/number filter inputs.
+  function navigateDebounced(key: string, value: string) {
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => navigate({ [key]: value }), 350)
+  }
+
+  // Count of active non-search filters (drives badge on Filters button).
+  const activeFilterCount = [
+    currentStatus,
+    currentMake,
+    currentVendorCode,
+    currentRateMin,
+    currentRateMax,
+    currentEffectiveFrom,
+    currentMfgCode,
+    currentMfgRateMin,
+    currentMfgRateMax,
+    currentMfgEffectiveFrom,
+  ].filter(Boolean).length
+
+  const inputCls = "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+  const selectCls = "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 
   return (
     <>
@@ -183,17 +265,193 @@ export function RmRateTable({
           placeholder="Search by code, name, make…"
         />
 
-        <select
-          value={currentStatus || "all"}
-          onChange={(e) =>
-            navigate({ status: e.target.value === "all" ? "" : e.target.value })
-          }
-          className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="discontinued">Discontinued</option>
-        </select>
+        {/* ── Filters button + floating panel ── */}
+        <div ref={panelRef} className="relative">
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            className={`inline-flex items-center gap-2 backdrop-blur-xs h-9 px-3 rounded-lg border text-sm font-medium transition-colors
+              ${showFilters || activeFilterCount > 0
+                ? "border-primary bg-primary/5 text-primary"
+                : "border-input bg-background text-foreground hover:bg-muted"
+              }`}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-primary text-primary-foreground text-[11px] font-semibold">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+
+          {showFilters && (
+            <div className="absolute left-0 top-11 z-50 w-72 rounded-xl border border-border bg-background shadow-lg ring-1 ring-black/5">
+              {/* Panel header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <span className="text-sm font-semibold">Filters</span>
+                <div className="flex items-center gap-2">
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={() => navigate({ status: "", make: "", vendor_code: "", rate_min: "", rate_max: "", effective_from: "", mfg_code: "", mfg_rate_min: "", mfg_rate_max: "", mfg_effective_from: "" })}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                  <button onClick={() => setShowFilters(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-4">
+                {/* Status */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</label>
+                  <select
+                    value={currentStatus || "all"}
+                    onChange={(e) => navigate({ status: e.target.value === "all" ? "" : e.target.value })}
+                    className={selectCls}
+                  >
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="discontinued">Discontinued</option>
+                  </select>
+                </div>
+
+                {/* Vendor-only filters */}
+                {makes !== undefined && (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Make</label>
+                      <select
+                        value={currentMake || "all"}
+                        onChange={(e) => navigate({ make: e.target.value === "all" ? "" : e.target.value })}
+                        className={selectCls}
+                      >
+                        <option value="all">All Makes</option>
+                        {makes.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Vendor Code</label>
+                      <input
+                        type="text"
+                        value={localVendorCode}
+                        placeholder="e.g. VEN-001"
+                        onChange={(e) => {
+                          setLocalVendorCode(e.target.value)
+                          navigateDebounced("vendor_code", e.target.value)
+                        }}
+                        className={inputCls}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rate Range (₹)</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={localRateMin}
+                          placeholder="Min"
+                          min={0}
+                          onChange={(e) => {
+                            setLocalRateMin(e.target.value)
+                            navigateDebounced("rate_min", e.target.value)
+                          }}
+                          className={inputCls}
+                        />
+                        <span className="text-muted-foreground text-sm">–</span>
+                        <input
+                          type="number"
+                          value={localRateMax}
+                          placeholder="Max"
+                          min={0}
+                          onChange={(e) => {
+                            setLocalRateMax(e.target.value)
+                            navigateDebounced("rate_max", e.target.value)
+                          }}
+                          className={inputCls}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Effective From</label>
+                      <input
+                        type="date"
+                        value={currentEffectiveFrom || ""}
+                        onChange={(e) => navigate({ effective_from: e.target.value })}
+                        className={inputCls}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Mfg-only filters */}
+                {currentMfgCode !== undefined && (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">MFG Code</label>
+                      <input
+                        type="text"
+                        value={localMfgCode}
+                        placeholder="e.g. MFG-001"
+                        onChange={(e) => {
+                          setLocalMfgCode(e.target.value)
+                          navigateDebounced("mfg_code", e.target.value)
+                        }}
+                        className={inputCls}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rate Range (₹)</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={localMfgRateMin}
+                          placeholder="Min"
+                          min={0}
+                          onChange={(e) => {
+                            setLocalMfgRateMin(e.target.value)
+                            navigateDebounced("mfg_rate_min", e.target.value)
+                          }}
+                          className={inputCls}
+                        />
+                        <span className="text-muted-foreground text-sm">–</span>
+                        <input
+                          type="number"
+                          value={localMfgRateMax}
+                          placeholder="Max"
+                          min={0}
+                          onChange={(e) => {
+                            setLocalMfgRateMax(e.target.value)
+                            navigateDebounced("mfg_rate_max", e.target.value)
+                          }}
+                          className={inputCls}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Effective From</label>
+                      <input
+                        type="date"
+                        value={currentMfgEffectiveFrom || ""}
+                        onChange={(e) => navigate({ mfg_effective_from: e.target.value })}
+                        className={inputCls}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         <MasterToolbarActions>
           <DownloadButton
@@ -223,7 +481,7 @@ export function RmRateTable({
             {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => navigate({ search: "", status: "" })}
+                onClick={() => navigate({ search: "", status: "", make: "", vendor_code: "", rate_min: "", rate_max: "", effective_from: "", mfg_code: "", mfg_rate_min: "", mfg_rate_max: "", mfg_effective_from: "" })}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters

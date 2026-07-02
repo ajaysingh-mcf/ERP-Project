@@ -82,10 +82,10 @@ export const packingMaterials = {
   // ============ PAGINATED SELECT QUERIES (packing-materials rate page) ============
 
   /**
-   * Paginated PM × vendor rates with optional search + status filter.
-   * Params: [like, like, like, status, status, LIMIT, OFFSET]
-   *   like   — '%search%' or null (pm_code / name columns)
-   *   status — 'active'|'discontinued' or null
+   * Paginated PM × vendor rates with optional search + status + make + vendor_code
+   * + rate_min/max + effective_from filter.
+   * Params: vendorFilterParams(...) + [LIMIT, OFFSET]
+   *   [like×3, status×2, make×2, vcLike×2, rateMin×2, rateMax×2, effFrom×2, LIMIT, OFFSET]
    */
   selectVendorPaginated: `
     SELECT
@@ -99,6 +99,11 @@ export const packingMaterials = {
     INNER JOIN master_pm AS p ON pmv.pm_id = p.id
     WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
       AND (? IS NULL OR pmv.status = ?)
+      AND (? IS NULL OR p.type = ?)
+      AND (? IS NULL OR pmv.vendor_code LIKE ?)
+      AND (? IS NULL OR pmv.curr_rate >= ?)
+      AND (? IS NULL OR pmv.curr_rate <= ?)
+      AND (? IS NULL OR pmv.effective_from >= ?)
     ORDER BY p.pm_code ASC
     LIMIT ? OFFSET ?
   `,
@@ -106,7 +111,7 @@ export const packingMaterials = {
   /**
    * Fetch ALL matching PM × vendor rate rows for export (no LIMIT/OFFSET).
    * Same WHERE clause as selectVendorPaginated.
-   * Params: [like, like, like, status, status]
+   * Params: vendorFilterParams(...)
    */
   selectVendorAllFiltered: `
     SELECT
@@ -120,21 +125,73 @@ export const packingMaterials = {
     INNER JOIN master_pm AS p ON pmv.pm_id = p.id
     WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
       AND (? IS NULL OR pmv.status = ?)
+      AND (? IS NULL OR p.type = ?)
+      AND (? IS NULL OR pmv.vendor_code LIKE ?)
+      AND (? IS NULL OR pmv.curr_rate >= ?)
+      AND (? IS NULL OR pmv.curr_rate <= ?)
+      AND (? IS NULL OR pmv.effective_from >= ?)
     ORDER BY p.pm_code ASC
   `,
 
-  /** Matching COUNT for selectVendorPaginated. Params: [like, like, like, status, status] */
+  /**
+   * Matching COUNT for selectVendorPaginated.
+   * Params: vendorFilterParams(...)
+   */
   countVendor: `
     SELECT COUNT(*) AS total
     FROM pm_vrm_dynamic AS pmv
     INNER JOIN master_pm AS p ON pmv.pm_id = p.id
     WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
       AND (? IS NULL OR pmv.status = ?)
+      AND (? IS NULL OR p.type = ?)
+      AND (? IS NULL OR pmv.vendor_code LIKE ?)
+      AND (? IS NULL OR pmv.curr_rate >= ?)
+      AND (? IS NULL OR pmv.curr_rate <= ?)
+      AND (? IS NULL OR pmv.effective_from >= ?)
+  `,
+
+  /** Distinct PM types for the make filter dropdown. */
+  selectDistinctMakes: `
+    SELECT DISTINCT type AS make FROM master_pm
+    WHERE type IS NOT NULL AND type != ''
+    ORDER BY type ASC
   `,
 
   /**
-   * Paginated PM × manufacturer rates with optional search + status filter.
-   * Params: [like, like, like, status, status, LIMIT, OFFSET]
+   * Build the filter parameter array for vendor-rate queries.
+   * Centralises the repeated-param pattern so callers never have to count.
+   *
+   * Usage:
+   *   const fp = packingMaterials.vendorFilterParams(search, status, make, vendorCode, rateMin, rateMax, effectiveFrom)
+   *   paginate(packingMaterials.selectVendorPaginated, [...fp, limit, offset], packingMaterials.countVendor, fp, ...)
+   */
+  vendorFilterParams(
+    search: string | null,
+    status: string | null,
+    make: string | null,
+    vendorCode: string | null,
+    rateMin: string | null,
+    rateMax: string | null,
+    effectiveFrom: string | null
+  ): unknown[] {
+    const like   = search     ? `%${search}%`     : null
+    const vcLike = vendorCode ? `%${vendorCode}%` : null
+    const rateMinNum = rateMin ? Number(rateMin) : null
+    const rateMaxNum = rateMax ? Number(rateMax) : null
+    return [
+      like, like, like,
+      status, status,
+      make, make,
+      vcLike, vcLike,
+      rateMinNum, rateMinNum,
+      rateMaxNum, rateMaxNum,
+      effectiveFrom, effectiveFrom,
+    ]
+  },
+
+  /**
+   * Paginated PM × manufacturer rates with optional filters.
+   * Params: mfgFilterParams(...) + [LIMIT, OFFSET]  (13 + 2 = 15 total)
    */
   selectMfgPaginated: `
     SELECT
@@ -146,14 +203,17 @@ export const packingMaterials = {
     INNER JOIN master_pm AS p ON pmm.pm_id = p.id
     WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
       AND (? IS NULL OR pmm.status = ?)
+      AND (? IS NULL OR pmm.mfg_code LIKE ?)
+      AND (? IS NULL OR pmm.curr_rate >= ?)
+      AND (? IS NULL OR pmm.curr_rate <= ?)
+      AND (? IS NULL OR pmm.effective_from >= ?)
     ORDER BY p.pm_code ASC
     LIMIT ? OFFSET ?
   `,
 
   /**
    * Fetch ALL matching PM × manufacturer rate rows for export (no LIMIT/OFFSET).
-   * Same WHERE clause as selectMfgPaginated.
-   * Params: [like, like, like, status, status]
+   * Params: mfgFilterParams(...)  (13 params)
    */
   selectMfgAllFiltered: `
     SELECT
@@ -165,17 +225,48 @@ export const packingMaterials = {
     INNER JOIN master_pm AS p ON pmm.pm_id = p.id
     WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
       AND (? IS NULL OR pmm.status = ?)
+      AND (? IS NULL OR pmm.mfg_code LIKE ?)
+      AND (? IS NULL OR pmm.curr_rate >= ?)
+      AND (? IS NULL OR pmm.curr_rate <= ?)
+      AND (? IS NULL OR pmm.effective_from >= ?)
     ORDER BY p.pm_code ASC
   `,
 
-  /** Matching COUNT for selectMfgPaginated. Params: [like, like, like, status, status] */
+  /** Matching COUNT for selectMfgPaginated. Params: mfgFilterParams(...)  (13 params) */
   countMfg: `
     SELECT COUNT(*) AS total
     FROM pm_mrm_fixed AS pmm
     INNER JOIN master_pm AS p ON pmm.pm_id = p.id
     WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
       AND (? IS NULL OR pmm.status = ?)
+      AND (? IS NULL OR pmm.mfg_code LIKE ?)
+      AND (? IS NULL OR pmm.curr_rate >= ?)
+      AND (? IS NULL OR pmm.curr_rate <= ?)
+      AND (? IS NULL OR pmm.effective_from >= ?)
   `,
+
+  /** Build the 13-param array for all mfg-view queries. */
+  mfgFilterParams(
+    search: string | null,
+    status: string | null,
+    mfgCode: string | null,
+    rateMin: string | null,
+    rateMax: string | null,
+    effectiveFrom: string | null,
+  ): unknown[] {
+    const like       = search   ? `%${search}%`   : null
+    const mfgLike    = mfgCode  ? `%${mfgCode}%`  : null
+    const rateMinNum = rateMin  ? Number(rateMin)  : null
+    const rateMaxNum = rateMax  ? Number(rateMax)  : null
+    return [
+      like, like, like,
+      status, status,
+      mfgLike, mfgLike,
+      rateMinNum, rateMinNum,
+      rateMaxNum, rateMaxNum,
+      effectiveFrom, effectiveFrom,
+    ]
+  },
 
   // ============ INSERT QUERIES ============
 

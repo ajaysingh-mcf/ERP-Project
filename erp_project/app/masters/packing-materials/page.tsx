@@ -40,14 +40,20 @@ export default async function PackingMaterialsPage({
   const sp     = await searchParams
   const isMfg  = String(sp.view ?? "") === "manufacturer"
   const { page, size, offset } = parsePaginationParams(sp)
-  const search       = String(sp.search ?? "")
-  const statusFilter = String(sp.status ?? "")
-
-  const like   = search       ? `%${search}%` : null
-  const status = statusFilter ? statusFilter  : null
+  const search              = String(sp.search             ?? "")
+  const statusFilter        = String(sp.status             ?? "")
+  const makeFilter          = String(sp.make               ?? "")
+  const vendorCodeFilter    = String(sp.vendor_code        ?? "")
+  const rateMinFilter       = String(sp.rate_min           ?? "")
+  const rateMaxFilter       = String(sp.rate_max           ?? "")
+  const effectiveFromFilter = String(sp.effective_from     ?? "")
+  const mfgCodeFilter       = String(sp.mfg_code           ?? "")
+  const mfgRateMinFilter    = String(sp.mfg_rate_min       ?? "")
+  const mfgRateMaxFilter    = String(sp.mfg_rate_max       ?? "")
+  const mfgEffFromFilter    = String(sp.mfg_effective_from ?? "")
 
   const pageStart = performance.now()
-  console.log(`[AUDIT] Packing Materials load - view=${isMfg ? "mfg" : "vendor"}, page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
+  console.log(`[AUDIT] Packing Materials load - view=${isMfg ? "mfg" : "vendor"}, page=${page}, size=${size}, search=${search || "none"},}`)
 
   // ── Parallel fetch: reference lists + paginated view data ─────────────────
   const [vendorList, mfgList] = await Promise.all([
@@ -60,11 +66,14 @@ export default async function PackingMaterialsPage({
   let finalTotal = 0
 
   if (isMfg) {
-    // Manufacturer view — query pm_mrm × pm
-    // Param order: [like×3, status×2, LIMIT, OFFSET] (data) / [like×3, status×2] (count)
+    // Manufacturer view — query pm_mrm × pm with all active filters
+    const mfp = PMMaterials.mfgFilterParams(
+      search || null, statusFilter || null, mfgCodeFilter || null,
+      mfgRateMinFilter || null, mfgRateMaxFilter || null, mfgEffFromFilter || null
+    )
     const [rows, countRows] = await Promise.all([
-      timedQuery<PMByMfg>(PMMaterials.selectMfgPaginated, [like, like, like, status, status, size, offset], { label: "selectMfgPaginated" }),
-      timedQuery<{ total: number }>(PMMaterials.countMfg, [like, like, like, status, status], { label: "countMfg" }),
+      timedQuery<PMByMfg>(PMMaterials.selectMfgPaginated, [...mfp, size, offset], { label: "selectMfgPaginated" }),
+      timedQuery<{ total: number }>(PMMaterials.countMfg, mfp, { label: "countMfg" }),
     ])
     finalRowCount = rows.length
     finalTotal = Number(countRows[0]?.total ?? 0)
@@ -78,16 +87,27 @@ export default async function PackingMaterialsPage({
         pageSize={size}
         currentSearch={search}
         currentStatus={statusFilter}
+        currentMfgCode={mfgCodeFilter}
+        currentMfgRateMin={mfgRateMinFilter}
+        currentMfgRateMax={mfgRateMaxFilter}
+        currentMfgEffectiveFrom={mfgEffFromFilter}
       />
     )
   } else {
-    // Vendor view (default) — query pm_vrm × pm
-    const [rows, countRows] = await Promise.all([
-      timedQuery<PMVendor>(PMMaterials.selectVendorPaginated, [like, like, like, status, status, size, offset], { label: "selectVendorPaginated" }),
-      timedQuery<{ total: number }>(PMMaterials.countVendor, [like, like, like, status, status], { label: "countVendor" }),
+    // Vendor view (default) — query pm_vrm × pm with all active filters
+    const vfp = PMMaterials.vendorFilterParams(
+      search || null, statusFilter || null, makeFilter || null,
+      vendorCodeFilter || null, rateMinFilter || null, rateMaxFilter || null,
+      effectiveFromFilter || null
+    )
+    const [rows, countRows, makeRows] = await Promise.all([
+      timedQuery<PMVendor>(PMMaterials.selectVendorPaginated, [...vfp, size, offset], { label: "selectVendorPaginated" }),
+      timedQuery<{ total: number }>(PMMaterials.countVendor, vfp, { label: "countVendor" }),
+      timedQuery<{ make: string }>(PMMaterials.selectDistinctMakes, [], { label: "selectDistinctMakes" }),
     ])
     finalRowCount = rows.length
     finalTotal = Number(countRows[0]?.total ?? 0)
+    const makes = makeRows.map((r) => r.make)
     body = (
       <VendorPackingMaterialsClient
         rows={rows}
@@ -98,6 +118,12 @@ export default async function PackingMaterialsPage({
         pageSize={size}
         currentSearch={search}
         currentStatus={statusFilter}
+        currentMake={makeFilter}
+        makes={makes}
+        currentVendorCode={vendorCodeFilter}
+        currentRateMin={rateMinFilter}
+        currentRateMax={rateMaxFilter}
+        currentEffectiveFrom={effectiveFromFilter}
       />
     )
   }

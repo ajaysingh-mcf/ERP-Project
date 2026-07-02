@@ -89,10 +89,10 @@ export const rawMaterials = {
   // ============ PAGINATED SELECT QUERIES (raw-materials rate page) ============
 
   /**
-   * Paginated RM × vendor rates with optional search + status filter.
-   * Params: [like, like, like, status, status, LIMIT, OFFSET]
-   *   like   — '%search%' or null (rm_code / name columns)
-   *   status — 'active'|'discontinued' or null
+   * Paginated RM × vendor rates with optional search + status + make + vendor_code
+   * + rate_min/max + effective_from filter.
+   * Params: vendorFilterParams(...) + [LIMIT, OFFSET]
+   *   [like×3, status×2, make×2, vcLike×2, rateMin×2, rateMax×2, effFrom×2, LIMIT, OFFSET]
    */
   selectVendorPaginated: `
     SELECT
@@ -104,6 +104,11 @@ export const rawMaterials = {
     INNER JOIN master_rm AS r ON r.id = rmv.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
+      AND (? IS NULL OR r.make = ?)
+      AND (? IS NULL OR rmv.vendor_code LIKE ?)
+      AND (? IS NULL OR rmv.curr_rate >= ?)
+      AND (? IS NULL OR rmv.curr_rate <= ?)
+      AND (? IS NULL OR rmv.effective_from >= ?)
     ORDER BY r.rm_code ASC
     LIMIT ? OFFSET ?
   `,
@@ -111,7 +116,7 @@ export const rawMaterials = {
   /**
    * Fetch ALL matching RM × vendor rate rows for export (no LIMIT/OFFSET).
    * Same WHERE clause as selectVendorPaginated.
-   * Params: [like, like, like, status, status]
+   * Params: vendorFilterParams(...)
    */
   selectVendorAllFiltered: `
     SELECT
@@ -123,21 +128,69 @@ export const rawMaterials = {
     INNER JOIN master_rm AS r ON r.id = rmv.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
+      AND (? IS NULL OR r.make = ?)
+      AND (? IS NULL OR rmv.vendor_code LIKE ?)
+      AND (? IS NULL OR rmv.curr_rate >= ?)
+      AND (? IS NULL OR rmv.curr_rate <= ?)
+      AND (? IS NULL OR rmv.effective_from >= ?)
     ORDER BY r.rm_code ASC
   `,
 
-  /** Matching COUNT for selectVendorPaginated. Params: [like, like, like, status, status] */
+  /**
+   * Matching COUNT for selectVendorPaginated.
+   * Params: vendorFilterParams(...)
+   */
   countVendor: `
     SELECT COUNT(*) AS total
     FROM rm_vrm_dynamic AS rmv
     INNER JOIN master_rm AS r ON r.id = rmv.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
+      AND (? IS NULL OR r.make = ?)
+      AND (? IS NULL OR rmv.vendor_code LIKE ?)
+      AND (? IS NULL OR rmv.curr_rate >= ?)
+      AND (? IS NULL OR rmv.curr_rate <= ?)
+      AND (? IS NULL OR rmv.effective_from >= ?)
+  `,
+
+  /** Distinct RM makes for the make filter dropdown. */
+  selectDistinctMakes: `
+    SELECT DISTINCT make FROM master_rm
+    WHERE make IS NOT NULL AND make != ''
+    ORDER BY make ASC
   `,
 
   /**
-   * Paginated RM × manufacturer rates with optional search + status filter.
-   * Params: [like, like, like, status, status, LIMIT, OFFSET]
+   * Build the filter parameter array for vendor-rate queries.
+   * Centralises the repeated-param pattern so callers never have to count.
+   */
+  vendorFilterParams(
+    search: string | null,
+    status: string | null,
+    make: string | null,
+    vendorCode: string | null,
+    rateMin: string | null,
+    rateMax: string | null,
+    effectiveFrom: string | null
+  ): unknown[] {
+    const like   = search     ? `%${search}%`     : null
+    const vcLike = vendorCode ? `%${vendorCode}%` : null
+    const rateMinNum = rateMin ? Number(rateMin) : null
+    const rateMaxNum = rateMax ? Number(rateMax) : null
+    return [
+      like, like, like,
+      status, status,
+      make, make,
+      vcLike, vcLike,
+      rateMinNum, rateMinNum,
+      rateMaxNum, rateMaxNum,
+      effectiveFrom, effectiveFrom,
+    ]
+  },
+
+  /**
+   * Paginated RM × manufacturer rates with optional filters.
+   * Params: mfgFilterParams(...) + [LIMIT, OFFSET]  (13 + 2 = 15 total)
    */
   selectMfgPaginated: `
     SELECT
@@ -150,14 +203,17 @@ export const rawMaterials = {
     INNER JOIN master_rm AS r ON r.id = rmm.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
+      AND (? IS NULL OR rmm.mfg_code LIKE ?)
+      AND (? IS NULL OR rmm.curr_rate >= ?)
+      AND (? IS NULL OR rmm.curr_rate <= ?)
+      AND (? IS NULL OR rmm.effective_from >= ?)
     ORDER BY r.rm_code ASC
     LIMIT ? OFFSET ?
   `,
 
   /**
    * Fetch ALL matching RM × manufacturer rate rows for export (no LIMIT/OFFSET).
-   * Same WHERE clause as selectMfgPaginated.
-   * Params: [like, like, like, status, status]
+   * Params: mfgFilterParams(...)  (13 params)
    */
   selectMfgAllFiltered: `
     SELECT
@@ -170,17 +226,48 @@ export const rawMaterials = {
     INNER JOIN master_rm AS r ON r.id = rmm.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
+      AND (? IS NULL OR rmm.mfg_code LIKE ?)
+      AND (? IS NULL OR rmm.curr_rate >= ?)
+      AND (? IS NULL OR rmm.curr_rate <= ?)
+      AND (? IS NULL OR rmm.effective_from >= ?)
     ORDER BY r.rm_code ASC
   `,
 
-  /** Matching COUNT for selectMfgPaginated. Params: [like, like, like, status, status] */
+  /** Matching COUNT for selectMfgPaginated. Params: mfgFilterParams(...)  (13 params) */
   countMfg: `
     SELECT COUNT(*) AS total
     FROM rm_mrm_fixed AS rmm
     INNER JOIN master_rm AS r ON r.id = rmm.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
+      AND (? IS NULL OR rmm.mfg_code LIKE ?)
+      AND (? IS NULL OR rmm.curr_rate >= ?)
+      AND (? IS NULL OR rmm.curr_rate <= ?)
+      AND (? IS NULL OR rmm.effective_from >= ?)
   `,
+
+  /** Build the 13-param array for all mfg-view queries. */
+  mfgFilterParams(
+    search: string | null,
+    status: string | null,
+    mfgCode: string | null,
+    rateMin: string | null,
+    rateMax: string | null,
+    effectiveFrom: string | null,
+  ): unknown[] {
+    const like       = search   ? `%${search}%`   : null
+    const mfgLike    = mfgCode  ? `%${mfgCode}%`  : null
+    const rateMinNum = rateMin  ? Number(rateMin)  : null
+    const rateMaxNum = rateMax  ? Number(rateMax)  : null
+    return [
+      like, like, like,
+      status, status,
+      mfgLike, mfgLike,
+      rateMinNum, rateMinNum,
+      rateMaxNum, rateMaxNum,
+      effectiveFrom, effectiveFrom,
+    ]
+  },
 
   // ============ INSERT QUERIES ============
 

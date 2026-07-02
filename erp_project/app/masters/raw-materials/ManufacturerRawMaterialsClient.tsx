@@ -52,6 +52,10 @@ export default function ManufacturerRawMaterialsClient({
   pageSize,
   currentSearch,
   currentStatus,
+  currentMfgCode,
+  currentMfgRateMin,
+  currentMfgRateMax,
+  currentMfgEffectiveFrom,
 }: {
   rows: RMByMfg[]
   vendors: Vendor[]
@@ -61,6 +65,10 @@ export default function ManufacturerRawMaterialsClient({
   pageSize: number
   currentSearch: string
   currentStatus: string
+  currentMfgCode: string
+  currentMfgRateMin: string
+  currentMfgRateMax: string
+  currentMfgEffectiveFrom: string
 }) {
   const [selectedRow, setSelectedRow] = useState<RMByMfg | null>(null)
   const [editRow, setEditRow] = useState<RMByMfg | null>(null)
@@ -77,6 +85,10 @@ export default function ManufacturerRawMaterialsClient({
         pageSize={pageSize}
         currentSearch={currentSearch}
         currentStatus={currentStatus}
+        currentMfgCode={currentMfgCode}
+        currentMfgRateMin={currentMfgRateMin}
+        currentMfgRateMax={currentMfgRateMax}
+        currentMfgEffectiveFrom={currentMfgEffectiveFrom}
         actionColumn={(row) => {
           const typedRow = row as unknown as RMByMfg
           const isLocked = typedRow.rate_status === "in_review"

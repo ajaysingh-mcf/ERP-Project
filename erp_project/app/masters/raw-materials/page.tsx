@@ -40,8 +40,17 @@ export default async function RawMaterialsPage({
   const sp     = await searchParams
   const isMfg  = String(sp.view ?? "") === "manufacturer"
   const { page, size, offset } = parsePaginationParams(sp)
-  const search       = String(sp.search ?? "")
-  const statusFilter = String(sp.status ?? "")
+  const search              = String(sp.search             ?? "")
+  const statusFilter        = String(sp.status             ?? "")
+  const makeFilter          = String(sp.make               ?? "")
+  const vendorCodeFilter    = String(sp.vendor_code        ?? "")
+  const rateMinFilter       = String(sp.rate_min           ?? "")
+  const rateMaxFilter       = String(sp.rate_max           ?? "")
+  const effectiveFromFilter = String(sp.effective_from     ?? "")
+  const mfgCodeFilter       = String(sp.mfg_code           ?? "")
+  const mfgRateMinFilter    = String(sp.mfg_rate_min       ?? "")
+  const mfgRateMaxFilter    = String(sp.mfg_rate_max       ?? "")
+  const mfgEffFromFilter    = String(sp.mfg_effective_from ?? "")
 
   const like   = search       ? `%${search}%` : null
   const status = statusFilter ? statusFilter  : null
@@ -59,11 +68,14 @@ export default async function RawMaterialsPage({
   let body: React.ReactNode
 
   if (isMfg) {
-    // Manufacturer view — query rm_mrm × rm
-    // Param order: [like×3, status×2, LIMIT, OFFSET] (data) / [like×3, status×2] (count)
+    // Manufacturer view — query rm_mrm × rm with all active filters
+    const mfp = rawMaterials.mfgFilterParams(
+      search || null, statusFilter || null, mfgCodeFilter || null,
+      mfgRateMinFilter || null, mfgRateMaxFilter || null, mfgEffFromFilter || null
+    )
     const [rows, countRows] = await Promise.all([
-      timedQuery<RMByMfg>(rawMaterials.selectMfgPaginated, [like, like, like, status, status, size, offset], { label: "selectMfgPaginated" }),
-      timedQuery<{ total: number }>(rawMaterials.countMfg, [like, like, like, status, status], { label: "countMfg" }),
+      timedQuery<RMByMfg>(rawMaterials.selectMfgPaginated, [...mfp, size, offset], { label: "selectMfgPaginated" }),
+      timedQuery<{ total: number }>(rawMaterials.countMfg, mfp, { label: "countMfg" }),
     ])
     const total = Number(countRows[0]?.total ?? 0)
     body = (
@@ -76,15 +88,26 @@ export default async function RawMaterialsPage({
         pageSize={size}
         currentSearch={search}
         currentStatus={statusFilter}
+        currentMfgCode={mfgCodeFilter}
+        currentMfgRateMin={mfgRateMinFilter}
+        currentMfgRateMax={mfgRateMaxFilter}
+        currentMfgEffectiveFrom={mfgEffFromFilter}
       />
     )
   } else {
-    // Vendor view (default) — query rm_vrm × rm
-    const [rows, countRows] = await Promise.all([
-      timedQuery<RM>(rawMaterials.selectVendorPaginated, [like, like, like, status, status, size, offset], { label: "selectVendorPaginated" }),
-      timedQuery<{ total: number }>(rawMaterials.countVendor, [like, like, like, status, status], { label: "countVendor" }),
+    // Vendor view (default) — query rm_vrm × rm with all active filters
+    const vfp = rawMaterials.vendorFilterParams(
+      search || null, statusFilter || null, makeFilter || null,
+      vendorCodeFilter || null, rateMinFilter || null, rateMaxFilter || null,
+      effectiveFromFilter || null
+    )
+    const [rows, countRows, makeRows] = await Promise.all([
+      timedQuery<RM>(rawMaterials.selectVendorPaginated, [...vfp, size, offset], { label: "selectVendorPaginated" }),
+      timedQuery<{ total: number }>(rawMaterials.countVendor, vfp, { label: "countVendor" }),
+      timedQuery<{ make: string }>(rawMaterials.selectDistinctMakes, [], { label: "selectDistinctMakes" }),
     ])
     const total = Number(countRows[0]?.total ?? 0)
+    const makes = makeRows.map((r) => r.make)
     body = (
       <VendorRawMaterialsClient
         rows={rows}
@@ -95,6 +118,12 @@ export default async function RawMaterialsPage({
         pageSize={size}
         currentSearch={search}
         currentStatus={statusFilter}
+        currentMake={makeFilter}
+        makes={makes}
+        currentVendorCode={vendorCodeFilter}
+        currentRateMin={rateMinFilter}
+        currentRateMax={rateMaxFilter}
+        currentEffectiveFrom={effectiveFromFilter}
       />
     )
   }

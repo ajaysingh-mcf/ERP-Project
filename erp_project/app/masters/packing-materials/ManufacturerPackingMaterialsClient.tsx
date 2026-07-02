@@ -50,6 +50,10 @@ export default function ManufacturerPackingMaterialsClient({
   pageSize,
   currentSearch,
   currentStatus,
+  currentMfgCode,
+  currentMfgRateMin,
+  currentMfgRateMax,
+  currentMfgEffectiveFrom,
 }: {
   rows: PMByMfg[]
   vendors: Vendor[]
@@ -59,6 +63,10 @@ export default function ManufacturerPackingMaterialsClient({
   pageSize: number
   currentSearch: string
   currentStatus: string
+  currentMfgCode: string
+  currentMfgRateMin: string
+  currentMfgRateMax: string
+  currentMfgEffectiveFrom: string
 }) {
   const [selectedRow, setSelectedRow] = useState<PMByMfg | null>(null)
   const [editRow, setEditRow] = useState<PMByMfg | null>(null)
@@ -75,6 +83,10 @@ export default function ManufacturerPackingMaterialsClient({
         pageSize={pageSize}
         currentSearch={currentSearch}
         currentStatus={currentStatus}
+        currentMfgCode={currentMfgCode}
+        currentMfgRateMin={currentMfgRateMin}
+        currentMfgRateMax={currentMfgRateMax}
+        currentMfgEffectiveFrom={currentMfgEffectiveFrom}
         actionColumn={(row) => {
           const typedRow = row as unknown as PMByMfg
           const isLocked = typedRow.status === "in_review"

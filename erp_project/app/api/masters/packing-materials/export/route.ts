@@ -37,17 +37,33 @@ export async function GET(req: NextRequest) {
   const search = sp.get("search") ?? ""
   const status = sp.get("status") ?? ""
 
-  const like        = search ? `%${search}%` : null
-  const statusParam = status || null
-
-  // Params match selectVendorPaginated / selectMfgPaginated: [like×3, status×2]
-  const filterParams = [like, like, like, statusParam, statusParam]
-
   const columns   = isMfg ? PM_MFG_EXPORT_COLUMNS : PM_VENDOR_EXPORT_COLUMNS
   const countSql  = isMfg ? pmSql.countMfg         : pmSql.countVendor
   const dataSql   = isMfg ? pmSql.selectMfgAllFiltered : pmSql.selectVendorAllFiltered
   const viewLabel = isMfg ? "manufacturer" : "vendor"
   const sheetName = isMfg ? "PM - Manufacturer Rates" : "PM - Vendor Rates"
+
+  let filterParams: unknown[]
+  if (isMfg) {
+    const mfgCode     = sp.get("mfg_code")           ?? ""
+    const mfgRateMin  = sp.get("mfg_rate_min")        ?? ""
+    const mfgRateMax  = sp.get("mfg_rate_max")        ?? ""
+    const mfgEffFrom  = sp.get("mfg_effective_from")  ?? ""
+    filterParams = pmSql.mfgFilterParams(
+      search || null, status || null, mfgCode || null,
+      mfgRateMin || null, mfgRateMax || null, mfgEffFrom || null
+    )
+  } else {
+    const make        = sp.get("make")          ?? ""
+    const vendorCode  = sp.get("vendor_code")   ?? ""
+    const rateMin     = sp.get("rate_min")       ?? ""
+    const rateMax     = sp.get("rate_max")       ?? ""
+    const effectiveFrom = sp.get("effective_from") ?? ""
+    filterParams = pmSql.vendorFilterParams(
+      search || null, status || null, make || null,
+      vendorCode || null, rateMin || null, rateMax || null, effectiveFrom || null
+    )
+  }
 
   try {
     const [{ total }] = await query<{ total: number }>(countSql, filterParams)
@@ -60,7 +76,24 @@ export async function GET(req: NextRequest) {
 
     const rows = await query<Record<string, unknown>>(dataSql, filterParams)
 
-    const filename = buildExportFilename(`packing_materials_${viewLabel}`, format, { search: search || null, status: status || null })
+    const filename = isMfg
+      ? buildExportFilename(`packing_materials_${viewLabel}`, format, {
+          search:             search                             || null,
+          status:             status                             || null,
+          mfg_code:           sp.get("mfg_code")                || null,
+          mfg_rate_min:       sp.get("mfg_rate_min")            || null,
+          mfg_rate_max:       sp.get("mfg_rate_max")            || null,
+          mfg_effective_from: sp.get("mfg_effective_from")      || null,
+        })
+      : buildExportFilename(`packing_materials_${viewLabel}`, format, {
+          search:         search                              || null,
+          status:         status                              || null,
+          make:           sp.get("make")                     || null,
+          vendor_code:    sp.get("vendor_code")              || null,
+          rate_min:       sp.get("rate_min")                 || null,
+          rate_max:       sp.get("rate_max")                 || null,
+          effective_from: sp.get("effective_from")           || null,
+        })
 
     if (format === "xlsx") {
       const buffer = await buildXlsx(sheetName, columns, rows)

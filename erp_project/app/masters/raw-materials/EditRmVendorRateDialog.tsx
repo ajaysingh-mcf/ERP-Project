@@ -69,6 +69,7 @@ export function EditRmVendorRateDialog({
 
   if (!row) return null
 
+  const today    = new Date().toISOString().slice(0, 10)
   const isDraft  = row.vrm_status === "draft"
   const canEdit  = !isDraft || currentUserId === null || rejection === null || currentUserId === rejection.raised_by
 
@@ -84,6 +85,10 @@ export function EditRmVendorRateDialog({
 
   async function handleSave() {
     if (!canEdit) return
+    if (form.effective_from && form.effective_from < today) {
+      setError("Effective From cannot be a past date. Please select today or a future date.")
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -160,7 +165,10 @@ export function EditRmVendorRateDialog({
             </div>
             <div className="grid gap-1">
               <Label>Effective From</Label>
-              <Input type="date" value={form.effective_from} onChange={(e) => set("effective_from", e.target.value)} disabled={!canEdit} />
+              <Input type="date" min={today} value={form.effective_from} onChange={(e) => set("effective_from", e.target.value)} disabled={!canEdit} />
+              {form.effective_from && form.effective_from < today && (
+                <p className="text-xs text-destructive">Date cannot be in the past.</p>
+              )}
             </div>
             <div className="grid gap-1">
               <Label>Effective To</Label>

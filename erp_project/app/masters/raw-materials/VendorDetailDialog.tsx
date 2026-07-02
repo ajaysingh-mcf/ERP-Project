@@ -126,7 +126,7 @@ export function VendorDetailDialog({
                           <TableCell>
                             <div className="flex items-center gap-1.5">
                               <span className={cn("text-sm font-medium", isBest && "text-emerald-600")}>
-                                {vr.curr_rate != null ? `₹${vr.curr_rate}` : "—"}
+                                {vr.curr_rate != null ? `₹${Number(vr.curr_rate).toFixed(2)}` : "—"}
                               </span>
                               {isBest && (
                                 <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] px-1.5 py-0">
@@ -140,7 +140,7 @@ export function VendorDetailDialog({
                           <TableCell>
                             <div className="flex items-center gap-1.5">
                               <span className="text-sm">
-                                {vr.moq != null ? `${vr.moq} ${vr.uom ?? ""}`.trim() : "—"}
+                                {vr.moq != null ? `${Math.round(Number(vr.moq))} ${vr.uom ?? ""}`.trim() : "—"}
                               </span>
                               {isLowest && (
                                 <Badge variant="outline" className="text-[10px] px-1.5 py-0">
@@ -181,7 +181,7 @@ export function VendorDetailDialog({
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
                     <p className="text-xs text-emerald-700 font-medium mb-1">Best Rate</p>
                     <p className="text-2xl font-bold text-emerald-600">
-                      ₹{bestRateRow.curr_rate}
+                      ₹{Number(bestRateRow.curr_rate).toFixed(2)}
                     </p>
                     <p className="text-xs text-emerald-700 mt-0.5">{fmt(bestRateRow.vendor_code)}</p>
                   </div>
@@ -190,7 +190,7 @@ export function VendorDetailDialog({
                   <div className="rounded-lg border border-border bg-muted/30 p-4">
                     <p className="text-xs text-muted-foreground font-medium mb-1">Lowest MOQ</p>
                     <p className="text-2xl font-bold">
-                      {lowestMoqRow.moq} <span className="text-base font-normal text-muted-foreground">{lowestMoqRow.uom ?? ""}</span>
+                      {Math.round(Number(lowestMoqRow.moq))} <span className="text-base font-normal text-muted-foreground">{lowestMoqRow.uom ?? ""}</span>
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">{fmt(lowestMoqRow.vendor_code)}</p>
                   </div>
