@@ -49,8 +49,9 @@ export async function GET(req: NextRequest) {
     const mfgRateMin  = sp.get("mfg_rate_min")        ?? ""
     const mfgRateMax  = sp.get("mfg_rate_max")        ?? ""
     const mfgEffFrom  = sp.get("mfg_effective_from")  ?? ""
+    const makeFilter = sp.get("make") ?? ""
     filterParams = pmSql.mfgFilterParams(
-      search || null, status || null, mfgCode || null,
+      search || null, status || null, makeFilter || null, mfgCode || null,
       mfgRateMin || null, mfgRateMax || null, mfgEffFrom || null
     )
   } else {

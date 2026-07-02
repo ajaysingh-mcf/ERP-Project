@@ -39,21 +39,46 @@ export default async function MaterialMasterPage({
   const { page, size, offset } = parsePaginationParams(sp)
   const search       = String(sp.search ?? "")
   const statusFilter = String(sp.status ?? "")
+  const makeFilter   = String(sp.make   ?? "")
+  const typeFilter   = String(sp.type   ?? "")
 
   const like   = search       ? `%${search}%` : null
   const status = statusFilter ? statusFilter  : null
+  const make   = makeFilter   ? makeFilter    : null
+  const type   = typeFilter   ? typeFilter    : null
 
   // ── DB-level paginated fetch ───────────────────────────────────────────────
-  // Params: [like×4 (null-check + code + name + make/type), status×2, LIMIT, OFFSET]
   const pageStart = performance.now()
   const material = isPm ? "pm" : "rm"
   console.log(`[AUDIT] Material Master load - material=${material}, page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
 
-  const [rows, countRows] = await Promise.all([
-    timedQuery<AnyRow>(isPm ? PMMaterials.selectPaginated : rawMaterials.selectPaginated, [like, like, like, like, status, status, size, offset], { label: "selectPaginated" }),
-    timedQuery<{ total: number }>(isPm ? PMMaterials.countAll : rawMaterials.countAll, [like, like, like, like, status, status], { label: "countAll" }),
+  // PM: [like×4, status×2, type×2, LIMIT, OFFSET]
+  // RM: [like×4, status×2, make×2, type×2, LIMIT, OFFSET]
+  const rmParams    = [like, like, like, like, status, status, make, make, type, type]
+  const pmParams    = [like, like, like, like, status, status, type, type]
+
+  const [rows, countRows, makeRows, typeRows] = await Promise.all([
+    timedQuery<AnyRow>(
+      isPm ? PMMaterials.selectPaginated : rawMaterials.selectPaginated,
+      isPm ? [...pmParams, size, offset] : [...rmParams, size, offset],
+      { label: "selectPaginated" }
+    ),
+    timedQuery<{ total: number }>(
+      isPm ? PMMaterials.countAll : rawMaterials.countAll,
+      isPm ? pmParams : rmParams,
+      { label: "countAll" }
+    ),
+    isPm
+      ? timedQuery<{ make: string }>(PMMaterials.selectDistinctMakes, [], { label: "selectDistinctMakes" })
+      : timedQuery<{ make: string }>(rawMaterials.selectDistinctMakes, [], { label: "selectDistinctMakes" }),
+    isPm
+      ? Promise.resolve([] as { type: string }[])
+      : timedQuery<{ type: string }>(rawMaterials.selectDistinctTypes, [], { label: "selectDistinctTypes" }),
   ])
   const total = Number(countRows[0]?.total ?? 0)
+  const makes = (makeRows as { make: string }[]).map((r) => r.make)
+  const types = isPm ? makes : (typeRows as { type: string }[]).map((r) => r.type)
+  const makesForFilter = isPm ? [] : makes
   console.log(`[AUDIT] Material Master complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
   return (
@@ -73,6 +98,10 @@ export default async function MaterialMasterPage({
         pageSize={size}
         currentSearch={search}
         currentStatus={statusFilter}
+        currentMake={makeFilter}
+        makes={makesForFilter}
+        currentType={typeFilter}
+        types={types}
       />
     </div>
   )

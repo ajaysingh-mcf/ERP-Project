@@ -107,10 +107,10 @@ const pmRateHandler: ModuleHandler = {
     if (!cur) throw new Error(`PM rate ${entityId} not found`)
 
     const [vRows] = await conn.execute(pmSql.getVendorId, [cur.pm_id])
-    const historyVendorId = (vRows as any[])[0]?.vendor_id ?? 0
+    const vendorId = (vRows as any[])[0]?.vendor_id ?? 0
 
     await conn.execute(pmSql.archiveToHistoryMrm, [
-      cur.mfg_id, cur.pm_id, historyVendorId,
+      cur.mfg_id, cur.pm_id, vendorId,
       cur.curr_rate, cur.effective_from, null,
       cur.status === STATUS.ACTIVE ? 1 : 0,
     ])
@@ -216,11 +216,12 @@ const pmMatHandler: ModuleHandler = {
     if (!cur) throw new Error(`PM base record ${entityId} not found`)
 
     await conn.execute(pmSql.update, [
-      fieldMap.name     ?? cur.name,
-      fieldMap.type     ?? cur.type,
-      fieldMap.uom      ?? cur.uom,
-      fieldMap.status   ?? STATUS.ACTIVE,
-      fieldMap.hsn_code ?? cur.hsn_code,
+      fieldMap.name          ?? cur.name,
+      fieldMap.type          ?? cur.type,
+      fieldMap.uom           ?? cur.uom,
+      fieldMap.status        ?? STATUS.ACTIVE,
+      fieldMap.hsn_code      ?? cur.hsn_code,
+      fieldMap.pantone_color ?? cur.pantone_color,
       entityId,
     ])
   },

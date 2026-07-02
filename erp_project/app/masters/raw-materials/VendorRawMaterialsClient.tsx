@@ -58,6 +58,8 @@ export default function VendorRawMaterialsClient({
   currentRateMin,
   currentRateMax,
   currentEffectiveFrom,
+  currentType,
+  types,
 }: {
   rows: RM[]
   vendors: Vendor[]
@@ -69,6 +71,8 @@ export default function VendorRawMaterialsClient({
   currentStatus: string
   currentMake: string
   makes: string[]
+  currentType: string
+  types: string[]
   currentVendorCode: string
   currentRateMin: string
   currentRateMax: string
@@ -91,6 +95,8 @@ export default function VendorRawMaterialsClient({
         currentStatus={currentStatus}
         currentMake={currentMake}
         makes={makes}
+        currentType={currentType}
+        types={types}
         currentVendorCode={currentVendorCode}
         currentRateMin={currentRateMin}
         currentRateMax={currentRateMax}

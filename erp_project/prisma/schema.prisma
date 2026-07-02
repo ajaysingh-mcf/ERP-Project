@@ -462,6 +462,7 @@ model master_pm {
   uom            String?           @db.VarChar(20)
   status         master_pm_status?
   pm_code        String?           @db.VarChar(50)
+  pantone_color  String?           @db.VarChar(50)
   pm_mrm_fixed   pm_mrm_fixed[]
   pm_vrm_dynamic pm_vrm_dynamic[]
 }

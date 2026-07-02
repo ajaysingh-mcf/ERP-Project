@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import logger from "@/lib/logger"
+import { query } from "@/lib/db"
+import { rawMaterials } from "@/lib/queries/raw-materials"
 import {
   rmCreate, rmCheckDuplicate, rmCheckVendor,
   rmCreateFull, rmAddRates, rmBulk, rmS3Bulk,
@@ -23,6 +25,15 @@ export async function POST(req: NextRequest) {
   if (action === "add-rates")    return rmAddRates(body, userId, ctx)
   if (action === "bulk")         return rmBulk(body, userId, ctx)
   if (action === "bulk_from_s3") return rmS3Bulk(body, userId, ctx)
+
+  if (action === "get-makes") {
+    const rows = await query<{ make: string }>(rawMaterials.selectDistinctMakes, [])
+    return NextResponse.json({ makes: rows.map((r) => r.make) })
+  }
+  if (action === "get-inci-names") {
+    const rows = await query<{ inci_name: string }>(rawMaterials.selectDistinctInciNames, [])
+    return NextResponse.json({ inciNames: rows.map((r) => r.inci_name) })
+  }
 
   return NextResponse.json({ error: "Invalid action" }, { status: 400 })
 }

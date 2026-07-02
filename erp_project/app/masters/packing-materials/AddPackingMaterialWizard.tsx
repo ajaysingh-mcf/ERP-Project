@@ -20,6 +20,7 @@ type PmFormData = {
   type: string
   hsn_code: string
   uom: string
+  pantone_color: string
   status: string
 }
 
@@ -31,12 +32,26 @@ type VendorEntry = {
   rate_uom: string
 }
 
+type MfgEntry = {
+  mfg_id: number | null
+  mfg_code: string
+  curr_rate: string
+  rate_uom: string
+  effective_from: string
+}
+
+const UOM_OPTIONS = ["kg", "g", "l", "ml", "pcs", "m"]
+
 const DEFAULT_PM: PmFormData = {
-  name: "", type: "", hsn_code: "", uom: "", status: "active",
+  name: "", type: "", hsn_code: "", uom: "pcs", pantone_color: "", status: "active",
 }
 
 const DEFAULT_VENDOR_ENTRY: VendorEntry = {
-  vendor_id: null, vendor_code: "", curr_rate: "", moq: "", rate_uom: "",
+  vendor_id: null, vendor_code: "", curr_rate: "", moq: "", rate_uom: "pcs",
+}
+
+const DEFAULT_MFG_ENTRY: MfgEntry = {
+  mfg_id: null, mfg_code: "", curr_rate: "", rate_uom: "pcs", effective_from: "",
 }
 
 const STEPS = ["Material Details", "Vendor Pricing", "Approved At"]
@@ -60,7 +75,7 @@ export function AddPackingMaterialWizard({
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [pmData, setPmData] = useState<PmFormData>(DEFAULT_PM)
   const [vendorEntries, setVendorEntries] = useState<VendorEntry[]>([{ ...DEFAULT_VENDOR_ENTRY }])
-  const [selectedMfgs, setSelectedMfgs] = useState<Array<{ mfg_id: number; mfg_code: string }>>([])
+  const [mfgEntries, setMfgEntries] = useState<MfgEntry[]>([{ ...DEFAULT_MFG_ENTRY }])
   const [existingRates, setExistingRates] = useState<Record<number, { curr_rate: string; moq: string } | null>>({})
   const [vendorOptions, setVendorOptions] = useState<Vendor[]>(vendors)
   const [mfgOptions, setMfgOptions] = useState<Mfg[]>(manufacturers)
@@ -77,7 +92,7 @@ export function AddPackingMaterialWizard({
     setShowCloseConfirm(false)
     setPmData(DEFAULT_PM)
     setVendorEntries([{ ...DEFAULT_VENDOR_ENTRY }])
-    setSelectedMfgs([])
+    setMfgEntries([{ ...DEFAULT_MFG_ENTRY }])
     setExistingRates({})
     setLoading(false)
   }
@@ -153,10 +168,29 @@ export function AddPackingMaterialWizard({
 
   async function handleSubmit() {
     setError(null)
-    if (wizardMode === "add-rates" && vendorEntries.length === 0 && selectedMfgs.length === 0) {
+    const filledMfgs = mfgEntries.filter((m) => m.mfg_id !== null)
+    for (const m of filledMfgs) {
+      if (!m.curr_rate.trim()) {
+        setError("Each manufacturer entry requires a rate.")
+        return
+      }
+    }
+    const mfgIds = filledMfgs.map((m) => m.mfg_id)
+    if (new Set(mfgIds).size !== mfgIds.length) {
+      setError("The same manufacturer cannot be added twice. Remove the duplicate entry.")
+      return
+    }
+    if (wizardMode === "add-rates" && vendorEntries.length === 0 && filledMfgs.length === 0) {
       setError("Add at least one vendor rate or manufacturer to proceed.")
       return
     }
+    const mfgPayload = filledMfgs.map((m) => ({
+      mfg_id: m.mfg_id,
+      mfg_code: m.mfg_code,
+      curr_rate: Number(m.curr_rate),
+      rate_uom: m.rate_uom,
+      effective_from: m.effective_from || null,
+    }))
     setLoading(true)
     try {
       const payload =
@@ -172,7 +206,7 @@ export function AddPackingMaterialWizard({
                 moq: Number(v.moq),
                 rate_uom: v.rate_uom,
               })),
-              manufacturers: selectedMfgs,
+              manufacturers: mfgPayload,
             }
           : {
               action: "create-full",
@@ -184,7 +218,7 @@ export function AddPackingMaterialWizard({
                 moq: Number(v.moq),
                 rate_uom: v.rate_uom,
               })),
-              manufacturers: selectedMfgs,
+              manufacturers: mfgPayload,
             }
 
       const res = await fetch("/api/masters/packing-materials", {
@@ -263,13 +297,25 @@ export function AddPackingMaterialWizard({
     })
   }
 
-  function toggleMfg(mfg: Mfg) {
-    const id = mfg.mfg_id
-    setSelectedMfgs((prev) =>
-      prev.some((m) => m.mfg_id === id)
-        ? prev.filter((m) => m.mfg_id !== id)
-        : [...prev, { mfg_id: id, mfg_code: mfg.code }]
+  function selectMfgInEntry(index: number, mfgId: number) {
+    const mfg = mfgOptions.find((m) => m.mfg_id === mfgId)
+    setMfgEntries((prev) =>
+      prev.map((e, i) =>
+        i === index
+          ? { ...e, mfg_id: mfgId || null, mfg_code: mfg?.code ?? "" }
+          : e
+      )
     )
+  }
+
+  function updateMfgEntry(index: number, field: keyof MfgEntry, value: string) {
+    setMfgEntries((prev) =>
+      prev.map((e, i) => (i === index ? { ...e, [field]: value } : e))
+    )
+  }
+
+  function removeMfgEntry(index: number) {
+    setMfgEntries((prev) => prev.filter((_, i) => i !== index))
   }
 
   return (
@@ -299,7 +345,11 @@ export function AddPackingMaterialWizard({
         onClose={() => setQuickMfgOpen(false)}
         onSuccess={(m) => {
           setMfgOptions((prev) => [...prev, m])
-          setSelectedMfgs((prev) => [...prev, { mfg_id: m.mfg_id, mfg_code: m.code }])
+          setMfgEntries((prev) => {
+            const allBlank = prev.every((e) => !e.mfg_id)
+            const newEntry = { ...DEFAULT_MFG_ENTRY, mfg_id: m.mfg_id, mfg_code: m.code }
+            return allBlank ? [newEntry] : [...prev, newEntry]
+          })
           setQuickMfgOpen(false)
         }}
       />
@@ -406,12 +456,16 @@ export function AddPackingMaterialWizard({
                       />
                     </Field>
                     <Field label="Type" required>
-                      <input
+                      <select
                         className={inputCls}
-                        placeholder="e.g. Label / Carton"
                         value={pmData.type}
                         onChange={(e) => setPmData((p) => ({ ...p, type: e.target.value }))}
-                      />
+                      >
+                        <option value="">Select type…</option>
+                        {["Label", "Carton", "Bottle", "Pouch", "Cap", "Shrink Sleeve"].map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
                     </Field>
                     <Field label="HSN Code">
                       <input
@@ -422,22 +476,21 @@ export function AddPackingMaterialWizard({
                       />
                     </Field>
                     <Field label="UOM">
-                      <input
-                        className={inputCls}
-                        placeholder="e.g. pcs"
-                        value={pmData.uom}
-                        onChange={(e) => setPmData((p) => ({ ...p, uom: e.target.value }))}
-                      />
-                    </Field>
-                    <Field label="Status">
                       <select
                         className={inputCls}
-                        value={pmData.status}
-                        onChange={(e) => setPmData((p) => ({ ...p, status: e.target.value }))}
+                        value={pmData.uom}
+                        onChange={(e) => setPmData((p) => ({ ...p, uom: e.target.value }))}
                       >
-                        <option value="active">Active</option>
-                        <option value="discontinued">Discontinued</option>
+                        {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
                       </select>
+                    </Field>
+                    <Field label="Pantone Color">
+                      <input
+                        className={inputCls}
+                        placeholder="e.g. PMS 485"
+                        value={pmData.pantone_color}
+                        onChange={(e) => setPmData((p) => ({ ...p, pantone_color: e.target.value }))}
+                      />
                     </Field>
                   </div>
                 )
@@ -525,12 +578,15 @@ export function AddPackingMaterialWizard({
                               />
                             </Field>
                             <Field label="Rate UOM">
-                              <input
+                              <select
                                 className={inputCls}
-                                placeholder="e.g. pcs"
                                 value={entry.rate_uom}
                                 onChange={(e) => updateVendorEntry(i, "rate_uom", e.target.value)}
-                              />
+                              >
+                                {UOM_OPTIONS.map((u) => (
+                                  <option key={u} value={u}>{u}</option>
+                                ))}
+                              </select>
                             </Field>
                           </div>
                         </div>
@@ -558,7 +614,7 @@ export function AddPackingMaterialWizard({
                   )}
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-sm text-muted-foreground">
-                      Select approved manufacturers (optional).
+                      Add approved manufacturers with vendor and rate (optional).
                     </p>
                     <button
                       type="button"
@@ -569,38 +625,81 @@ export function AddPackingMaterialWizard({
                       New Manufacturer
                     </button>
                   </div>
-                  {mfgOptions.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-6 border border-dashed rounded-lg">
-                      No manufacturers available. Use <strong>New Manufacturer</strong> above to create one.
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
-                      {mfgOptions.map((mfg) => {
-                        const selected = selectedMfgs.some((m) => m.mfg_id === mfg.mfg_id)
-                        return (
-                          <button
-                            key={mfg.mfg_id}
-                            type="button"
-                            onClick={() => toggleMfg(mfg)}
-                            className={cn(
-                              "rounded-lg border p-3 text-left transition-all",
-                              selected
-                                ? "border-teal-600 bg-teal-50 dark:bg-teal-950/30"
-                                : "border-border hover:border-muted-foreground"
-                            )}
+                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                    {mfgEntries.map((entry, i) => (
+                      <div key={i} className="rounded-lg border bg-card p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Manufacturer {i + 1}
+                          </span>
+                          {mfgEntries.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeMfgEntry(i)}
+                              className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <div>
+                          <label className={labelCls}>
+                            Manufacturer <span className="text-destructive">*</span>
+                          </label>
+                          <select
+                            className={inputCls}
+                            value={entry.mfg_id ?? ""}
+                            onChange={(e) => selectMfgInEntry(i, Number(e.target.value))}
                           >
-                            <div className="flex items-start justify-between gap-1">
-                              <div className="min-w-0">
-                                <div className="text-sm font-medium truncate">{mfg.name}</div>
-                                <div className="text-xs text-muted-foreground font-mono">{mfg.code}</div>
-                              </div>
-                              {selected && <CheckCircle2 className="h-4 w-4 text-teal-600 shrink-0" />}
-                            </div>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
+                            <option value="">Select manufacturer…</option>
+                            {mfgOptions.map((m) => (
+                              <option key={m.mfg_id} value={m.mfg_id}>
+                                {m.name} ({m.code})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <Field label="Rate (₹)" required>
+                            <input
+                              type="number"
+                              className={inputCls}
+                              placeholder="0.00"
+                              value={entry.curr_rate}
+                              onChange={(e) => updateMfgEntry(i, "curr_rate", e.target.value)}
+                            />
+                          </Field>
+                          <Field label="Rate UOM">
+                            <select
+                              className={inputCls}
+                              value={entry.rate_uom}
+                              onChange={(e) => updateMfgEntry(i, "rate_uom", e.target.value)}
+                            >
+                              {UOM_OPTIONS.map((u) => (
+                                <option key={u} value={u}>{u}</option>
+                              ))}
+                            </select>
+                          </Field>
+                          <Field label="Effective From">
+                            <input
+                              type="date"
+                              className={inputCls}
+                              value={entry.effective_from}
+                              onChange={(e) => updateMfgEntry(i, "effective_from", e.target.value)}
+                            />
+                          </Field>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setMfgEntries((p) => [...p, { ...DEFAULT_MFG_ENTRY }])}
+                      className="w-full rounded-lg border border-dashed border-muted-foreground/40 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add another manufacturer
+                    </button>
+                  </div>
                 </div>
               )}
 

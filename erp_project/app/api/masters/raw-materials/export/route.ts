@@ -50,8 +50,9 @@ export async function GET(req: NextRequest) {
     const mfgRateMin = sp.get("mfg_rate_min")        ?? ""
     const mfgRateMax = sp.get("mfg_rate_max")        ?? ""
     const mfgEffFrom = sp.get("mfg_effective_from")  ?? ""
+    const typeFilter = sp.get("type") ?? ""
     filterParams = rmSql.mfgFilterParams(
-      search || null, status || null, mfgCode || null,
+      search || null, status || null, typeFilter || null, mfgCode || null,
       mfgRateMin || null, mfgRateMax || null, mfgEffFrom || null
     )
     filename = buildExportFilename(`raw_materials_${viewLabel}`, format, {
@@ -68,8 +69,9 @@ export async function GET(req: NextRequest) {
     const rateMin        = sp.get("rate_min")        ?? ""
     const rateMax        = sp.get("rate_max")        ?? ""
     const effectiveFrom  = sp.get("effective_from") ?? ""
+    const typeFilter2 = sp.get("type") ?? ""
     filterParams = rmSql.vendorFilterParams(
-      search || null, status || null, make || null,
+      search || null, status || null, make || null, typeFilter2 || null,
       vendorCode || null, rateMin || null, rateMax || null, effectiveFrom || null
     )
     filename = buildExportFilename(`raw_materials_${viewLabel}`, format, {

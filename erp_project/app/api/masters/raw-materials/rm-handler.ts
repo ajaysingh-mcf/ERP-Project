@@ -32,7 +32,9 @@ function toRmMfgRateParams(rmId: number, m: any, today: string): any[] {
     rmId, m.mfg_id ? Number(m.mfg_id) : null,
     m.mfg_code?.trim() || null,
     m.curr_rate ? Number(m.curr_rate) : 0,
-    m.rate_uom?.trim() || null, null, null,
+    m.rate_uom?.trim() || null,
+    m.approved_vendor_id ? Number(m.approved_vendor_id) : null,
+    m.approved_vendor_code?.trim() || null,
     m.effective_from?.trim() || today, "in_review",
   ]
 }

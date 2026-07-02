@@ -106,6 +106,9 @@ export function RmRateTable({
   currentRateMin,
   currentRateMax,
   currentEffectiveFrom,
+  // Shared type filter:
+  currentType,
+  types,
   // Mfg-specific filter props (not rendered by vendor view):
   currentMfgCode,
   currentMfgRateMin,
@@ -130,6 +133,9 @@ export function RmRateTable({
   currentRateMin?: string
   currentRateMax?: string
   currentEffectiveFrom?: string
+  // Shared type filter (available in both views):
+  currentType?: string
+  types?: string[]
   // Mfg-specific filter props (omit for vendor view):
   currentMfgCode?: string
   currentMfgRateMin?: string
@@ -230,6 +236,7 @@ export function RmRateTable({
 
   const hasFilters = currentSearch || currentStatus
     || currentMake || currentVendorCode || currentRateMin || currentRateMax || currentEffectiveFrom
+    || currentType
     || currentMfgCode || currentMfgRateMin || currentMfgRateMax || currentMfgEffectiveFrom
   const refresh    = () => router.refresh()
 
@@ -247,6 +254,7 @@ export function RmRateTable({
     currentRateMin,
     currentRateMax,
     currentEffectiveFrom,
+    currentType,
     currentMfgCode,
     currentMfgRateMin,
     currentMfgRateMax,
@@ -292,7 +300,7 @@ export function RmRateTable({
                 <div className="flex items-center gap-2">
                   {activeFilterCount > 0 && (
                     <button
-                      onClick={() => navigate({ status: "", make: "", vendor_code: "", rate_min: "", rate_max: "", effective_from: "", mfg_code: "", mfg_rate_min: "", mfg_rate_max: "", mfg_effective_from: "" })}
+                      onClick={() => navigate({ status: "", type: "", make: "", vendor_code: "", rate_min: "", rate_max: "", effective_from: "", mfg_code: "", mfg_rate_min: "", mfg_rate_max: "", mfg_effective_from: "" })}
                       className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       Clear all
@@ -318,6 +326,23 @@ export function RmRateTable({
                     <option value="discontinued">Discontinued</option>
                   </select>
                 </div>
+
+                {/* Type filter — visible in both vendor and mfg views */}
+                {types !== undefined && types.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Type</label>
+                    <select
+                      value={currentType || "all"}
+                      onChange={(e) => navigate({ type: e.target.value === "all" ? "" : e.target.value })}
+                      className={selectCls}
+                    >
+                      <option value="all">All Types</option>
+                      {types.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 {/* Vendor-only filters */}
                 {makes !== undefined && (
@@ -481,7 +506,7 @@ export function RmRateTable({
             {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => navigate({ search: "", status: "", make: "", vendor_code: "", rate_min: "", rate_max: "", effective_from: "", mfg_code: "", mfg_rate_min: "", mfg_rate_max: "", mfg_effective_from: "" })}
+                onClick={() => navigate({ search: "", status: "", type: "", make: "", vendor_code: "", rate_min: "", rate_max: "", effective_from: "", mfg_code: "", mfg_rate_min: "", mfg_rate_max: "", mfg_effective_from: "" })}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters

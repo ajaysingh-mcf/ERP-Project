@@ -96,6 +96,8 @@ export const POST = withGateway({
         throw new ApiError(409, "duplicate", "A packing material with this code already exists.")
       }
 
+      const pantone_color = body.pantone_color?.trim() || null
+
       const conn = await pool.getConnection()
       await conn.beginTransaction()
 
@@ -107,6 +109,7 @@ export const POST = withGateway({
           hsn_code?.trim() || null,
           uom?.trim() || null,
           "in_review",
+          pantone_color,
         ])
 
         const pmId = (pmResult as any).insertId
@@ -120,6 +123,7 @@ export const POST = withGateway({
           ["type", type],
           ["uom", uom?.trim() || ""],
           ["hsn_code", hsn_code?.trim() || ""],
+          ["pantone_color", pantone_color ?? ""],
         ]
 
         for (const [field, newVal] of newFields) {
@@ -269,6 +273,7 @@ export const PUT = withGateway({
         type,
         uom: uom?.trim() || null,
         hsn_code: hsn_code?.trim() || null,
+        pantone_color: body.pantone_color?.trim() || null,
         status: status || "active",
       }
       const diff = Object.entries(proposed).filter(
@@ -307,7 +312,7 @@ export const PUT = withGateway({
         conn.release()
       }
     }
-
+    logger.warn({ ...ctx, message: "Invalid material type in update request" })
     return NextResponse.json({ ok: false, message: "Invalid material type." }, { status: 400 })
   }
 })

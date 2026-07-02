@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus } from "lucide-react"
 import {
   Dialog,
@@ -30,12 +30,19 @@ type RmExtra = {
   inci_name: string  // International Nomenclature of Cosmetic Ingredients — required
 }
 
+/** Extra fields only on Packing Materials. */
+type PmExtra = {
+  pantone_color: string
+}
+
+const UOM_OPTIONS = ["kg", "g", "l", "ml", "pcs", "m"]
+
 // ─── Default state helpers ────────────────────────────────────────────────────
 
-const defaultBase = (): BaseFields => ({
+const defaultBase = (mat: "rm" | "pm"): BaseFields => ({
   name: "",
   type: "",
-  uom: "",
+  uom: mat === "pm" ? "pcs" : "kg",
   hsn_code: "",
   status: "active",
 })
@@ -43,6 +50,10 @@ const defaultBase = (): BaseFields => ({
 const defaultRmExtra = (): RmExtra => ({
   make: "",
   inci_name: "",
+})
+
+const defaultPmExtra = (): PmExtra => ({
+  pantone_color: "",
 })
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -64,17 +75,42 @@ export default function AddMaterialDialog({
   const [error, setError] = useState<string | null>(null)
 
   // Fields shared by both RM and PM.
-  const [base, setBase] = useState<BaseFields>(defaultBase)
+  const [base, setBase] = useState<BaseFields>(() => defaultBase(material))
 
-  // RM-only fields (ignored when material === "pm").
+  // RM-only fields.
   const [rmExtra, setRmExtra] = useState<RmExtra>(defaultRmExtra)
+  // PM-only fields.
+  const [pmExtra, setPmExtra] = useState<PmExtra>(defaultPmExtra)
+
+  // Managed dropdown options for RM Make and INCI Name.
+  const [makeOptions, setMakeOptions] = useState<string[]>([])
+  const [inciOptions, setInciOptions] = useState<string[]>([])
+  const [makeIsNew, setMakeIsNew] = useState(false)
+  const [inciIsNew, setInciIsNew] = useState(false)
+
+  useEffect(() => {
+    if (!open || material !== "rm") return
+    fetch("/api/masters/raw-materials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get-makes" }),
+    }).then((r) => r.json()).then((d) => setMakeOptions(d.makes ?? [])).catch(() => {})
+    fetch("/api/masters/raw-materials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get-inci-names" }),
+    }).then((r) => r.json()).then((d) => setInciOptions(d.inciNames ?? [])).catch(() => {})
+  }, [open, material])
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
   /** Reset all form fields and errors back to blank. */
   function reset() {
-    setBase(defaultBase())
+    setBase(defaultBase(material))
     setRmExtra(defaultRmExtra())
+    setPmExtra(defaultPmExtra())
+    setMakeIsNew(false)
+    setInciIsNew(false)
     setError(null)
   }
 
@@ -147,6 +183,7 @@ export default function AddMaterialDialog({
               type: base.type.trim(),
               uom: base.uom.trim() || null,
               hsn_code: base.hsn_code.trim() || null,
+              pantone_color: pmExtra.pantone_color.trim() || null,
               status: base.status,
             }
 
@@ -223,30 +260,78 @@ export default function AddMaterialDialog({
             {/* ── RM-only fields ── */}
             {material === "rm" && (
               <>
-                {/* Make — brand / vendor name */}
+                {/* Make — managed dropdown with "+ Add new" option */}
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="mat-make">
                     Make <span className="text-destructive">*</span>
                   </Label>
-                  <Input
-                    id="mat-make"
-                    placeholder="e.g. BASF"
-                    value={rmExtra.make}
-                    onChange={(e) => setRmField("make", e.target.value)}
-                  />
+                  {makeIsNew ? (
+                    <div className="flex gap-1">
+                      <input
+                        autoFocus
+                        className="h-9 flex-1 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        placeholder="Enter new make…"
+                        value={rmExtra.make}
+                        onChange={(e) => setRmField("make", e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { setMakeIsNew(false); setRmField("make", "") }}
+                        className="h-9 px-2 rounded-lg border border-input bg-background text-muted-foreground hover:text-foreground text-sm"
+                      >✕</button>
+                    </div>
+                  ) : (
+                    <select
+                      id="mat-make"
+                      value={rmExtra.make}
+                      onChange={(e) => {
+                        if (e.target.value === "__new__") { setMakeIsNew(true); setRmField("make", "") }
+                        else setRmField("make", e.target.value)
+                      }}
+                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="">Select make…</option>
+                      {makeOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                      <option value="__new__">+ Add new…</option>
+                    </select>
+                  )}
                 </div>
 
-                {/* INCI Name — used with name + make for duplicate detection */}
+                {/* INCI Name — managed dropdown with "+ Add new" option */}
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="mat-inci">
                     INCI Name <span className="text-destructive">*</span>
                   </Label>
-                  <Input
-                    id="mat-inci"
-                    placeholder="e.g. Cetyl Alcohol"
-                    value={rmExtra.inci_name}
-                    onChange={(e) => setRmField("inci_name", e.target.value)}
-                  />
+                  {inciIsNew ? (
+                    <div className="flex gap-1">
+                      <input
+                        autoFocus
+                        className="h-9 flex-1 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        placeholder="Enter new INCI name…"
+                        value={rmExtra.inci_name}
+                        onChange={(e) => setRmField("inci_name", e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { setInciIsNew(false); setRmField("inci_name", "") }}
+                        className="h-9 px-2 rounded-lg border border-input bg-background text-muted-foreground hover:text-foreground text-sm"
+                      >✕</button>
+                    </div>
+                  ) : (
+                    <select
+                      id="mat-inci"
+                      value={rmExtra.inci_name}
+                      onChange={(e) => {
+                        if (e.target.value === "__new__") { setInciIsNew(true); setRmField("inci_name", "") }
+                        else setRmField("inci_name", e.target.value)
+                      }}
+                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="">Select INCI name…</option>
+                      {inciOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                      <option value="__new__">+ Add new…</option>
+                    </select>
+                  )}
                 </div>
               </>
             )}
@@ -259,25 +344,34 @@ export default function AddMaterialDialog({
                   <span className="text-destructive"> *</span>
                 )}
               </Label>
-              <Input
+              <select
                 id="mat-type"
-                placeholder={
-                  material === "rm" ? "e.g. Solvent" : "e.g. Label"
-                }
                 value={base.type}
                 onChange={(e) => setField("type", e.target.value)}
-              />
+                className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">Select type…</option>
+                {(material === "rm"
+                  ? ["API", "Excipient", "Fragrance", "Surfactant", "Preservative"]
+                  : ["Label", "Carton", "Bottle", "Pouch", "Cap", "Shrink Sleeve"]
+                ).map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
             </div>
 
             {/* UOM — unit of measure */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="mat-uom">UOM</Label>
-              <Input
+              <select
                 id="mat-uom"
-                placeholder="e.g. kg, pcs, L"
                 value={base.uom}
                 onChange={(e) => setField("uom", e.target.value)}
-              />
+                className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">Select UOM…</option>
+                {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
             </div>
 
             {/* HSN Code — for GST */}
@@ -291,21 +385,19 @@ export default function AddMaterialDialog({
               />
             </div>
 
-            {/* Status — active by default */}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="mat-status">Status</Label>
-              <select
-                id="mat-status"
-                value={base.status}
-                onChange={(e) =>
-                  setField("status", e.target.value as BaseFields["status"])
-                }
-                className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="active">Active</option>
-                <option value="discontinued">Discontinued</option>
-              </select>
-            </div>
+            {/* Pantone Color — PM only */}
+            {material === "pm" && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="mat-pantone">Pantone Color</Label>
+                <Input
+                  id="mat-pantone"
+                  placeholder="e.g. PMS 185 C"
+                  value={pmExtra.pantone_color}
+                  onChange={(e) => setPmExtra((p) => ({ ...p, pantone_color: e.target.value }))}
+                />
+              </div>
+            )}
+
           </div>
 
           {/* Inline error message */}

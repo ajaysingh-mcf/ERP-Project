@@ -43,6 +43,7 @@ export default async function RawMaterialsPage({
   const search              = String(sp.search             ?? "")
   const statusFilter        = String(sp.status             ?? "")
   const makeFilter          = String(sp.make               ?? "")
+  const typeFilter          = String(sp.type               ?? "")
   const vendorCodeFilter    = String(sp.vendor_code        ?? "")
   const rateMinFilter       = String(sp.rate_min           ?? "")
   const rateMaxFilter       = String(sp.rate_max           ?? "")
@@ -70,14 +71,16 @@ export default async function RawMaterialsPage({
   if (isMfg) {
     // Manufacturer view — query rm_mrm × rm with all active filters
     const mfp = rawMaterials.mfgFilterParams(
-      search || null, statusFilter || null, mfgCodeFilter || null,
-      mfgRateMinFilter || null, mfgRateMaxFilter || null, mfgEffFromFilter || null
+      search || null, statusFilter || null, typeFilter || null,
+      mfgCodeFilter || null, mfgRateMinFilter || null, mfgRateMaxFilter || null, mfgEffFromFilter || null
     )
-    const [rows, countRows] = await Promise.all([
+    const [rows, countRows, typeRows] = await Promise.all([
       timedQuery<RMByMfg>(rawMaterials.selectMfgPaginated, [...mfp, size, offset], { label: "selectMfgPaginated" }),
       timedQuery<{ total: number }>(rawMaterials.countMfg, mfp, { label: "countMfg" }),
+      timedQuery<{ type: string }>(rawMaterials.selectDistinctTypes, [], { label: "selectDistinctTypes" }),
     ])
     const total = Number(countRows[0]?.total ?? 0)
+    const types = typeRows.map((r) => r.type)
     body = (
       <ManufacturerRawMaterialsClient
         rows={rows}
@@ -88,6 +91,8 @@ export default async function RawMaterialsPage({
         pageSize={size}
         currentSearch={search}
         currentStatus={statusFilter}
+        currentType={typeFilter}
+        types={types}
         currentMfgCode={mfgCodeFilter}
         currentMfgRateMin={mfgRateMinFilter}
         currentMfgRateMax={mfgRateMaxFilter}
@@ -97,17 +102,19 @@ export default async function RawMaterialsPage({
   } else {
     // Vendor view (default) — query rm_vrm × rm with all active filters
     const vfp = rawMaterials.vendorFilterParams(
-      search || null, statusFilter || null, makeFilter || null,
+      search || null, statusFilter || null, makeFilter || null, typeFilter || null,
       vendorCodeFilter || null, rateMinFilter || null, rateMaxFilter || null,
       effectiveFromFilter || null
     )
-    const [rows, countRows, makeRows] = await Promise.all([
+    const [rows, countRows, makeRows, typeRows] = await Promise.all([
       timedQuery<RM>(rawMaterials.selectVendorPaginated, [...vfp, size, offset], { label: "selectVendorPaginated" }),
       timedQuery<{ total: number }>(rawMaterials.countVendor, vfp, { label: "countVendor" }),
       timedQuery<{ make: string }>(rawMaterials.selectDistinctMakes, [], { label: "selectDistinctMakes" }),
+      timedQuery<{ type: string }>(rawMaterials.selectDistinctTypes, [], { label: "selectDistinctTypes" }),
     ])
     const total = Number(countRows[0]?.total ?? 0)
     const makes = makeRows.map((r) => r.make)
+    const types = typeRows.map((r) => r.type)
     body = (
       <VendorRawMaterialsClient
         rows={rows}
@@ -120,6 +127,8 @@ export default async function RawMaterialsPage({
         currentStatus={statusFilter}
         currentMake={makeFilter}
         makes={makes}
+        currentType={typeFilter}
+        types={types}
         currentVendorCode={vendorCodeFilter}
         currentRateMin={rateMinFilter}
         currentRateMax={rateMaxFilter}

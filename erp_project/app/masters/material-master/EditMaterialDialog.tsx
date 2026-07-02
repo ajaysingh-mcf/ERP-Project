@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+const UOM_OPTIONS = ["kg", "g", "l", "ml", "pcs", "m"]
+
 type AnyRow = Record<string, unknown>
 
 type RejectionInfo = {
@@ -34,21 +36,27 @@ export default function EditMaterialDialog({
   onClose: () => void
   onSuccess: () => void
 }) {
-  const [loading, setLoading]   = useState(false)
+  const [loading, setLoading]     = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const [error, setError]       = useState<string | null>(null)
+  const [error, setError]         = useState<string | null>(null)
 
-  const [name,   setName]   = useState("")
-  const [make,   setMake]   = useState("")
-  const [inci,   setInci]   = useState("")
-  const [type,   setType]   = useState("")
-  const [uom,    setUom]    = useState("")
-  const [hsn,    setHsn]    = useState("")
-  const [status, setStatus] = useState<"active" | "discontinued">("active")
+  const [name,         setName]         = useState("")
+  const [make,         setMake]         = useState("")
+  const [inci,         setInci]         = useState("")
+  const [type,         setType]         = useState("")
+  const [uom,          setUom]          = useState("")
+  const [hsn,          setHsn]          = useState("")
+  const [pantoneColor, setPantoneColor] = useState("")
+  const [status,       setStatus]       = useState<"active" | "discontinued">("active")
 
-  const [rejection, setRejection]         = useState<RejectionInfo | null>(null)
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null)
-  const [loadingInfo, setLoadingInfo]     = useState(false)
+  const [makeOptions, setMakeOptions] = useState<string[]>([])
+  const [inciOptions, setInciOptions] = useState<string[]>([])
+  const [makeIsNew,   setMakeIsNew]   = useState(false)
+  const [inciIsNew,   setInciIsNew]   = useState(false)
+
+  const [rejection,      setRejection]      = useState<RejectionInfo | null>(null)
+  const [currentUserId,  setCurrentUserId]  = useState<number | null>(null)
+  const [loadingInfo,    setLoadingInfo]    = useState(false)
 
   useEffect(() => {
     if (!row) return
@@ -58,12 +66,14 @@ export default function EditMaterialDialog({
     setType(String(row.type ?? ""))
     setUom(String(row.uom ?? ""))
     setHsn(String(row.hsn_code ?? ""))
+    setPantoneColor(String(row.pantone_color ?? ""))
     setStatus((row.status as "active" | "discontinued") ?? "active")
     setError(null)
     setSubmitted(false)
     setRejection(null)
+    setMakeIsNew(false)
+    setInciIsNew(false)
 
-    // For draft rows, fetch rejection reason + ownership info.
     if (row.status === "draft" && row.id) {
       const mod = material === "rm" ? "RM_MAT" : "PM_MAT"
       setLoadingInfo(true)
@@ -75,6 +85,20 @@ export default function EditMaterialDialog({
         })
         .catch(() => {})
         .finally(() => setLoadingInfo(false))
+    }
+
+    // Fetch managed dropdown options for RM.
+    if (material === "rm") {
+      fetch("/api/masters/raw-materials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get-makes" }),
+      }).then((r) => r.json()).then((d) => setMakeOptions(d.makes ?? [])).catch(() => {})
+      fetch("/api/masters/raw-materials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get-inci-names" }),
+      }).then((r) => r.json()).then((d) => setInciOptions(d.inciNames ?? [])).catch(() => {})
     }
   }, [row, material])
 
@@ -95,7 +119,7 @@ export default function EditMaterialDialog({
       const payload =
         material === "rm"
           ? { material: "rm", id: row!.id, name: name.trim(), make: make.trim(), inci_name: inci.trim(), type: type.trim() || null, uom: uom.trim() || null, hsn_code: hsn.trim() || null, status }
-          : { material: "pm", id: row!.id, name: name.trim(), type: type.trim(), uom: uom.trim() || null, hsn_code: hsn.trim() || null, status }
+          : { material: "pm", id: row!.id, name: name.trim(), type: type.trim(), uom: uom.trim() || null, hsn_code: hsn.trim() || null, pantone_color: pantoneColor.trim() || null, status }
 
       const res = await fetch("/api/masters/material-master", {
         method: "PUT",
@@ -166,20 +190,83 @@ export default function EditMaterialDialog({
             <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} />
           </div>
 
-          {/* RM-only: Make + INCI Name */}
+          {/* RM-only: Make + INCI Name — managed dropdowns */}
           {material === "rm" && (
             <>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="edit-make">
                   Make <span className="text-destructive">*</span>
                 </Label>
-                <Input id="edit-make" value={make} onChange={(e) => setMake(e.target.value)} disabled={!canEdit} />
+                {makeIsNew ? (
+                  <div className="flex gap-1">
+                    <input
+                      autoFocus
+                      className="h-9 flex-1 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                      placeholder="Enter new make…"
+                      value={make}
+                      onChange={(e) => setMake(e.target.value)}
+                      disabled={!canEdit}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setMakeIsNew(false); setMake("") }}
+                      className="h-9 px-2 rounded-lg border border-input bg-background text-muted-foreground hover:text-foreground text-sm"
+                    >✕</button>
+                  </div>
+                ) : (
+                  <select
+                    id="edit-make"
+                    value={make}
+                    onChange={(e) => {
+                      if (e.target.value === "__new__") { setMakeIsNew(true); setMake("") }
+                      else setMake(e.target.value)
+                    }}
+                    disabled={!canEdit}
+                    className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">Select make…</option>
+                    {makeOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                    <option value="__new__">+ Add new…</option>
+                  </select>
+                )}
               </div>
+
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="edit-inci">
                   INCI Name <span className="text-destructive">*</span>
                 </Label>
-                <Input id="edit-inci" value={inci} onChange={(e) => setInci(e.target.value)} disabled={!canEdit} />
+                {inciIsNew ? (
+                  <div className="flex gap-1">
+                    <input
+                      autoFocus
+                      className="h-9 flex-1 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                      placeholder="Enter new INCI name…"
+                      value={inci}
+                      onChange={(e) => setInci(e.target.value)}
+                      disabled={!canEdit}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setInciIsNew(false); setInci("") }}
+                      className="h-9 px-2 rounded-lg border border-input bg-background text-muted-foreground hover:text-foreground text-sm"
+                    >✕</button>
+                  </div>
+                ) : (
+                  <select
+                    id="edit-inci"
+                    value={inci}
+                    onChange={(e) => {
+                      if (e.target.value === "__new__") { setInciIsNew(true); setInci("") }
+                      else setInci(e.target.value)
+                    }}
+                    disabled={!canEdit}
+                    className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">Select INCI name…</option>
+                    {inciOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                    <option value="__new__">+ Add new…</option>
+                  </select>
+                )}
               </div>
             </>
           )}
@@ -189,13 +276,36 @@ export default function EditMaterialDialog({
             <Label htmlFor="edit-type">
               Type{material === "pm" && <span className="text-destructive"> *</span>}
             </Label>
-            <Input id="edit-type" value={type} onChange={(e) => setType(e.target.value)} disabled={!canEdit} />
+            <select
+              id="edit-type"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              disabled={!canEdit}
+              className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="">Select type…</option>
+              {(material === "rm"
+                ? ["API", "Excipient", "Fragrance", "Surfactant", "Preservative"]
+                : ["Label", "Carton", "Bottle", "Pouch", "Cap", "Shrink Sleeve"]
+              ).map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
           </div>
 
           {/* UOM */}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="edit-uom">UOM</Label>
-            <Input id="edit-uom" placeholder="e.g. kg, pcs" value={uom} onChange={(e) => setUom(e.target.value)} disabled={!canEdit} />
+            <select
+              id="edit-uom"
+              value={uom}
+              onChange={(e) => setUom(e.target.value)}
+              disabled={!canEdit}
+              className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="">Select UOM…</option>
+              {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
           </div>
 
           {/* HSN Code */}
@@ -203,6 +313,20 @@ export default function EditMaterialDialog({
             <Label htmlFor="edit-hsn">HSN Code</Label>
             <Input id="edit-hsn" placeholder="e.g. 29054500" value={hsn} onChange={(e) => setHsn(e.target.value)} disabled={!canEdit} />
           </div>
+
+          {/* Pantone Color — PM only */}
+          {material === "pm" && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-pantone">Pantone Color</Label>
+              <Input
+                id="edit-pantone"
+                placeholder="e.g. PMS 185 C"
+                value={pantoneColor}
+                onChange={(e) => setPantoneColor(e.target.value)}
+                disabled={!canEdit}
+              />
+            </div>
+          )}
 
           {/* Status */}
           <div className="flex flex-col gap-1.5">

@@ -1,16 +1,27 @@
 import { NextResponse } from "next/server"
-import { execute, query, pool } from "@/lib/db"
+import { query, pool } from "@/lib/db"
 import { packingMaterials } from "@/lib/queries/packing-materials"
 import { parseS3Import } from "@/lib/import-s3"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 import logger from "@/lib/logger"
-import { applyVendorRateApproval, applyMfgRateApproval } from "@/lib/master-routes/material-utils"
+import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval } from "@/lib/master-routes/material-utils"
 
-function toPmParams(r: any): any[] {
+function toPmParams(r: any, status = "in_review"): any[] {
   return [
     r.pm_code?.trim() || null, r.name.trim(),
     r.type?.trim() || null, r.hsn_code?.trim() || null,
-    r.uom?.trim() || null, "active",
+    r.uom?.trim() || null, status,
+    r.pantone_color?.trim() || null,
+  ]
+}
+
+function toPmMfgRateParams(pmId: number, m: any, today: string): any[] {
+  return [
+    pmId, m.mfg_id ? Number(m.mfg_id) : null,
+    m.mfg_code?.trim() || null,
+    m.curr_rate ? Number(m.curr_rate) : 0,
+    m.rate_uom?.trim() || null, "in_review",
+    m.effective_from?.trim() || today,
   ]
 }
 
@@ -34,6 +45,12 @@ export async function pmCreate(body: any, userId: number, ctx: object): Promise<
     try {
       const [pmResult] = await conn.execute(packingMaterials.insert, toPmParams(body))
       const pmId = (pmResult as any).insertId
+      await insertApprovalWithItems(conn, userId, "PM_MAT", pmId, [
+        ["name", body.name.trim()],
+        ["type", body.type?.trim() || ""],
+        ["uom", body.uom?.trim() || ""],
+        ["hsn_code", body.hsn_code?.trim() || ""],
+      ])
       if (hasVendorRate) {
         await conn.execute(packingMaterials.insertVendorRate, [
           pmId, body.vendor_id ? Number(body.vendor_id) : null,
@@ -71,12 +88,23 @@ export async function pmCreate(body: any, userId: number, ctx: object): Promise<
     }
   }
 
+  const conn = await pool.getConnection()
+  await conn.beginTransaction()
   try {
-    const result = await execute(packingMaterials.insert, toPmParams(body))
-    recordProcessedEvent("PM", eventId, { pmId: result.insertId })
-    logger.info({ ...logCtx, message: "PM create succeeded (no rate)", pmId: result.insertId })
-    return NextResponse.json({ id: result.insertId })
+    const [pmResult] = await conn.execute(packingMaterials.insert, toPmParams(body))
+    const pmId = (pmResult as any).insertId
+    await insertApprovalWithItems(conn, userId, "PM_MAT", pmId, [
+      ["name", body.name.trim()],
+      ["type", body.type?.trim() || ""],
+      ["uom", body.uom?.trim() || ""],
+      ["hsn_code", body.hsn_code?.trim() || ""],
+    ])
+    await conn.commit()
+    recordProcessedEvent("PM", eventId, { pmId })
+    logger.info({ ...logCtx, message: "PM create succeeded (no rate)", pmId })
+    return NextResponse.json({ id: pmId })
   } catch (err: any) {
+    await conn.rollback()
     recordFailedEvent("PM", eventId, { name: body.name.trim() }, err.message)
     if (err.code === "ER_DUP_ENTRY") {
       logger.warn({ ...logCtx, message: "PM create rejected: duplicate pm_code", pm_code: body.pm_code?.trim() })
@@ -84,6 +112,8 @@ export async function pmCreate(body: any, userId: number, ctx: object): Promise<
     }
     logger.error({ ...logCtx, message: "PM create error", error: err.message, code: err.code })
     return NextResponse.json({ error: "Database error" }, { status: 500 })
+  } finally {
+    conn.release()
   }
 }
 
@@ -146,10 +176,17 @@ export async function pmCreateFull(body: any, userId: number, ctx: object): Prom
   try {
     const [pmResult] = await conn.execute(packingMaterials.insert, [
       null, pm.name.trim(), pm.type?.trim() || null,
-      pm.hsn_code?.trim() || null, pm.uom?.trim() || null, pm.status || "active",
+      pm.hsn_code?.trim() || null, pm.uom?.trim() || null, "in_review",
+      pm.pantone_color?.trim() || null,
     ])
     const pmId = (pmResult as any).insertId
     logger.info({ ...logCtx, message: "create-full: PM inserted", pmId })
+    await insertApprovalWithItems(conn, userId, "PM_MAT", pmId, [
+      ["name", pm.name.trim()],
+      ["type", pm.type?.trim() || ""],
+      ["uom", pm.uom?.trim() || ""],
+      ["hsn_code", pm.hsn_code?.trim() || ""],
+    ])
 
     for (const v of vendorList) {
       const vendorId = v.vendor_id ? Number(v.vendor_id) : null
@@ -182,20 +219,17 @@ export async function pmCreateFull(body: any, userId: number, ctx: object): Prom
       const [existingRows] = await conn.execute(packingMaterials.checkMfgRate, [pmId, mfgId])
       const existing = (existingRows as any[])[0]
       if (existing) {
-        const [vRows] = await conn.execute(packingMaterials.getVendorId, [pmId])
-        const historyVendorId = (vRows as any[])[0]?.vendor_id ?? 0
-        await conn.execute(packingMaterials.archiveToHistoryMrm, [
-          existing.mfg_id, pmId, historyVendorId, existing.curr_rate,
-          existing.effective_from, null, existing.status === "active" ? 1 : 0,
-        ])
-        await conn.execute(packingMaterials.updateMfgRate, [
-          m.curr_rate ? Number(m.curr_rate) : existing.curr_rate,
-          m.rate_uom?.trim() || existing.uom, today, existing.id,
-        ])
-        logger.info({ ...logCtx, message: "create-full: mfg archived + updated", pmId, mfg_id: mfgId })
+        await applyMfgRateApproval(conn, userId, "PM_RATE", existing, m, today, packingMaterials.setRateStatus)
+        logger.info({ ...logCtx, message: "create-full: mfg rate approval submitted", pmId, mfg_id: mfgId })
       } else {
-        await conn.execute(packingMaterials.insertMfgApproval, [pmId, mfgId, m.mfg_code?.trim() || null, today])
-        logger.info({ ...logCtx, message: "create-full: mfg approval inserted", pmId, mfg_id: mfgId })
+        const [mResult] = await conn.execute(packingMaterials.insertMfgRate, toPmMfgRateParams(pmId, m, today))
+        const mrmId = (mResult as any).insertId
+        await insertApprovalWithItems(conn, userId, "PM_RATE", mrmId, [
+          ["curr_rate", m.curr_rate ? String(m.curr_rate) : ""],
+          ["uom", m.rate_uom?.trim() || ""],
+          ["effective_from", m.effective_from?.trim() || today],
+        ])
+        logger.info({ ...logCtx, message: "create-full: mfg rate in_review", pmId, mfg_id: mfgId })
       }
     }
 
@@ -273,8 +307,14 @@ export async function pmAddRates(body: any, userId: number, ctx: object): Promis
         if (existing) {
           await applyMfgRateApproval(conn, userId, "PM_RATE", existing, m, today, packingMaterials.setRateStatus)
         } else {
-          await conn.execute(packingMaterials.insertMfgApproval, [pmId, mfgId, m.mfg_code?.trim() || null, today])
-          logger.info({ ...logCtx, message: "mfg rate inserted (new)", pmId, mfg_id: mfgId })
+          const [mResult] = await conn.execute(packingMaterials.insertMfgRate, toPmMfgRateParams(pmId, m, today))
+          const mrmId = (mResult as any).insertId
+          await insertApprovalWithItems(conn, userId, "PM_RATE", mrmId, [
+            ["curr_rate", m.curr_rate ? String(m.curr_rate) : ""],
+            ["uom", m.rate_uom?.trim() || ""],
+            ["effective_from", m.effective_from?.trim() || today],
+          ])
+          logger.info({ ...logCtx, message: "mfg rate in_review (new)", pmId, mfg_id: mfgId })
         }
       }
 
@@ -320,7 +360,14 @@ export async function pmBulk(body: any, userId: number, ctx: object): Promise<Ne
         continue
       }
       try {
-        await conn.execute(packingMaterials.insert, toPmParams(row))
+        const [pmResult] = await conn.execute(packingMaterials.insert, toPmParams(row))
+        const pmId = (pmResult as any).insertId
+        await insertApprovalWithItems(conn, userId, "PM_MAT", pmId, [
+          ["name", row.name.trim()],
+          ["type", row.type?.trim() || ""],
+          ["uom", row.uom?.trim() || ""],
+          ["hsn_code", row.hsn_code?.trim() || ""],
+        ])
         inserted++
       } catch (err: any) {
         if (err.code === "ER_DUP_ENTRY") {
@@ -383,7 +430,14 @@ export async function pmS3Bulk(body: any, userId: number, ctx: object): Promise<
         continue
       }
       try {
-        await conn.execute(packingMaterials.insert, toPmParams(row))
+        const [pmResult] = await conn.execute(packingMaterials.insert, toPmParams(row))
+        const pmId = (pmResult as any).insertId
+        await insertApprovalWithItems(conn, userId, "PM_MAT", pmId, [
+          ["name", row["name"].trim()],
+          ["type", row["type"]?.trim() || ""],
+          ["uom", row["uom"]?.trim() || ""],
+          ["hsn_code", row["hsn_code"]?.trim() || ""],
+        ])
         inserted++
       } catch (err: any) {
         if (err.code === "ER_DUP_ENTRY") {

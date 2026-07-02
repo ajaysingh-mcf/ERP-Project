@@ -46,34 +46,42 @@ export const rawMaterials = {
    * Same WHERE clause as selectPaginated.
    * Params: [like, like, like, like, status, status]
    */
+  /**
+   * Fetch ALL matching base RM rows for export.
+   * Params: [like×4, status×2, make×2, type×2]
+   */
   selectBaseAllFiltered: `
     SELECT id, rm_code, name, make, type, uom, status, hsn_code, inci_name
     FROM master_rm
     WHERE (? IS NULL OR rm_code LIKE ? OR name LIKE ? OR make LIKE ?)
       AND (? IS NULL OR status = ?)
+      AND (? IS NULL OR make = ?)
+      AND (? IS NULL OR type = ?)
     ORDER BY name ASC
   `,
 
   /**
-   * Paginated base RM list with optional search + status filter.
-   * Params: [like, like, like, like, status, status, LIMIT, OFFSET]
-   *   like   — '%search%' or null (rm_code / name / make columns)
-   *   status — 'active'|'discontinued' or null
+   * Paginated base RM list with optional search + status + make + type filter.
+   * Params: [like×4, status×2, make×2, type×2, LIMIT, OFFSET]
    */
   selectPaginated: `
     SELECT id, rm_code, name, make, type, uom, status, hsn_code, inci_name
     FROM master_rm
     WHERE (? IS NULL OR rm_code LIKE ? OR name LIKE ? OR make LIKE ?)
       AND (? IS NULL OR status = ?)
+      AND (? IS NULL OR make = ?)
+      AND (? IS NULL OR type = ?)
     ORDER BY name ASC
     LIMIT ? OFFSET ?
   `,
 
-  /** Matching COUNT for selectPaginated. Params: [like, like, like, like, status, status] */
+  /** Matching COUNT for selectPaginated. Params: [like×4, status×2, make×2, type×2] */
   countAll: `
     SELECT COUNT(*) AS total FROM master_rm
     WHERE (? IS NULL OR rm_code LIKE ? OR name LIKE ? OR make LIKE ?)
       AND (? IS NULL OR status = ?)
+      AND (? IS NULL OR make = ?)
+      AND (? IS NULL OR type = ?)
   `,
 
   /**
@@ -105,6 +113,7 @@ export const rawMaterials = {
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
       AND (? IS NULL OR r.make = ?)
+      AND (? IS NULL OR r.type = ?)
       AND (? IS NULL OR rmv.vendor_code LIKE ?)
       AND (? IS NULL OR rmv.curr_rate >= ?)
       AND (? IS NULL OR rmv.curr_rate <= ?)
@@ -129,6 +138,7 @@ export const rawMaterials = {
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
       AND (? IS NULL OR r.make = ?)
+      AND (? IS NULL OR r.type = ?)
       AND (? IS NULL OR rmv.vendor_code LIKE ?)
       AND (? IS NULL OR rmv.curr_rate >= ?)
       AND (? IS NULL OR rmv.curr_rate <= ?)
@@ -147,6 +157,7 @@ export const rawMaterials = {
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
       AND (? IS NULL OR r.make = ?)
+      AND (? IS NULL OR r.type = ?)
       AND (? IS NULL OR rmv.vendor_code LIKE ?)
       AND (? IS NULL OR rmv.curr_rate >= ?)
       AND (? IS NULL OR rmv.curr_rate <= ?)
@@ -160,6 +171,20 @@ export const rawMaterials = {
     ORDER BY make ASC
   `,
 
+  /** Distinct RM types for the type filter dropdown. */
+  selectDistinctTypes: `
+    SELECT DISTINCT type FROM master_rm
+    WHERE type IS NOT NULL AND type != ''
+    ORDER BY type ASC
+  `,
+
+  /** Distinct INCI names for the managed dropdown in add/edit forms. */
+  selectDistinctInciNames: `
+    SELECT DISTINCT inci_name FROM master_rm
+    WHERE inci_name IS NOT NULL AND inci_name != ''
+    ORDER BY inci_name ASC
+  `,
+
   /**
    * Build the filter parameter array for vendor-rate queries.
    * Centralises the repeated-param pattern so callers never have to count.
@@ -168,6 +193,7 @@ export const rawMaterials = {
     search: string | null,
     status: string | null,
     make: string | null,
+    type: string | null,
     vendorCode: string | null,
     rateMin: string | null,
     rateMax: string | null,
@@ -181,6 +207,7 @@ export const rawMaterials = {
       like, like, like,
       status, status,
       make, make,
+      type, type,
       vcLike, vcLike,
       rateMinNum, rateMinNum,
       rateMaxNum, rateMaxNum,
@@ -203,6 +230,7 @@ export const rawMaterials = {
     INNER JOIN master_rm AS r ON r.id = rmm.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
+      AND (? IS NULL OR r.type = ?)
       AND (? IS NULL OR rmm.mfg_code LIKE ?)
       AND (? IS NULL OR rmm.curr_rate >= ?)
       AND (? IS NULL OR rmm.curr_rate <= ?)
@@ -213,7 +241,7 @@ export const rawMaterials = {
 
   /**
    * Fetch ALL matching RM × manufacturer rate rows for export (no LIMIT/OFFSET).
-   * Params: mfgFilterParams(...)  (13 params)
+   * Params: mfgFilterParams(...)
    */
   selectMfgAllFiltered: `
     SELECT
@@ -226,6 +254,7 @@ export const rawMaterials = {
     INNER JOIN master_rm AS r ON r.id = rmm.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
+      AND (? IS NULL OR r.type = ?)
       AND (? IS NULL OR rmm.mfg_code LIKE ?)
       AND (? IS NULL OR rmm.curr_rate >= ?)
       AND (? IS NULL OR rmm.curr_rate <= ?)
@@ -233,23 +262,25 @@ export const rawMaterials = {
     ORDER BY r.rm_code ASC
   `,
 
-  /** Matching COUNT for selectMfgPaginated. Params: mfgFilterParams(...)  (13 params) */
+  /** Matching COUNT for selectMfgPaginated. Params: mfgFilterParams(...) */
   countMfg: `
     SELECT COUNT(*) AS total
     FROM rm_mrm_fixed AS rmm
     INNER JOIN master_rm AS r ON r.id = rmm.rm_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
+      AND (? IS NULL OR r.type = ?)
       AND (? IS NULL OR rmm.mfg_code LIKE ?)
       AND (? IS NULL OR rmm.curr_rate >= ?)
       AND (? IS NULL OR rmm.curr_rate <= ?)
       AND (? IS NULL OR rmm.effective_from >= ?)
   `,
 
-  /** Build the 13-param array for all mfg-view queries. */
+  /** Build the filter param array for all mfg-view queries. */
   mfgFilterParams(
     search: string | null,
     status: string | null,
+    type: string | null,
     mfgCode: string | null,
     rateMin: string | null,
     rateMax: string | null,
@@ -262,6 +293,7 @@ export const rawMaterials = {
     return [
       like, like, like,
       status, status,
+      type, type,
       mfgLike, mfgLike,
       rateMinNum, rateMinNum,
       rateMaxNum, rateMaxNum,
@@ -299,11 +331,12 @@ export const rawMaterials = {
   `,
 
   /**
-   * Check if an RM already exists by name + make + inci_name
+   * Check if an RM already exists by name + make + inci_name (case-insensitive).
    * Parameters: [name, make, inci_name]
    */
   checkDuplicate: `
-    SELECT id FROM master_rm WHERE name = ? AND make = ? AND inci_name = ? 
+    SELECT id FROM master_rm
+    WHERE LOWER(name) = LOWER(?) AND LOWER(IFNULL(make,'')) = LOWER(?) AND LOWER(IFNULL(inci_name,'')) = LOWER(?)
   `,
 
   /**

@@ -39,43 +39,48 @@ export const packingMaterials = {
    * Same WHERE clause as selectPaginated.
    * Params: [like, like, like, like, status, status]
    */
+  /**
+   * Fetch ALL matching base PM rows for export.
+   * Params: [like×4, status×2, type×2]
+   */
   selectBaseAllFiltered: `
-    SELECT id, pm_code, name, type, uom, status, hsn_code
+    SELECT id, pm_code, name, type, uom, status, hsn_code, pantone_color
     FROM master_pm
     WHERE (? IS NULL OR pm_code LIKE ? OR name LIKE ? OR type LIKE ?)
       AND (? IS NULL OR status = ?)
+      AND (? IS NULL OR type = ?)
     ORDER BY name ASC
   `,
 
   /**
-   * Paginated base PM list with optional search + status filter.
-   * Params: [like, like, like, like, status, status, LIMIT, OFFSET]
-   *   like   — '%search%' or null (pm_code / name / type columns)
-   *   status — 'active'|'discontinued' or null
+   * Paginated base PM list with optional search + status + type filter.
+   * Params: [like×4, status×2, type×2, LIMIT, OFFSET]
    */
   selectPaginated: `
-    SELECT id, pm_code, name, type, uom, status, hsn_code
+    SELECT id, pm_code, name, type, uom, status, hsn_code, pantone_color
     FROM master_pm
     WHERE (? IS NULL OR pm_code LIKE ? OR name LIKE ? OR type LIKE ?)
       AND (? IS NULL OR status = ?)
+      AND (? IS NULL OR type = ?)
     ORDER BY name ASC
     LIMIT ? OFFSET ?
   `,
 
-  /** Matching COUNT for selectPaginated. Params: [like, like, like, like, status, status] */
+  /** Matching COUNT for selectPaginated. Params: [like×4, status×2, type×2] */
   countAll: `
     SELECT COUNT(*) AS total FROM master_pm
     WHERE (? IS NULL OR pm_code LIKE ? OR name LIKE ? OR type LIKE ?)
       AND (? IS NULL OR status = ?)
+      AND (? IS NULL OR type = ?)
   `,
 
   /**
-   * Update PM base record fields (pm_code is auto-generated, never changed).
-   * Params: [name, type, uom, status, hsn_code, id]
+   * Update PM base record fields.
+   * Params: [name, type, uom, status, hsn_code, pantone_color, id]
    */
   update: `
     UPDATE master_pm
-    SET name = ?, type = ?, uom = ?, status = ?, hsn_code = ?
+    SET name = ?, type = ?, uom = ?, status = ?, hsn_code = ?, pantone_color = ?
     WHERE id = ?
   `,
 
@@ -89,7 +94,7 @@ export const packingMaterials = {
    */
   selectVendorPaginated: `
     SELECT
-      p.pm_code, p.name, p.type,
+      p.pm_code, p.name, p.type, p.pantone_color,
       p.hsn_code, pmv.pm_id, pmv.id AS vrm_id,
       pmv.vendor_id, pmv.vendor_code,
       pmv.curr_rate, pmv.moq,
@@ -108,14 +113,9 @@ export const packingMaterials = {
     LIMIT ? OFFSET ?
   `,
 
-  /**
-   * Fetch ALL matching PM × vendor rate rows for export (no LIMIT/OFFSET).
-   * Same WHERE clause as selectVendorPaginated.
-   * Params: vendorFilterParams(...)
-   */
   selectVendorAllFiltered: `
     SELECT
-      p.pm_code, p.name, p.type,
+      p.pm_code, p.name, p.type, p.pantone_color,
       p.hsn_code, pmv.pm_id, pmv.id AS vrm_id,
       pmv.vendor_id, pmv.vendor_code,
       pmv.curr_rate, pmv.moq,
@@ -133,10 +133,6 @@ export const packingMaterials = {
     ORDER BY p.pm_code ASC
   `,
 
-  /**
-   * Matching COUNT for selectVendorPaginated.
-   * Params: vendorFilterParams(...)
-   */
   countVendor: `
     SELECT COUNT(*) AS total
     FROM pm_vrm_dynamic AS pmv
@@ -195,7 +191,7 @@ export const packingMaterials = {
    */
   selectMfgPaginated: `
     SELECT
-      p.pm_code, p.name, p.type,
+      p.pm_code, p.name, p.type, p.pantone_color,
       p.hsn_code, p.uom, pmm.pm_id, pmm.id AS rate_id,
       pmm.mfg_id, pmm.mfg_code, pmm.curr_rate,
       pmm.uom, pmm.status, pmm.effective_from
@@ -203,6 +199,7 @@ export const packingMaterials = {
     INNER JOIN master_pm AS p ON pmm.pm_id = p.id
     WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
       AND (? IS NULL OR pmm.status = ?)
+      AND (? IS NULL OR p.type = ?)
       AND (? IS NULL OR pmm.mfg_code LIKE ?)
       AND (? IS NULL OR pmm.curr_rate >= ?)
       AND (? IS NULL OR pmm.curr_rate <= ?)
@@ -211,13 +208,9 @@ export const packingMaterials = {
     LIMIT ? OFFSET ?
   `,
 
-  /**
-   * Fetch ALL matching PM × manufacturer rate rows for export (no LIMIT/OFFSET).
-   * Params: mfgFilterParams(...)  (13 params)
-   */
   selectMfgAllFiltered: `
     SELECT
-      p.pm_code, p.name, p.type,
+      p.pm_code, p.name, p.type, p.pantone_color,
       p.hsn_code, p.uom, pmm.pm_id, pmm.id AS rate_id,
       pmm.mfg_id, pmm.mfg_code, pmm.curr_rate,
       pmm.uom, pmm.status, pmm.effective_from
@@ -225,6 +218,7 @@ export const packingMaterials = {
     INNER JOIN master_pm AS p ON pmm.pm_id = p.id
     WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
       AND (? IS NULL OR pmm.status = ?)
+      AND (? IS NULL OR p.type = ?)
       AND (? IS NULL OR pmm.mfg_code LIKE ?)
       AND (? IS NULL OR pmm.curr_rate >= ?)
       AND (? IS NULL OR pmm.curr_rate <= ?)
@@ -232,23 +226,24 @@ export const packingMaterials = {
     ORDER BY p.pm_code ASC
   `,
 
-  /** Matching COUNT for selectMfgPaginated. Params: mfgFilterParams(...)  (13 params) */
   countMfg: `
     SELECT COUNT(*) AS total
     FROM pm_mrm_fixed AS pmm
     INNER JOIN master_pm AS p ON pmm.pm_id = p.id
     WHERE (? IS NULL OR p.pm_code LIKE ? OR p.name LIKE ?)
       AND (? IS NULL OR pmm.status = ?)
+      AND (? IS NULL OR p.type = ?)
       AND (? IS NULL OR pmm.mfg_code LIKE ?)
       AND (? IS NULL OR pmm.curr_rate >= ?)
       AND (? IS NULL OR pmm.curr_rate <= ?)
       AND (? IS NULL OR pmm.effective_from >= ?)
   `,
 
-  /** Build the 13-param array for all mfg-view queries. */
+  /** Build the filter param array for all mfg-view queries. */
   mfgFilterParams(
     search: string | null,
     status: string | null,
+    type: string | null,
     mfgCode: string | null,
     rateMin: string | null,
     rateMax: string | null,
@@ -261,6 +256,7 @@ export const packingMaterials = {
     return [
       like, like, like,
       status, status,
+      type, type,
       mfgLike, mfgLike,
       rateMinNum, rateMinNum,
       rateMaxNum, rateMaxNum,
@@ -270,10 +266,10 @@ export const packingMaterials = {
 
   // ============ INSERT QUERIES ============
 
-  /** Insert a packing material base record. Parameters: [pm_code, name, type, hsn_code, uom, status] */
+  /** Insert a packing material base record. Parameters: [pm_code, name, type, hsn_code, uom, status, pantone_color] */
   insert: `
-    INSERT INTO master_pm (pm_code, name, type, hsn_code, uom, status)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO master_pm (pm_code, name, type, hsn_code, uom, status, pantone_color)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `,
 
   /** Parameters: [pm_id, vendor_id, vendor_code, curr_rate, moq, uom, status, effective_from, effective_to] */
@@ -371,7 +367,7 @@ export const packingMaterials = {
    *  Parameters: [id]
    */
   selectBaseById: `
-    SELECT id, pm_code, name, type, uom, status, hsn_code
+    SELECT id, pm_code, name, type, uom, status, hsn_code, pantone_color
     FROM master_pm WHERE id = ? LIMIT 1
   `,
 

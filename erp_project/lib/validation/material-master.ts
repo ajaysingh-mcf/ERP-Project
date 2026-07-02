@@ -20,6 +20,7 @@ export const materialMasterCreatePmSchema = z.object({
   type: z.string().trim().min(1),
   uom: z.string().nullable().optional(),
   hsn_code: z.string().nullable().optional(),
+  pantone_color: z.string().nullable().optional(),
   status: z.string().nullable().optional(),
 })
 
@@ -47,6 +48,7 @@ export const materialMasterUpdatePmSchema = z.object({
   type: z.string().trim().min(1),
   uom: z.string().nullable().optional(),
   hsn_code: z.string().nullable().optional(),
+  pantone_color: z.string().nullable().optional(),
   status: z.string().nullable().optional(),
 })
 

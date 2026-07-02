@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { CheckCircle2, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -33,12 +33,29 @@ type VendorEntry = {
   rate_uom: string
 }
 
+type MfgEntry = {
+  mfg_id: number | null
+  mfg_code: string
+  approved_vendor_id: number | null
+  approved_vendor_code: string
+  curr_rate: string
+  rate_uom: string
+  effective_from: string
+}
+
+const UOM_OPTIONS = ["kg", "g", "l", "ml", "pcs", "m"]
+
 const DEFAULT_RM: RmFormData = {
-  name: "", make: "", inci_name: "", type: "", uom: "", hsn_code: "", status: "active",
+  name: "", make: "", inci_name: "", type: "", uom: "kg", hsn_code: "", status: "active",
 }
 
 const DEFAULT_VENDOR_ENTRY: VendorEntry = {
-  vendor_id: null, vendor_code: "", curr_rate: "", moq: "", rate_uom: "",
+  vendor_id: null, vendor_code: "", curr_rate: "", moq: "", rate_uom: "kg",
+}
+
+const DEFAULT_MFG_ENTRY: MfgEntry = {
+  mfg_id: null, mfg_code: "", approved_vendor_id: null, approved_vendor_code: "",
+  curr_rate: "", rate_uom: "kg", effective_from: "",
 }
 
 const STEPS = ["Material Details", "Vendor Pricing", "Approved At"]
@@ -62,12 +79,37 @@ export function AddRawMaterialWizard({
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [rmData, setRmData] = useState<RmFormData>(DEFAULT_RM)
   const [vendorEntries, setVendorEntries] = useState<VendorEntry[]>([{ ...DEFAULT_VENDOR_ENTRY }])
-  const [selectedMfgs, setSelectedMfgs] = useState<Array<{ mfg_id: number; mfg_code: string }>>([])
+  const [mfgEntries, setMfgEntries] = useState<MfgEntry[]>([{ ...DEFAULT_MFG_ENTRY }])
   const [existingRates, setExistingRates] = useState<Record<number, { curr_rate: string; moq: string } | null>>({})
   const [vendorOptions, setVendorOptions] = useState<Vendor[]>(vendors)
   const [mfgOptions, setMfgOptions] = useState<Mfg[]>(manufacturers)
   const [quickVendorOpen, setQuickVendorOpen] = useState(false)
   const [quickMfgOpen, setQuickMfgOpen] = useState(false)
+
+  const [makeOptions, setMakeOptions] = useState<string[]>([])
+  const [inciOptions, setInciOptions] = useState<string[]>([])
+  const [makeIsNew, setMakeIsNew] = useState(false)
+  const [inciIsNew, setInciIsNew] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    fetch("/api/masters/raw-materials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get-makes" }),
+    })
+      .then((r) => r.json())
+      .then((d) => setMakeOptions(d.makes ?? []))
+      .catch(() => {})
+    fetch("/api/masters/raw-materials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get-inci-names" }),
+    })
+      .then((r) => r.json())
+      .then((d) => setInciOptions(d.inciNames ?? []))
+      .catch(() => {})
+  }, [open])
 
   const isDirty =
     rmData.name !== "" || rmData.make !== "" || rmData.inci_name !== "" || step > 1
@@ -80,9 +122,11 @@ export function AddRawMaterialWizard({
     setShowCloseConfirm(false)
     setRmData(DEFAULT_RM)
     setVendorEntries([{ ...DEFAULT_VENDOR_ENTRY }])
-    setSelectedMfgs([])
+    setMfgEntries([{ ...DEFAULT_MFG_ENTRY }])
     setExistingRates({})
     setLoading(false)
+    setMakeIsNew(false)
+    setInciIsNew(false)
   }
 
   function closeWizard() {
@@ -157,10 +201,35 @@ export function AddRawMaterialWizard({
 
   async function handleSubmit() {
     setError(null)
-    if (wizardMode === "add-rates" && vendorEntries.length === 0 && selectedMfgs.length === 0) {
+    const filledMfgs = mfgEntries.filter((m) => m.mfg_id !== null)
+    if (wizardMode === "add-rates" && vendorEntries.length === 0 && filledMfgs.length === 0) {
       setError("Add at least one vendor rate or manufacturer to proceed.")
       return
     }
+    for (const m of filledMfgs) {
+      if (!m.approved_vendor_id) {
+        setError("Each manufacturer entry requires an approved vendor.")
+        return
+      }
+      if (!m.curr_rate.trim()) {
+        setError("Each manufacturer entry requires a rate.")
+        return
+      }
+    }
+    const mfgIds = filledMfgs.map((m) => m.mfg_id)
+    if (new Set(mfgIds).size !== mfgIds.length) {
+      setError("The same manufacturer cannot be added twice.")
+      return
+    }
+    const mfgPayload = filledMfgs.map((m) => ({
+      mfg_id: m.mfg_id,
+      mfg_code: m.mfg_code,
+      approved_vendor_id: m.approved_vendor_id,
+      approved_vendor_code: m.approved_vendor_code,
+      curr_rate: Number(m.curr_rate),
+      rate_uom: m.rate_uom,
+      effective_from: m.effective_from || null,
+    }))
     setLoading(true)
     try {
       const payload =
@@ -177,7 +246,7 @@ export function AddRawMaterialWizard({
                 moq: Number(v.moq),
                 rate_uom: v.rate_uom,
               })),
-              manufacturers: selectedMfgs,
+              manufacturers: mfgPayload,
             }
           : {
               action: "create-full",
@@ -189,7 +258,7 @@ export function AddRawMaterialWizard({
                 moq: Number(v.moq),
                 rate_uom: v.rate_uom,
               })),
-              manufacturers: selectedMfgs,
+              manufacturers: mfgPayload,
             }
 
       const res = await fetch("/api/masters/raw-materials", {
@@ -269,13 +338,34 @@ export function AddRawMaterialWizard({
     })
   }
 
-  function toggleMfg(mfg: Mfg) {
-    const id = mfg.mfg_id
-    setSelectedMfgs((prev) =>
-      prev.some((m) => m.mfg_id === id)
-        ? prev.filter((m) => m.mfg_id !== id)
-        : [...prev, { mfg_id: id, mfg_code: mfg.code }]
+  function selectMfgInEntry(index: number, mfgId: number) {
+    const mfg = mfgOptions.find((m) => m.mfg_id === mfgId)
+    setMfgEntries((prev) =>
+      prev.map((e, i) =>
+        i === index ? { ...e, mfg_id: mfgId || null, mfg_code: mfg?.code ?? "" } : e
+      )
     )
+  }
+
+  function selectVendorForMfg(index: number, vendorId: number) {
+    const vendor = vendorOptions.find((v) => v.vendor_id === vendorId)
+    setMfgEntries((prev) =>
+      prev.map((e, i) =>
+        i === index
+          ? { ...e, approved_vendor_id: vendorId || null, approved_vendor_code: vendor?.code ?? "" }
+          : e
+      )
+    )
+  }
+
+  function updateMfgEntry(index: number, field: keyof MfgEntry, value: string) {
+    setMfgEntries((prev) =>
+      prev.map((e, i) => (i === index ? { ...e, [field]: value } : e))
+    )
+  }
+
+  function removeMfgEntry(index: number) {
+    setMfgEntries((prev) => prev.filter((_, i) => i !== index))
   }
 
   return (
@@ -305,7 +395,11 @@ export function AddRawMaterialWizard({
         onClose={() => setQuickMfgOpen(false)}
         onSuccess={(m) => {
           setMfgOptions((prev) => [...prev, m])
-          setSelectedMfgs((prev) => [...prev, { mfg_id: m.mfg_id, mfg_code: m.code }])
+          setMfgEntries((prev) => {
+            const allBlank = prev.every((e) => !e.mfg_id)
+            const newEntry = { ...DEFAULT_MFG_ENTRY, mfg_id: m.mfg_id, mfg_code: m.code }
+            return allBlank ? [newEntry] : [...prev, newEntry]
+          })
           setQuickMfgOpen(false)
         }}
       />
@@ -412,36 +506,87 @@ export function AddRawMaterialWizard({
                       />
                     </Field>
                     <Field label="Make" required>
-                      <input
-                        className={inputCls}
-                        placeholder="Brand or make"
-                        value={rmData.make}
-                        onChange={(e) => setRmData((p) => ({ ...p, make: e.target.value }))}
-                      />
+                      {makeIsNew ? (
+                        <div className="flex gap-1">
+                          <input
+                            className={inputCls}
+                            placeholder="Enter new make"
+                            autoFocus
+                            value={rmData.make}
+                            onChange={(e) => setRmData((p) => ({ ...p, make: e.target.value }))}
+                          />
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+                            onClick={() => { setMakeIsNew(false); setRmData((p) => ({ ...p, make: "" })) }}
+                          >✕</button>
+                        </div>
+                      ) : (
+                        <select
+                          className={inputCls}
+                          value={rmData.make}
+                          onChange={(e) => {
+                            if (e.target.value === "__new__") { setMakeIsNew(true); setRmData((p) => ({ ...p, make: "" })) }
+                            else setRmData((p) => ({ ...p, make: e.target.value }))
+                          }}
+                        >
+                          <option value="">Select make…</option>
+                          {makeOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                          <option value="__new__">+ Add new…</option>
+                        </select>
+                      )}
                     </Field>
                     <Field label="INCI Name" required className="col-span-2">
-                      <input
-                        className={inputCls}
-                        placeholder="e.g. Glycerin"
-                        value={rmData.inci_name}
-                        onChange={(e) => setRmData((p) => ({ ...p, inci_name: e.target.value }))}
-                      />
+                      {inciIsNew ? (
+                        <div className="flex gap-1">
+                          <input
+                            className={inputCls}
+                            placeholder="Enter new INCI name"
+                            autoFocus
+                            value={rmData.inci_name}
+                            onChange={(e) => setRmData((p) => ({ ...p, inci_name: e.target.value }))}
+                          />
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+                            onClick={() => { setInciIsNew(false); setRmData((p) => ({ ...p, inci_name: "" })) }}
+                          >✕</button>
+                        </div>
+                      ) : (
+                        <select
+                          className={inputCls}
+                          value={rmData.inci_name}
+                          onChange={(e) => {
+                            if (e.target.value === "__new__") { setInciIsNew(true); setRmData((p) => ({ ...p, inci_name: "" })) }
+                            else setRmData((p) => ({ ...p, inci_name: e.target.value }))
+                          }}
+                        >
+                          <option value="">Select INCI name…</option>
+                          {inciOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                          <option value="__new__">+ Add new…</option>
+                        </select>
+                      )}
                     </Field>
                     <Field label="Type">
-                      <input
+                      <select
                         className={inputCls}
-                        placeholder="e.g. Liquid"
                         value={rmData.type}
                         onChange={(e) => setRmData((p) => ({ ...p, type: e.target.value }))}
-                      />
+                      >
+                        <option value="">Select type…</option>
+                        {["API", "Excipient", "Fragrance", "Surfactant", "Preservative"].map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
                     </Field>
                     <Field label="UOM">
-                      <input
+                      <select
                         className={inputCls}
-                        placeholder="e.g. kg"
                         value={rmData.uom}
                         onChange={(e) => setRmData((p) => ({ ...p, uom: e.target.value }))}
-                      />
+                      >
+                        {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+                      </select>
                     </Field>
                     <Field label="HSN Code">
                       <input
@@ -450,16 +595,6 @@ export function AddRawMaterialWizard({
                         value={rmData.hsn_code}
                         onChange={(e) => setRmData((p) => ({ ...p, hsn_code: e.target.value }))}
                       />
-                    </Field>
-                    <Field label="Status">
-                      <select
-                        className={inputCls}
-                        value={rmData.status}
-                        onChange={(e) => setRmData((p) => ({ ...p, status: e.target.value }))}
-                      >
-                        <option value="active">Active</option>
-                        <option value="discontinued">Discontinued</option>
-                      </select>
                     </Field>
                   </div>
                 )
@@ -547,12 +682,13 @@ export function AddRawMaterialWizard({
                               />
                             </Field>
                             <Field label="Rate UOM">
-                              <input
+                              <select
                                 className={inputCls}
-                                placeholder="e.g. kg"
                                 value={entry.rate_uom}
                                 onChange={(e) => updateVendorEntry(i, "rate_uom", e.target.value)}
-                              />
+                              >
+                                {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+                              </select>
                             </Field>
                           </div>
                         </div>
@@ -572,16 +708,14 @@ export function AddRawMaterialWizard({
 
               {/* ── Step 3: Approved Manufacturers ── */}
               {step === 3 && (
-                <div>
+                <div className="space-y-3">
                   {wizardMode === "add-rates" && (
-                    <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-800 mb-3">
+                    <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-800">
                       Adding rates to: <strong>{rmData.name}</strong> ({rmData.make})
                     </div>
                   )}
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm text-muted-foreground">
-                      Select approved manufacturers (optional).
-                    </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Add manufacturer rates (optional). Each manufacturer maps to one vendor.</p>
                     <button
                       type="button"
                       onClick={() => setQuickMfgOpen(true)}
@@ -591,38 +725,90 @@ export function AddRawMaterialWizard({
                       New Manufacturer
                     </button>
                   </div>
-                  {mfgOptions.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-6 border border-dashed rounded-lg">
-                      No manufacturers available. Use <strong>New Manufacturer</strong> above to create one.
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
-                      {mfgOptions.map((mfg) => {
-                        const selected = selectedMfgs.some((m) => m.mfg_id === mfg.mfg_id)
-                        return (
+                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                    {mfgEntries.map((entry, i) => (
+                      <div key={i} className="rounded-lg border bg-card p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Manufacturer {i + 1}
+                          </span>
                           <button
-                            key={mfg.mfg_id}
                             type="button"
-                            onClick={() => toggleMfg(mfg)}
-                            className={cn(
-                              "rounded-lg border p-3 text-left transition-all",
-                              selected
-                                ? "border-teal-600 bg-teal-50 dark:bg-teal-950/30"
-                                : "border-border hover:border-muted-foreground"
-                            )}
+                            onClick={() => removeMfgEntry(i)}
+                            className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                           >
-                            <div className="flex items-start justify-between gap-1">
-                              <div className="min-w-0">
-                                <div className="text-sm font-medium truncate">{mfg.name}</div>
-                                <div className="text-xs text-muted-foreground font-mono">{mfg.code}</div>
-                              </div>
-                              {selected && <CheckCircle2 className="h-4 w-4 text-teal-600 shrink-0" />}
-                            </div>
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
-                        )
-                      })}
-                    </div>
-                  )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <Field label="Manufacturer" required>
+                            <select
+                              className={inputCls}
+                              value={entry.mfg_id ?? ""}
+                              onChange={(e) => selectMfgInEntry(i, Number(e.target.value))}
+                            >
+                              <option value="">Select manufacturer…</option>
+                              {mfgOptions.map((m) => (
+                                <option key={m.mfg_id} value={m.mfg_id}>
+                                  {m.name} ({m.code})
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                          <Field label="Approved Vendor" required>
+                            <select
+                              className={inputCls}
+                              value={entry.approved_vendor_id ?? ""}
+                              onChange={(e) => selectVendorForMfg(i, Number(e.target.value))}
+                            >
+                              <option value="">Select vendor…</option>
+                              {rmVendors.map((v) => (
+                                <option key={v.vendor_id} value={v.vendor_id}>
+                                  {v.name} ({v.code})
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <Field label="Rate (₹)" required>
+                            <input
+                              type="number"
+                              className={inputCls}
+                              placeholder="0.00"
+                              value={entry.curr_rate}
+                              onChange={(e) => updateMfgEntry(i, "curr_rate", e.target.value)}
+                            />
+                          </Field>
+                          <Field label="Rate UOM">
+                            <select
+                              className={inputCls}
+                              value={entry.rate_uom}
+                              onChange={(e) => updateMfgEntry(i, "rate_uom", e.target.value)}
+                            >
+                              {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+                            </select>
+                          </Field>
+                          <Field label="Effective From">
+                            <input
+                              type="date"
+                              className={inputCls}
+                              value={entry.effective_from}
+                              onChange={(e) => updateMfgEntry(i, "effective_from", e.target.value)}
+                            />
+                          </Field>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setMfgEntries((p) => [...p, { ...DEFAULT_MFG_ENTRY }])}
+                      className="w-full rounded-lg border border-dashed border-muted-foreground/40 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add another manufacturer
+                    </button>
+                  </div>
                 </div>
               )}
 

@@ -157,7 +157,16 @@ export function EditPmVendorRateDialog({
             </div>
             <div className="grid gap-1">
               <Label>UOM</Label>
-              <Input value={form.uom} onChange={(e) => set("uom", e.target.value)} disabled={!canEdit} />
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                value={form.uom}
+                onChange={(e) => set("uom", e.target.value)}
+                disabled={!canEdit}
+              >
+                {["kg", "g", "l", "ml", "pcs", "m"].map((u) => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+              </select>
             </div>
             <div className="grid gap-1">
               <Label>Effective From</Label>

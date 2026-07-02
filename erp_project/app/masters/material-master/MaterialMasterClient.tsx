@@ -71,12 +71,13 @@ const RM_COLUMNS: ColumnDef[] = [
 ]
 
 const PM_COLUMNS: ColumnDef[] = [
-  { key: "pm_code",  label: "PM Code",  sortAs: "text", className: "font-mono text-xs font-medium" },
-  { key: "name",     label: "Name",     sortAs: "text", className: "font-medium" },
-  { key: "type",     label: "Type",     sortAs: "text" },
-  { key: "uom",      label: "UOM",      sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
-  { key: "hsn_code", label: "HSN Code", sortAs: "text" },
-  { key: "status",   label: "Status",   sortAs: "text", render: statusBadge },
+  { key: "pm_code",       label: "PM Code",      sortAs: "text", className: "font-mono text-xs font-medium" },
+  { key: "name",          label: "Name",         sortAs: "text", className: "font-medium" },
+  { key: "type",          label: "Type",         sortAs: "text" },
+  { key: "uom",           label: "UOM",          sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
+  { key: "hsn_code",      label: "HSN Code",     sortAs: "text" },
+  { key: "pantone_color", label: "Pantone Color", sortAs: "text" },
+  { key: "status",        label: "Status",       sortAs: "text", render: statusBadge },
 ]
 
 export default function MaterialMasterClient({
@@ -87,6 +88,10 @@ export default function MaterialMasterClient({
   pageSize,
   currentSearch,
   currentStatus,
+  currentMake,
+  makes,
+  currentType,
+  types,
 }: {
   material: "rm" | "pm"
   rows: AnyRow[]
@@ -95,6 +100,10 @@ export default function MaterialMasterClient({
   pageSize: number
   currentSearch: string
   currentStatus: string
+  currentMake: string
+  makes: string[]
+  currentType: string
+  types: string[]
 }) {
   const router       = useRouter()
   const pathname     = usePathname()
@@ -153,7 +162,7 @@ export default function MaterialMasterClient({
     })
   }, [rows, columns, sortKey, sortDir])
 
-  const hasFilters = currentSearch || currentStatus
+  const hasFilters = currentSearch || currentStatus || currentMake || currentType
   // router.refresh() re-runs the server page with current URL — keeps page + filters.
   const refresh    = () => router.refresh()
 
@@ -182,6 +191,28 @@ export default function MaterialMasterClient({
           <option value="discontinued">Discontinued</option>
         </select>
 
+        {makes.length > 0 && (
+          <select
+            value={currentMake || "all"}
+            onChange={(e) => navigate({ make: e.target.value === "all" ? "" : e.target.value })}
+            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <option value="all">All Makes</option>
+            {makes.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        )}
+
+        {types.length > 0 && (
+          <select
+            value={currentType || "all"}
+            onChange={(e) => navigate({ [material === "pm" ? "make" : "type"]: e.target.value === "all" ? "" : e.target.value })}
+            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <option value="all">All Types</option>
+            {types.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
+
         <MasterToolbarActions>
           <DownloadButton
             endpoint="/api/masters/material-master/export"
@@ -198,7 +229,7 @@ export default function MaterialMasterClient({
             {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => navigate({ search: "", status: "" })}
+                onClick={() => navigate({ search: "", status: "", make: "", type: "" })}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters

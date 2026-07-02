@@ -54,6 +54,8 @@ export default function ManufacturerPackingMaterialsClient({
   currentMfgRateMin,
   currentMfgRateMax,
   currentMfgEffectiveFrom,
+  currentType,
+  types,
 }: {
   rows: PMByMfg[]
   vendors: Vendor[]
@@ -63,6 +65,8 @@ export default function ManufacturerPackingMaterialsClient({
   pageSize: number
   currentSearch: string
   currentStatus: string
+  currentType: string
+  types: string[]
   currentMfgCode: string
   currentMfgRateMin: string
   currentMfgRateMax: string
@@ -83,6 +87,8 @@ export default function ManufacturerPackingMaterialsClient({
         pageSize={pageSize}
         currentSearch={currentSearch}
         currentStatus={currentStatus}
+        currentType={currentType}
+        types={types}
         currentMfgCode={currentMfgCode}
         currentMfgRateMin={currentMfgRateMin}
         currentMfgRateMax={currentMfgRateMax}

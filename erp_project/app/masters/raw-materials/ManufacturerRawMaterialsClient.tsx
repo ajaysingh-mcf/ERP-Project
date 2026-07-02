@@ -56,6 +56,8 @@ export default function ManufacturerRawMaterialsClient({
   currentMfgRateMin,
   currentMfgRateMax,
   currentMfgEffectiveFrom,
+  currentType,
+  types,
 }: {
   rows: RMByMfg[]
   vendors: Vendor[]
@@ -65,6 +67,8 @@ export default function ManufacturerRawMaterialsClient({
   pageSize: number
   currentSearch: string
   currentStatus: string
+  currentType: string
+  types: string[]
   currentMfgCode: string
   currentMfgRateMin: string
   currentMfgRateMax: string
@@ -85,6 +89,8 @@ export default function ManufacturerRawMaterialsClient({
         pageSize={pageSize}
         currentSearch={currentSearch}
         currentStatus={currentStatus}
+        currentType={currentType}
+        types={types}
         currentMfgCode={currentMfgCode}
         currentMfgRateMin={currentMfgRateMin}
         currentMfgRateMax={currentMfgRateMax}
