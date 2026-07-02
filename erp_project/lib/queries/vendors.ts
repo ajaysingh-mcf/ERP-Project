@@ -37,7 +37,8 @@ export const vendors = {
   selectPaginated: `
     SELECT
       vd.vendor_id, vd.location, vd.status,
-      vd.zone, vd.registered_name, v.code, v.name, v.type
+      vd.zone, vd.registered_name, v.code, v.name, v.type,
+      vd.gst_certificate_key, vd.cancelled_cheque_key, vd.pan_card_key, vd.misc_document_key
     FROM details_vendor vd
     JOIN master_vendors v ON vd.vendor_id = v.id
     WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
@@ -117,10 +118,21 @@ export const vendors = {
   selectById: `
     SELECT
       vd.vendor_id, vd.location, vd.status,
-      vd.zone, vd.registered_name, v.code, v.name, v.type
+      vd.zone, vd.registered_name, v.code, v.name, v.type,
+      vd.gst_certificate_key, vd.cancelled_cheque_key, vd.pan_card_key, vd.misc_document_key
     FROM details_vendor vd
     JOIN master_vendors v ON vd.vendor_id = v.id
     WHERE vd.vendor_id = ? LIMIT 1
+  `,
+
+  /** Apply approved S3 keys for a vendor's reference documents.
+   *  Called by vendorHandler.applyAndArchive — not used for direct writes.
+   *  Parameters: [gst_certificate_key, cancelled_cheque_key, pan_card_key, misc_document_key, vendor_id]
+   */
+  updateDocuments: `
+    UPDATE details_vendor
+    SET gst_certificate_key = ?, cancelled_cheque_key = ?, pan_card_key = ?, misc_document_key = ?
+    WHERE vendor_id = ?
   `,
 
   /** Set status on the details_vendor row (e.g. 'in_review', 'draft', 'active').

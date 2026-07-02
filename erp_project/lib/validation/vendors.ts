@@ -8,6 +8,10 @@ export const vendorCreateSchema = z.object({
   location: z.string().optional(),
   zone: z.string().optional(),
   registered_name: z.string().optional(),
+  gst_certificate_key:  z.string().nullable().optional(),
+  cancelled_cheque_key: z.string().nullable().optional(),
+  pan_card_key:         z.string().nullable().optional(),
+  misc_document_key:    z.string().nullable().optional(),
 })
 
 export const vendorBulkSchema = z.object({
@@ -31,11 +35,21 @@ export const vendorBulkFromS3Schema = z.object({
   key: z.string().trim().min(1),
 })
 
+export const vendorUpdateDocsSchema = z.object({
+  action: z.literal("update_docs"),
+  vendor_id: z.union([z.number(), z.string()]),
+  gst_certificate_key:  z.string().nullable().optional(),
+  cancelled_cheque_key: z.string().nullable().optional(),
+  pan_card_key:         z.string().nullable().optional(),
+  misc_document_key:    z.string().nullable().optional(),
+})
+
 export const vendorActionSchema = z.discriminatedUnion("action", [
   vendorCreateSchema,
   vendorBulkSchema,
   vendorUpdateSchema,
   vendorBulkFromS3Schema,
+  vendorUpdateDocsSchema,
 ])
 
 export type VendorAction = z.infer<typeof vendorActionSchema>

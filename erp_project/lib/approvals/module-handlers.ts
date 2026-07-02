@@ -228,6 +228,10 @@ const pmMatHandler: ModuleHandler = {
 
 // ── VENDOR (vendor master — spans master_vendors + details_vendor) ────────────
 
+const VENDOR_DOC_FIELDS = new Set([
+  "gst_certificate_key", "cancelled_cheque_key", "pan_card_key", "misc_document_key",
+])
+
 const vendorHandler: ModuleHandler = {
   async setStatus(conn, entityId, status) {
     await conn.execute(vendorSql.setStatus, [status, entityId])
@@ -238,18 +242,38 @@ const vendorHandler: ModuleHandler = {
     const cur = (rows as any[])[0]
     if (!cur) throw new Error(`Vendor ${entityId} not found`)
 
-    await conn.execute(vendorSql.updateVendor, [
-      fieldMap.name ?? cur.name,
-      fieldMap.type ?? cur.type,
-      entityId,
-    ])
-    await conn.execute(vendorSql.updateVendorDetails, [
-      fieldMap.location        ?? cur.location        ?? null,
-      STATUS.ACTIVE,
-      fieldMap.zone            ?? cur.zone            ?? null,
-      fieldMap.registered_name ?? cur.registered_name ?? null,
-      entityId,
-    ])
+    const hasFieldChange = items.some((i) => !VENDOR_DOC_FIELDS.has(i.field_name))
+    const hasDocChange   = items.some((i) =>  VENDOR_DOC_FIELDS.has(i.field_name))
+
+    if (hasFieldChange) {
+      await conn.execute(vendorSql.updateVendor, [
+        fieldMap.name ?? cur.name,
+        fieldMap.type ?? cur.type,
+        entityId,
+      ])
+      await conn.execute(vendorSql.updateVendorDetails, [
+        fieldMap.location        ?? cur.location        ?? null,
+        STATUS.ACTIVE,
+        fieldMap.zone            ?? cur.zone            ?? null,
+        fieldMap.registered_name ?? cur.registered_name ?? null,
+        entityId,
+      ])
+    }
+
+    if (hasDocChange) {
+      const docVal = (field: string) => fieldMap[field] || cur[field] || null
+      await conn.execute(vendorSql.updateDocuments, [
+        docVal("gst_certificate_key"),
+        docVal("cancelled_cheque_key"),
+        docVal("pan_card_key"),
+        docVal("misc_document_key"),
+        entityId,
+      ])
+    }
+
+    if (!hasFieldChange) {
+      await conn.execute(vendorSql.setStatus, [STATUS.ACTIVE, entityId])
+    }
   },
 }
 

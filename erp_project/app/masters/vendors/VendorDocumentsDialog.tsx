@@ -1,0 +1,182 @@
+"use client"
+
+/**
+ * Dialog for managing a vendor's reference documents — GST certificate,
+ * cancelled cheque, PAN card, misc. Files are held client-side until Save;
+ * S3 upload happens only when the user confirms. No approval flow — these are
+ * reference docs, not audited field edits.
+ */
+
+import { useEffect, useState } from "react"
+import { Tabs } from "radix-ui"
+import { AlertCircle, CheckCircle2, Clock } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { FileUpload } from "@/components/ui/FileUpload"
+import { cn } from "@/lib/utils"
+import type { Vendor } from "@/types/masters"
+
+type DocKey = "gst_certificate_key" | "cancelled_cheque_key" | "pan_card_key" | "misc_document_key"
+
+const DOC_TABS: { key: DocKey; label: string; field: string }[] = [
+  { key: "gst_certificate_key",  label: "GST Certificate",  field: "gst_certificate" },
+  { key: "cancelled_cheque_key", label: "Cancelled Cheque", field: "cancelled_cheque" },
+  { key: "pan_card_key",         label: "PAN Card",         field: "pan_card" },
+  { key: "misc_document_key",    label: "Misc",             field: "misc_document" },
+]
+
+const EMPTY_DOCS: Record<DocKey, null> = {
+  gst_certificate_key:  null,
+  cancelled_cheque_key: null,
+  pan_card_key:         null,
+  misc_document_key:    null,
+}
+
+export function VendorDocumentsDialog({
+  vendor,
+  onClose,
+  onSuccess,
+}: {
+  vendor: Vendor | null
+  onClose: () => void
+  onSuccess?: () => void
+}) {
+  const [docs, setDocs]               = useState<Record<DocKey, string | null>>(EMPTY_DOCS)
+  const [pendingFiles, setPendingFiles] = useState<Record<DocKey, File | null>>(EMPTY_DOCS)
+  const [loading, setLoading]         = useState(false)
+  const [submitted, setSubmitted]     = useState(false)
+  const [error, setError]             = useState("")
+
+  useEffect(() => {
+    if (!vendor) return
+    setDocs({
+      gst_certificate_key:  vendor.gst_certificate_key,
+      cancelled_cheque_key: vendor.cancelled_cheque_key,
+      pan_card_key:         vendor.pan_card_key,
+      misc_document_key:    vendor.misc_document_key,
+    })
+    setPendingFiles(EMPTY_DOCS)
+    setSubmitted(false)
+    setError("")
+  }, [vendor])
+
+  if (!vendor) return null
+
+  async function handleSave() {
+    if (!vendor) return
+    setLoading(true)
+    setError("")
+    try {
+      // Upload any pending files to S3 now that the user has confirmed
+      const finalDocs = { ...docs }
+      for (const tab of DOC_TABS) {
+        const file = pendingFiles[tab.key]
+        if (!file) continue
+        const form = new FormData()
+        form.append("file",   file)
+        form.append("folder", `vendors/${vendor.vendor_id}`)
+        form.append("field",  tab.field)
+        const up = await fetch("/api/upload", { method: "POST", body: form })
+        const upData = await up.json()
+        if (!up.ok) throw new Error(upData.error || `Failed to upload ${tab.label}`)
+        finalDocs[tab.key] = upData.key
+      }
+
+      const res = await fetch("/api/masters/vendors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update_docs", vendor_id: vendor.vendor_id, ...finalDocs }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to save documents")
+      setSubmitted(true)
+      onSuccess?.()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={!!vendor} onOpenChange={(o) => !loading && !o && onClose()}>
+      <DialogContent className="w-lg">
+        <DialogHeader>
+          <DialogTitle>Documents — {vendor.name}</DialogTitle>
+        </DialogHeader>
+
+        {submitted && (
+          <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 mb-4 text-sm text-green-800">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            Documents submitted for approval. The vendor is locked until the approval is resolved.
+          </div>
+        )}
+
+        {!submitted && vendor.status === "in_review" && (
+          <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 mb-4 text-sm text-blue-800">
+            <Clock className="h-4 w-4 shrink-0" />
+            A change is pending approval. Documents cannot be updated until it is resolved.
+          </div>
+        )}
+
+        <Tabs.Root defaultValue={DOC_TABS[0].key}>
+          <Tabs.List className="flex gap-1 border-b border-border mb-4">
+            {DOC_TABS.map((tab) => (
+              <Tabs.Trigger
+                key={tab.key}
+                value={tab.key}
+                className={cn(
+                  "px-3 py-2 text-sm font-medium text-muted-foreground border-b-2 border-transparent -mb-px",
+                  "data-[state=active]:text-foreground data-[state=active]:border-primary",
+                  "hover:text-foreground transition-colors"
+                )}
+              >
+                {tab.label}
+              </Tabs.Trigger>
+            ))}
+          </Tabs.List>
+
+          {DOC_TABS.map((tab) => (
+            <Tabs.Content key={tab.key} value={tab.key}>
+              <FileUpload
+                currentKey={docs[tab.key]}
+                folder={`vendors/${vendor.vendor_id}`}
+                field={tab.field}
+                label={tab.label}
+                accept="document"
+                disabled={loading || vendor.status === "in_review" || submitted}
+                deferred
+                pendingFile={pendingFiles[tab.key]}
+                onFileSelected={(file) => setPendingFiles((p) => ({ ...p, [tab.key]: file }))}
+                onChange={(key) => setDocs((d) => ({ ...d, [tab.key]: key }))}
+              />
+            </Tabs.Content>
+          ))}
+        </Tabs.Root>
+
+        {error && (
+          <p className="mt-3 text-sm text-destructive flex items-center gap-1.5">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {error}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+            {submitted ? "Close" : "Cancel"}
+          </Button>
+          {!submitted && vendor.status !== "in_review" && (
+            <Button type="button" onClick={handleSave} disabled={loading}>
+              {loading ? "Uploading…" : "Submit for Approval"}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
