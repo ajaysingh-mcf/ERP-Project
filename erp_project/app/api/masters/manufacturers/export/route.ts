@@ -18,7 +18,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { query } from "@/lib/db"
 import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
-import { buildCsv, buildXlsx } from "@/lib/export"
+import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { MFG_EXPORT_COLUMNS } from "@/lib/export-configs"
 
 const ROW_LIMIT = 50_000
@@ -50,8 +50,7 @@ export async function GET(req: NextRequest) {
       filterParams
     )
 
-    const date     = new Date().toISOString().split("T")[0]
-    const filename = `manufacturers_${date}.${format}`
+    const filename = buildExportFilename("manufacturers", format, { search: search || null })
 
     if (format === "xlsx") {
       const buffer = await buildXlsx("Manufacturers", MFG_EXPORT_COLUMNS, rows)

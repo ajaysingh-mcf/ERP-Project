@@ -21,7 +21,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { query } from "@/lib/db"
 import { skus as skuSql } from "@/lib/queries/skus"
-import { buildCsv, buildXlsx } from "@/lib/export"
+import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { SKU_EXPORT_COLUMNS } from "@/lib/export-configs"
 
 /** Hard cap on exported rows to prevent out-of-memory on large tables. */
@@ -66,8 +66,7 @@ export async function GET(req: NextRequest) {
     )
 
     // ── Build and return file ─────────────────────────────────────────────────
-    const date     = new Date().toISOString().split("T")[0]
-    const filename = `skus_${date}.${format}`
+    const filename = buildExportFilename("skus", format, { search: search || null, status: status || null })
 
     if (format === "xlsx") {
       const buffer = await buildXlsx("SKUs", SKU_EXPORT_COLUMNS, rows)

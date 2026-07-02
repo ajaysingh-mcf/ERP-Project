@@ -71,6 +71,33 @@ function serializeCell(
   }
 }
 
+// ── Filename builder ─────────────────────────────────────────────────────────
+
+/**
+ * Build an export filename that embeds the current date and any active filter
+ * values so the downloaded file is self-descriptive.
+ *
+ * Example: buildExportFilename("vendors", "csv", { type: "rm", zone: "West" })
+ *          → "vendors_2026-07-02_type-rm_zone-west.csv"
+ *
+ * Rules:
+ *   - Null / empty values are skipped (no suffix emitted for that filter).
+ *   - Values are lower-cased and spaces replaced with hyphens for safe filenames.
+ *   - Key order in the object determines suffix order.
+ */
+export function buildExportFilename(
+  base: string,
+  format: string,
+  filters: Record<string, string | null | undefined>
+): string {
+  const date   = new Date().toISOString().split("T")[0]
+  const suffix = Object.entries(filters)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `_${k}-${v!.toLowerCase().replace(/\s+/g, "-")}`)
+    .join("")
+  return `${base}_${date}${suffix}.${format}`
+}
+
 // ── CSV builder ──────────────────────────────────────────────────────────────
 
 /**

@@ -7,6 +7,7 @@
  *   format — "csv" (default) | "xlsx"
  *   search — searches vendor code and name
  *   type   — "rm" | "pm" | "both"
+ *   zone   — exact zone match
  *
  * Responses:
  *   200  — file attachment
@@ -19,7 +20,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { query } from "@/lib/db"
 import { vendors as vendorSql } from "@/lib/queries/vendors"
-import { buildCsv, buildXlsx } from "@/lib/export"
+import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { VENDOR_EXPORT_COLUMNS } from "@/lib/export-configs"
 
 const ROW_LIMIT = 50_000
@@ -32,8 +33,9 @@ export async function GET(req: NextRequest) {
   const format = sp.get("format") === "xlsx" ? "xlsx" : "csv"
   const search = sp.get("search") ?? ""
   const type   = sp.get("type")   ?? ""
+  const zone   = sp.get("zone")   ?? ""
 
-  const filterParams = vendorSql.filterParams(search || null, type || null)
+  const filterParams = vendorSql.filterParams(search || null, type || null, zone || null)
 
   try {
     const [{ total }] = await query<{ total: number }>(
@@ -52,8 +54,7 @@ export async function GET(req: NextRequest) {
       filterParams
     )
 
-    const date     = new Date().toISOString().split("T")[0]
-    const filename = `vendors_${date}.${format}`
+    const filename = buildExportFilename("vendors", format, { type: type || null, zone: zone || null, search: search || null })
 
     if (format === "xlsx") {
       const buffer = await buildXlsx("Vendors", VENDOR_EXPORT_COLUMNS, rows)

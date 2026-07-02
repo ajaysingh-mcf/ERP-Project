@@ -20,7 +20,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { query } from "@/lib/db"
 import { bom as bomSql } from "@/lib/queries/bom"
-import { buildCsv, buildXlsx } from "@/lib/export"
+import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { BOM_EXPORT_COLUMNS } from "@/lib/export-configs"
 
 const ROW_LIMIT = 50_000
@@ -59,8 +59,7 @@ export async function GET(req: NextRequest) {
       filterParams
     )
 
-    const date     = new Date().toISOString().split("T")[0]
-    const filename = `bom_master_${date}.${format}`
+    const filename = buildExportFilename("bom_master", format, { type: type || null, status: status || null, search: search || null })
 
     if (format === "xlsx") {
       const buffer = await buildXlsx("BOM Master", BOM_EXPORT_COLUMNS, rows)

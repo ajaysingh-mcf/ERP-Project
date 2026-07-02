@@ -69,6 +69,8 @@ export default function VendorsClient({
   pageSize,
   currentSearch,
   currentType,
+  currentZone,
+  zones,
 }: {
   rows: Vendor[]
   total: number
@@ -76,6 +78,8 @@ export default function VendorsClient({
   pageSize: number
   currentSearch: string
   currentType: string
+  currentZone: string
+  zones: string[]
 }) {
   const router       = useRouter()
   const pathname     = usePathname()
@@ -96,7 +100,7 @@ export default function VendorsClient({
     router.push(`${pathname}?${params.toString()}`)
   }
 
-  const hasFilters = currentSearch || currentType
+  const hasFilters = currentSearch || currentType || currentZone
   // router.refresh() re-runs the server page with the SAME URL, keeping page + filters.
   const refresh    = () => router.refresh()
 
@@ -122,6 +126,19 @@ export default function VendorsClient({
           <option value="both">Both</option>
         </select>
 
+        <select
+          value={currentZone || "all"}
+          onChange={(e) =>
+            navigate({ zone: e.target.value === "all" ? "" : e.target.value })
+          }
+          className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <option value="all">All Zones</option>
+          {zones.map((z) => (
+            <option key={z} value={z}>{z}</option>
+          ))}
+        </select>
+
         <MasterToolbarActions>
           <DownloadButton
             endpoint="/api/masters/vendors/export"
@@ -145,7 +162,7 @@ export default function VendorsClient({
             {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => navigate({ search: "", type: "" })}
+                onClick={() => navigate({ search: "", type: "", zone: "" })}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters

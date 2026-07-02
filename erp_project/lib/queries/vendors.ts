@@ -34,6 +34,10 @@ export const vendors = {
    *   like — '%search%' or null (used three times: null-check + code LIKE + name LIKE)
    *   type — 'rm'|'pm'|'both' or null
    */
+  /**
+   * Paginated vendor list with optional search + type + zone filter.
+   * Params: [like, like, like, type, type, zone, zone, LIMIT, OFFSET]
+   */
   selectPaginated: `
     SELECT
       vd.vendor_id, vd.location, vd.status,
@@ -43,14 +47,14 @@ export const vendors = {
     JOIN master_vendors v ON vd.vendor_id = v.id
     WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
       AND (? IS NULL OR v.type = ?)
+      AND (? IS NULL OR vd.zone = ?)
     ORDER BY v.code ASC
     LIMIT ? OFFSET ?
   `,
 
   /**
    * Fetch ALL matching vendors for export (no LIMIT/OFFSET).
-   * Same WHERE clause as selectPaginated.
-   * Params: [like, like, like, type, type]
+   * Params: [like, like, like, type, type, zone, zone]
    */
   selectAllFiltered: `
     SELECT
@@ -60,12 +64,13 @@ export const vendors = {
     JOIN master_vendors v ON vd.vendor_id = v.id
     WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
       AND (? IS NULL OR v.type = ?)
+      AND (? IS NULL OR vd.zone = ?)
     ORDER BY v.code ASC
   `,
 
   /**
    * Matching COUNT for selectPaginated (same WHERE, no LIMIT/OFFSET).
-   * Params: [like, like, like, type, type]
+   * Params: [like, like, like, type, type, zone, zone]
    */
   countAll: `
     SELECT COUNT(*) AS total
@@ -73,6 +78,14 @@ export const vendors = {
     JOIN master_vendors v ON vd.vendor_id = v.id
     WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
       AND (? IS NULL OR v.type = ?)
+      AND (? IS NULL OR vd.zone = ?)
+  `,
+
+  /** Distinct non-null zones for the filter dropdown. */
+  selectDistinctZones: `
+    SELECT DISTINCT zone FROM details_vendor
+    WHERE zone IS NOT NULL AND zone != ''
+    ORDER BY zone ASC
   `,
 
   // ============ INSERT QUERIES ============
@@ -145,12 +158,12 @@ export const vendors = {
    * Centralises the repeated-param pattern so callers never have to count repetitions.
    *
    * Usage:
-   *   const fp = vendors.filterParams(search, type)
+   *   const fp = vendors.filterParams(search, type, zone)
    *   paginate(vendors.selectPaginated, [...fp, limit, offset], vendors.countAll, fp, ...)
    */
-  filterParams(search: string | null, type: string | null): unknown[] {
+  filterParams(search: string | null, type: string | null, zone: string | null): unknown[] {
     const like = search ? `%${search}%` : null
-    return [like, like, like, type, type]
+    return [like, like, like, type, type, zone, zone]
   },
 
 }

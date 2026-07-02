@@ -38,18 +38,21 @@ export default async function VendorsPage({
   const { page, size, offset } = parsePaginationParams(sp)
   const search     = String(sp.search ?? "")
   const typeFilter = String(sp.type   ?? "")
+  const zoneFilter = String(sp.zone   ?? "")
 
-  const fp = vendors.filterParams(search || null, typeFilter || null)
+  const fp = vendors.filterParams(search || null, typeFilter || null, zoneFilter || null)
 
   const pageStart = performance.now()
-  console.log(`[AUDIT] Vendors load - page=${page}, size=${size}, search=${search || "none"}, type=${typeFilter || "all"}`)
+  console.log(`[AUDIT] Vendors load - page=${page}, size=${size}, search=${search || "none"}, type=${typeFilter || "all"}, zone=${zoneFilter || "all"}`)
 
-  const [rows, countRows] = await Promise.all([
+  const [rows, countRows, zoneRows] = await Promise.all([
     timedQuery<Vendor>(vendors.selectPaginated, [...fp, size, offset], { label: "selectPaginated" }),
     timedQuery<{ total: number }>(vendors.countAll, fp, { label: "countAll" }),
+    timedQuery<{ zone: string }>(vendors.selectDistinctZones, [], { label: "selectDistinctZones" }),
   ])
 
   const total = Number(countRows[0]?.total ?? 0)
+  const zones = zoneRows.map((r) => r.zone)
   console.log(`[AUDIT] Vendors complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
   return (
@@ -65,6 +68,8 @@ export default async function VendorsPage({
         pageSize={size}
         currentSearch={search}
         currentType={typeFilter}
+        currentZone={zoneFilter}
+        zones={zones}
       />
     </div>
   )

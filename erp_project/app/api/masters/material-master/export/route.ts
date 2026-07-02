@@ -23,7 +23,7 @@ import { auth } from "@/lib/auth"
 import { query } from "@/lib/db"
 import { rawMaterials as rmSql }                from "@/lib/queries/raw-materials"
 import { packingMaterials as pmSql }            from "@/lib/queries/packing-materials"
-import { buildCsv, buildXlsx }                 from "@/lib/export"
+import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { RM_BASE_EXPORT_COLUMNS, PM_BASE_EXPORT_COLUMNS } from "@/lib/export-configs"
 
 const ROW_LIMIT = 50_000
@@ -61,8 +61,7 @@ export async function GET(req: NextRequest) {
 
     const rows = await query<Record<string, unknown>>(dataSql, filterParams)
 
-    const date     = new Date().toISOString().split("T")[0]
-    const filename = `material_master_${typeLabel}_${date}.${format}`
+    const filename = buildExportFilename(`material_master_${typeLabel}`, format, { search: search || null, status: status || null })
 
     if (format === "xlsx") {
       const buffer = await buildXlsx(sheetName, columns, rows)

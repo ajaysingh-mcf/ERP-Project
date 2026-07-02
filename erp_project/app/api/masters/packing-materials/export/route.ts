@@ -22,7 +22,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { query } from "@/lib/db"
 import { packingMaterials as pmSql } from "@/lib/queries/packing-materials"
-import { buildCsv, buildXlsx } from "@/lib/export"
+import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { PM_VENDOR_EXPORT_COLUMNS, PM_MFG_EXPORT_COLUMNS } from "@/lib/export-configs"
 
 const ROW_LIMIT = 50_000
@@ -60,8 +60,7 @@ export async function GET(req: NextRequest) {
 
     const rows = await query<Record<string, unknown>>(dataSql, filterParams)
 
-    const date     = new Date().toISOString().split("T")[0]
-    const filename = `packing_materials_${viewLabel}_${date}.${format}`
+    const filename = buildExportFilename(`packing_materials_${viewLabel}`, format, { search: search || null, status: status || null })
 
     if (format === "xlsx") {
       const buffer = await buildXlsx(sheetName, columns, rows)
