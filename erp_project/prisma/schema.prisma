@@ -282,13 +282,17 @@ model details_sku {
 }
 
 model details_vendor {
-  id              Int                    @id @default(autoincrement())
-  vendor_id       Int
-  location        String?                @db.VarChar(200)
-  status          details_vendor_status? @default(active)
-  zone            String?                @db.VarChar(50)
-  registered_name String?                @db.VarChar(100)
-  master_vendors  master_vendors         @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "details_vendor_ibfk_1")
+  id                   Int                    @id @default(autoincrement())
+  vendor_id            Int
+  location             String?                @db.VarChar(200)
+  status               details_vendor_status? @default(active)
+  zone                 String?                @db.VarChar(50)
+  registered_name      String?                @db.VarChar(100)
+  gst_certificate_key  String?                @db.Text
+  cancelled_cheque_key String?                @db.Text
+  pan_card_key         String?                @db.Text
+  misc_document_key    String?                @db.Text
+  master_vendors       master_vendors         @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "details_vendor_ibfk_1")
 
   @@index([vendor_id], map: "vendor_id")
 }

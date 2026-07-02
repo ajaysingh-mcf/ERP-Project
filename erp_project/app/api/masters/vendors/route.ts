@@ -43,7 +43,7 @@ export const POST = withGateway({
     if (body.action === "create") {
       const name = body.name.trim()
       const type = body.type.trim()
-      const { location, zone, registered_name } = body
+      const { location, zone, registered_name, gst_certificate_key, cancelled_cheque_key, pan_card_key, misc_document_key } = body
 
       const eventId = `vendor-new-${Date.now()}`
       const logCtx = { ...ctx, eventId, module: "VEN_Create" }
@@ -90,6 +90,10 @@ export const POST = withGateway({
           ["location", location?.trim() || ""],
           ["zone", zone?.trim() || ""],
           ["registered_name", registered_name?.trim() || ""],
+          ["gst_certificate_key",  gst_certificate_key  ?? ""],
+          ["cancelled_cheque_key", cancelled_cheque_key ?? ""],
+          ["pan_card_key",         pan_card_key         ?? ""],
+          ["misc_document_key",    misc_document_key    ?? ""],
         ]
         for (const [field, newVal] of newFields) {
           if (newVal) {
@@ -350,6 +354,83 @@ export const POST = withGateway({
         recordFailedEvent("VENDOR_BULK", eventId, { source: "s3", s3Key: key }, err.message)
         logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Vendor bulk insert failed" })
         throw new ApiError(500, "internal", "Import failed: " + err.message)
+      } finally {
+        conn.release()
+      }
+    }
+
+    // ── update_docs (document approval flow) ────────────────────────────────────
+    if (body.action === "update_docs") {
+      const { vendor_id, gst_certificate_key, cancelled_cheque_key, pan_card_key, misc_document_key } = body
+      const vendorId = Number(vendor_id)
+
+      const eventId = `vendor-docs-${Date.now()}`
+      const logCtx = { ...ctx, eventId, module: "VENDOR_DOCS" }
+
+      const pending = await query(approvalsSql.hasPending, ["VENDOR", vendorId])
+      if (pending.length > 0) {
+        logger.warn({ ...logCtx, vendorId, message: "Update blocked due to pending approval" })
+        throw new ApiError(
+          409,
+          "pending_approval",
+          "This vendor has a pending approval. Wait for it to be resolved before uploading documents."
+        )
+      }
+
+      recordRawEvent("VENDOR_DOCS", eventId, { vendorId })
+      logger.info({ ...logCtx, vendorId, message: "Vendor docs update started." })
+
+      const conn = await pool.getConnection()
+      await conn.beginTransaction()
+      try {
+        const [rows] = await conn.execute(vendors.selectById, [vendorId])
+        const current = (rows as any[])[0]
+
+        if (!current) {
+          await conn.rollback()
+          logger.warn({ ...logCtx, vendorId, message: "Vendor not found" })
+          throw new ApiError(404, "not_found", "Vendor not found")
+        }
+
+        const proposed: Record<string, string | null> = {
+          gst_certificate_key:  gst_certificate_key  ?? null,
+          cancelled_cheque_key: cancelled_cheque_key ?? null,
+          pan_card_key:         pan_card_key         ?? null,
+          misc_document_key:    misc_document_key    ?? null,
+        }
+        const diff = Object.entries(proposed).filter(
+          ([k, v]) => String(current[k] ?? "") !== String(v ?? "")
+        )
+
+        if (diff.length === 0) {
+          await conn.rollback()
+          return NextResponse.json({ ok: true, message: "No changes detected" })
+        }
+
+        const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "VENDOR", vendorId])
+        const approvalId = (approvalResult as any).insertId
+
+        for (const [field, newVal] of diff) {
+          await conn.execute(approvalsSql.insertApprovalItem, [
+            approvalId,
+            field,
+            String(current[field] ?? ""),
+            String(newVal ?? ""),
+          ])
+        }
+
+        await conn.execute(vendors.setStatus, ["in_review", vendorId])
+        await conn.commit()
+
+        logger.info({ ...logCtx, vendorId, approvalId, message: "Vendor documents submitted for approval" })
+        recordProcessedEvent("VENDOR_DOCS", eventId, { vendorId, approvalId })
+        return NextResponse.json({ ok: true, approval_id: approvalId })
+      } catch (err: any) {
+        await conn.rollback()
+        recordFailedEvent("VENDOR_DOCS", eventId, { vendor_id: String(vendorId) }, err.message)
+        if (err instanceof ApiError) throw err
+        logger.error({ ...logCtx, vendorId, err: err.message, stack: err.stack, message: "Vendor docs update failed" })
+        throw new ApiError(500, "internal", "Database error")
       } finally {
         conn.release()
       }

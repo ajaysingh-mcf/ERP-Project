@@ -37,16 +37,17 @@ import {
   MasterToolbarActions,
 } from "@/components/masters/MasterToolbar"
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
-import { AddRecordDialog } from "@/components/masters/AddRecordDialog"
 import { DownloadButton } from "@/components/masters/DownloadButton"
 import type { MasterField } from "@/components/masters/field-config"
 import type { Vendor } from "@/types/masters"
 import { useState } from "react"
-import { Pencil } from "lucide-react"
+import { FileText, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EditVendorDialog } from "./EditVendorDialog"
-// Common fields shared by the Add form and the CSV importer.
-const VENDOR_COMMON_FIELDS: MasterField[] = [
+import { AddVendorDialog } from "./AddVendorDialog"
+import { VendorDocumentsDialog } from "./VendorDocumentsDialog"
+// Common fields shared by the CSV importer.
+const VENDOR_CSV_FIELDS: MasterField[] = [
   { key: "name",            label: "Name",            required: true, placeholder: "Vendor name",      sample: "Acme Pvt Ltd" },
   {
     key: "type", label: "Type", type: "select", required: true, default: "rm", colSpan: 2, sample: "rm",
@@ -60,11 +61,6 @@ const VENDOR_COMMON_FIELDS: MasterField[] = [
   { key: "location",        label: "Location",        placeholder: "e.g. Mumbai",           sample: "Mumbai" },
   { key: "zone",            label: "Zone",            placeholder: "e.g. West",             sample: "West" },
 ]
-
-// `code` is auto-generated server-side on both single-record create AND bulk
-// import (VEN-<serial>-<XX>), so it's never collected from the user.
-const VENDOR_FIELDS: MasterField[] = VENDOR_COMMON_FIELDS
-const VENDOR_CSV_FIELDS: MasterField[] = VENDOR_COMMON_FIELDS
 
 export default function VendorsClient({
   rows,
@@ -85,6 +81,7 @@ export default function VendorsClient({
   const pathname     = usePathname()
   const searchParams = useSearchParams()
   const [editVendor, setEditVendor] = useState<Vendor | null>(null)
+  const [docsVendor, setDocsVendor] = useState<Vendor | null>(null)
   /**
    * Merge one or more key/value overrides into the current URL params,
    * reset page to 1, then navigate. Empty-string values delete the param.
@@ -137,12 +134,7 @@ export default function VendorsClient({
             fields={VENDOR_CSV_FIELDS}
             onSuccess={refresh}
           />
-          <AddRecordDialog
-            entityLabel="Vendor"
-            endpoint="/api/masters/vendors"
-            fields={VENDOR_FIELDS}
-            onSuccess={refresh}
-          />
+          <AddVendorDialog onSuccess={refresh} />
         </MasterToolbarActions>
       </MasterToolbar>
 
@@ -172,7 +164,7 @@ export default function VendorsClient({
                 <TableHead>Location</TableHead>
                 <TableHead>Zone</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-12">Actions</TableHead>
+                <TableHead className="w-20">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -208,15 +200,25 @@ export default function VendorsClient({
                       )}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setEditVendor(row)}
-                        disabled={row.status === "in_review"}
-                        title={row.status === "in_review" ? "Pending approval — cannot edit" : "Edit"}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setEditVendor(row)}
+                          disabled={row.status === "in_review"}
+                          title={row.status === "in_review" ? "Pending approval — cannot edit" : "Edit"}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setDocsVendor(row)}
+                          title="Documents"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -232,6 +234,11 @@ export default function VendorsClient({
         vendor={editVendor}
         onSuccess={refresh}
         onClose={() => setEditVendor(null)}
+      />
+      <VendorDocumentsDialog
+        vendor={docsVendor}
+        onSuccess={refresh}
+        onClose={() => setDocsVendor(null)}
       />
     </>
   )
