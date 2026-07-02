@@ -2,9 +2,9 @@
 // Split a raised PO into N child POs across (optionally different) manufacturers.
 //
 // Parent PO closing rules (qty is NEVER mutated — it matches the email already sent):
-//   splitTotal >= remaining → received_qty += splitTotal  →  status = 'short_closed'
-//   splitTotal <  remaining → received_qty += splitTotal  →  status unchanged
-//                             (remaining bar shrinks; original mfg fulfils leftover)
+//   remaining after split <= tolerance (min(100, 10% of qty)) → status = 'received'
+//   remaining after split >  tolerance → status unchanged (remaining bar shrinks)
+//   short_closed is set manually only (for intentional early closure with large remainder)
 
 import { NextResponse } from "next/server"
 import type { PoolConnection } from "mysql2/promise"
@@ -101,14 +101,19 @@ export const POST = withGateway({
       const newReceivedQty = Number(po.received_qty ?? 0) + splitTotal
       const newRemaining   = Number(po.qty) - newReceivedQty
 
+      // Tolerance: min(100 units, 10% of original qty)
+      // If remaining falls within tolerance, consider PO fully received.
+      const originalQty = Number(po.qty)
+      const tolerance   = Math.min(100, Math.floor(originalQty * 0.10))
+
       let splitType: "full" | "partial"
-      if (newRemaining <= 0) {
+      if (newRemaining <= tolerance) {
         splitType = "full"
-        await conn.execute(purchaseOrdersSql.setStatus, ["short_closed", poId])
-        logger.info({ ...logCtx, parentPoId: poId, newReceivedQty, message: "Full split — parent short_closed" })
+        await conn.execute(purchaseOrdersSql.setStatus, ["received", poId])
+        logger.info({ ...logCtx, parentPoId: poId, newReceivedQty, newRemaining, tolerance, message: "Split within tolerance — parent marked received" })
       } else {
         splitType = "partial"
-        logger.info({ ...logCtx, parentPoId: poId, newReceivedQty, newRemaining, message: "Partial split — parent status unchanged" })
+        logger.info({ ...logCtx, parentPoId: poId, newReceivedQty, newRemaining, tolerance, message: "Partial split — parent status unchanged" })
       }
 
       await conn.commit()

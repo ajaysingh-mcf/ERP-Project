@@ -29,14 +29,17 @@ export default function AddPODialog({
   const [submitting, setSubmitting] = useState(false)
   const [apiError, setApiError]     = useState("")
 
+  const today = new Date().toISOString().slice(0, 10)
+  const defaultDest = warehouseOptions.find((w) => w.type === "MWH")?.name ?? ""
+
   useEffect(() => {
     if (open) {
       setPoType("normal")
-      setForm(EMPTY_FORM)
+      setForm({ ...EMPTY_FORM, destination: defaultDest })
       setErrors({})
       setApiError("")
     }
-  }, [open])
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function set(field: keyof ImpromptuForm, value: string) {
     setForm((f) => ({ ...f, [field]: value }))
@@ -46,10 +49,14 @@ export default function AddPODialog({
 
   function validate() {
     const e: Partial<Record<keyof ImpromptuForm, string>> = {}
-    if (!form.sku_code)                     e.sku_code    = "SKU is required."
-    if (!form.mfg_id)                       e.mfg_id      = "Manufacturer is required."
-    if (!form.qty || Number(form.qty) <= 0) e.qty         = "Enter a valid quantity."
-    if (!form.expected_on)                  e.expected_on = "Expected dispatch date is required."
+    if (!form.sku_code)                        e.sku_code    = "SKU is required."
+    if (!form.mfg_id)                          e.mfg_id      = "Manufacturer is required."
+    if (!form.qty || Number(form.qty) <= 0)    e.qty         = "Enter a valid quantity."
+    if (!form.expected_on)                     e.expected_on = "Expected dispatch date is required."
+    if (form.expected_on && form.expected_on < today)
+                                               e.expected_on = "Backdating is not allowed. Select today or a future date."
+    if (poType === "impromptu" && !form.reason.trim())
+                                               e.reason      = "Remarks are required for Impromptu POs."
     return e
   }
 
@@ -59,17 +66,21 @@ export default function AddPODialog({
 
     setSubmitting(true)
     try {
+      const unitPrice  = form.unit_price ? Number(form.unit_price) : undefined
+      const totalAmt   = unitPrice && Number(form.qty) ? unitPrice * Number(form.qty) : undefined
       const res = await fetch("/api/purchase-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          po_type: poType,
-          mfg_id: Number(form.mfg_id),
-          sku_code: form.sku_code,
-          qty: Number(form.qty),
-          expected_on: form.expected_on,
-          destination: form.destination || undefined,
-          reason: form.reason.trim() || undefined,
+          po_type:      poType,
+          mfg_id:       Number(form.mfg_id),
+          sku_code:     form.sku_code,
+          qty:          Number(form.qty),
+          unit_price:   unitPrice,
+          total_amount: totalAmt,
+          expected_on:  form.expected_on,
+          destination:  form.destination || undefined,
+          reason:       form.reason.trim() || undefined,
         }),
       })
       const data = await res.json()
@@ -135,7 +146,7 @@ export default function AddPODialog({
             {errors.mfg_id && <p className="text-xs text-destructive">{errors.mfg_id}</p>}
           </div>
 
-          {/* Quantity + Expected Dispatch */}
+          {/* Quantity + Rate */}
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="apo-qty">PO Quantity <span className="text-destructive">*</span></Label>
@@ -146,16 +157,26 @@ export default function AddPODialog({
               {errors.qty && <p className="text-xs text-destructive">{errors.qty}</p>}
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="apo-dispatch">Expected Dispatch <span className="text-destructive">*</span></Label>
+              <Label htmlFor="apo-rate">Rate per Unit (₹)</Label>
               <Input
-                id="apo-dispatch" type="date"
-                value={form.expected_on} onChange={(e) => set("expected_on", e.target.value)}
+                id="apo-rate" type="number" min={0} step="0.0001" placeholder="e.g. 12.50"
+                value={form.unit_price} onChange={(e) => set("unit_price", e.target.value)}
               />
-              {errors.expected_on && <p className="text-xs text-destructive">{errors.expected_on}</p>}
             </div>
           </div>
 
-          {/* Destination */}
+          {/* Expected Dispatch — no backdating */}
+          <div className="grid gap-1.5">
+            <Label htmlFor="apo-dispatch">Expected Dispatch <span className="text-destructive">*</span></Label>
+            <Input
+              id="apo-dispatch" type="date"
+              min={today}
+              value={form.expected_on} onChange={(e) => set("expected_on", e.target.value)}
+            />
+            {errors.expected_on && <p className="text-xs text-destructive">{errors.expected_on}</p>}
+          </div>
+
+          {/* Destination — defaults to Mother Warehouse */}
           <div className="grid gap-1.5">
             <Label htmlFor="apo-dest">Destination Warehouse</Label>
             <select id="apo-dest" value={form.destination} onChange={(e) => set("destination", e.target.value)} className={selectCls}>
@@ -168,14 +189,18 @@ export default function AddPODialog({
             </select>
           </div>
 
-          {/* Reason */}
+          {/* Reason — mandatory only for Impromptu */}
           <div className="grid gap-1.5">
-            <Label htmlFor="apo-reason">Reason / Notes</Label>
+            <Label htmlFor="apo-reason">
+              Reason / Notes
+              {poType === "impromptu" && <span className="text-destructive"> *</span>}
+            </Label>
             <Textarea
               id="apo-reason" rows={2}
               placeholder="Why is this PO being raised? Any special instructions…"
               value={form.reason} onChange={(e) => set("reason", e.target.value)}
             />
+            {errors.reason && <p className="text-xs text-destructive">{errors.reason}</p>}
           </div>
 
           {apiError && <p className="text-sm text-destructive">{apiError}</p>}
@@ -186,7 +211,10 @@ export default function AddPODialog({
             <input
               type="checkbox"
               checked={poType === "impromptu"}
-              onChange={(e) => setPoType(e.target.checked ? "impromptu" : "normal")}
+              onChange={(e) => {
+                setPoType(e.target.checked ? "impromptu" : "normal")
+                setErrors({})
+              }}
               className="h-3.5 w-3.5 rounded accent-amber-500"
             />
             <span className="text-xs text-muted-foreground">

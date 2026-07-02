@@ -3,7 +3,7 @@ import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
-import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
+import { purchaseOrdersSql, buildFilterParams, buildStatusCountParams } from "@/lib/queries/purchase-orders"
 import type { PoRow } from "./po-types"
 import PoProcurementClient from "./PoProcurementClient"
 
@@ -20,24 +20,32 @@ export default async function PoProcurementPage({
   const access = await resolveAccess(userId, session.user.roles, "/po-tracking")
   if (access === "none") redirect("/auth/unauthorized")
 
-  const sp           = await searchParams
+  const sp              = await searchParams
   const { page, size, offset } = parsePaginationParams(sp)
-  const search       = String(sp.search ?? "")
-  const statusFilter = String(sp.status ?? "")
+  const search          = String(sp.search      ?? "")
+  const statusFilter    = String(sp.status      ?? "")
+  const sortBy          = String(sp.sortBy      ?? "date")
+  const sortDir         = (String(sp.sortDir    ?? "desc") === "asc" ? "asc" : "desc") as "asc" | "desc"
+  const mfgCode         = String(sp.mfgCode     ?? "")
+  const poType          = String(sp.poType      ?? "")
+  const dateFrom        = String(sp.dateFrom    ?? "")
+  const dateTo          = String(sp.dateTo      ?? "")
+  const skuFilter       = String(sp.sku         ?? "")
+  const destFilter      = String(sp.destination ?? "")
 
-  const like   = search       ? `%${search}%`  : null
-  const status = statusFilter ? statusFilter    : null
+  const status = statusFilter || null
 
-  const searchParams6 = [like, like, like, like, like, like]
+  const filterParams      = buildFilterParams(search || null, status, mfgCode || null, poType || null, dateFrom || null, dateTo || null, skuFilter || null, destFilter || null)
+  const statusCountParams = buildStatusCountParams(search || null, mfgCode || null, poType || null, dateFrom || null, dateTo || null, skuFilter || null, destFilter || null)
 
   const pageStart = performance.now()
-  console.log(`[AUDIT] PO Procurement load - page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
+  console.log(`[AUDIT] PO Procurement load - page=${page}, size=${size}, search=${search || "none"}, status=${status ?? "all"}, sortBy=${sortBy}, sortDir=${sortDir}`)
 
   const [rows, countRows, statusCountRows, summaryRows, skus, mfgs, warehouses] = await Promise.all([
-    timedQuery<PoRow>(purchaseOrdersSql.selectPaginated, [...searchParams6, status, status, size, offset], { label: "selectPaginated" }),
-    timedQuery<{ total: number }>(purchaseOrdersSql.countPaginated, [...searchParams6, status, status], { label: "countPaginated" }),
-    timedQuery<{ status: string; cnt: number }>(purchaseOrdersSql.statusCounts, searchParams6, { label: "statusCounts" }),
-    timedQuery<any>(purchaseOrdersSql.summaryStats, searchParams6, { label: "summaryStats" }),
+    timedQuery<PoRow>(purchaseOrdersSql.buildSelectPaginated(sortBy, sortDir), [...filterParams, size, offset], { label: "selectPaginated" }),
+    timedQuery<{ total: number }>(purchaseOrdersSql.countPaginated, filterParams, { label: "countPaginated" }),
+    timedQuery<{ status: string; cnt: number }>(purchaseOrdersSql.statusCounts, statusCountParams, { label: "statusCounts" }),
+    timedQuery<any>(purchaseOrdersSql.summaryStats, statusCountParams, { label: "summaryStats" }),
     timedQuery<any>(purchaseOrdersSql.skuOptions, [], { label: "skuOptions" }),
     timedQuery<any>(purchaseOrdersSql.mfgOptions, [], { label: "mfgOptions" }),
     timedQuery<any>(purchaseOrdersSql.warehouseOptions, [], { label: "warehouseOptions" }),
@@ -46,8 +54,9 @@ export default async function PoProcurementPage({
   const total = Number(countRows[0]?.total ?? 0)
   console.log(`[AUDIT] PO Procurement complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
-  const statusCounts: Record<string, number> = { all: total }
+  const statusCounts: Record<string, number> = {}
   for (const r of statusCountRows) statusCounts[r.status] = Number(r.cnt)
+  statusCounts.all = Object.values(statusCounts).reduce((sum, n) => sum + n, 0)
 
   const s = summaryRows[0] ?? {}
   const summary = {
@@ -73,6 +82,14 @@ export default async function PoProcurementPage({
         pageSize={size}
         currentSearch={search}
         currentStatus={statusFilter}
+        currentSortBy={sortBy}
+        currentSortDir={sortDir}
+        currentMfgCode={mfgCode}
+        currentPoType={poType}
+        currentDateFrom={dateFrom}
+        currentDateTo={dateTo}
+        currentSku={skuFilter}
+        currentDestination={destFilter}
         statusCounts={statusCounts}
         summary={summary}
         skuOptions={skus}

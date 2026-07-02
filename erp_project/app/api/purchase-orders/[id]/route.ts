@@ -27,11 +27,19 @@ export async function PUT(
   if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
 
   const body = await req.json()
-  const { mfg_id, sku_code, qty, expected_on, destination, reason } = body
+  const { mfg_id, sku_code, qty, unit_price, total_amount, expected_on, destination, reason } = body
 
   if (!mfg_id)                  return NextResponse.json({ error: "Manufacturer is required." }, { status: 400 })
   if (!sku_code)                 return NextResponse.json({ error: "SKU is required." }, { status: 400 })
   if (!qty || Number(qty) <= 0) return NextResponse.json({ error: "Quantity must be greater than 0." }, { status: 400 })
+
+  // No backdating on expected dispatch
+  if (expected_on) {
+    const today = new Date().toISOString().slice(0, 10)
+    if (expected_on < today) {
+      return NextResponse.json({ error: "Backdating is not allowed for expected dispatch date." }, { status: 400 })
+    }
+  }
 
   // Verify SKU is active
   const skuRows = await query<{ status: string }>(skusSql.selectStatusByCode, [sku_code])
@@ -76,9 +84,12 @@ export async function PUT(
   const conn: PoolConnection = await pool.getConnection()
   await conn.beginTransaction()
   try {
+    const unitPrice   = unit_price   != null && unit_price   !== "" ? Number(unit_price)   : null
+    const totalAmount = total_amount != null && total_amount !== "" ? Number(total_amount) : null
+
     // Update PO fields
     await conn.execute(purchaseOrdersSql.updateDraft, [
-      Number(mfg_id), sku_code, Number(qty), expected_on || null, destination || null, poId,
+      Number(mfg_id), sku_code, Number(qty), unitPrice, totalAmount, expected_on || null, destination || null, poId,
     ])
 
     // Fetch MFG details for readable diff
@@ -98,9 +109,8 @@ export async function PUT(
       ["expected_on",  "", expected_on || ""],
       ["destination",  "", destination || ""],
     ]
-    if (reason?.trim()) {
-      diffItems.push(["reason", "", reason.trim()])
-    }
+    if (unitPrice != null)  diffItems.push(["unit_price", "", String(unitPrice)])
+    if (reason?.trim())     diffItems.push(["reason",     "", reason.trim()])
     for (const [field, oldVal, newVal] of diffItems) {
       await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, oldVal, newVal])
     }

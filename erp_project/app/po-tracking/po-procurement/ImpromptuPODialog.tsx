@@ -24,30 +24,36 @@ export default function ImpromptuPODialog({
 }) {
   const isEdit = !!editData
 
-  const [form, setForm]           = useState<ImpromptuForm>(EMPTY_FORM)
-  const [errors, setErrors]       = useState<Partial<Record<keyof ImpromptuForm, string>>>({})
+  const [form, setForm]             = useState<ImpromptuForm>(EMPTY_FORM)
+  const [errors, setErrors]         = useState<Partial<Record<keyof ImpromptuForm, string>>>({})
   const [submitting, setSubmitting] = useState(false)
-  const [apiError, setApiError]   = useState("")
+  const [apiError, setApiError]     = useState("")
+
+  const today = new Date().toISOString().slice(0, 10)
+
+  // Default destination to the first Mother Warehouse (MWH).
+  const defaultDest = warehouseOptions.find((w) => w.type === "MWH")?.name ?? ""
 
   useEffect(() => {
     if (!open) return
     if (editData) {
       setForm({
-        sku_code: editData.sku_code ?? "",
-        mfg_id: String(editData.mfg_id),
-        qty: String(editData.qty),
+        sku_code:   editData.sku_code ?? "",
+        mfg_id:     String(editData.mfg_id),
+        qty:        String(editData.qty),
+        unit_price: editData.unit_price != null ? String(editData.unit_price) : "",
         expected_on: editData.expected_on
           ? new Date(editData.expected_on).toISOString().slice(0, 10)
           : "",
-        destination: editData.destination ?? "",
+        destination: editData.destination ?? defaultDest,
         reason: "",
       })
     } else {
-      setForm(EMPTY_FORM)
+      setForm({ ...EMPTY_FORM, destination: defaultDest })
     }
     setErrors({})
     setApiError("")
-  }, [open, editData])
+  }, [open, editData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function set(field: keyof ImpromptuForm, value: string) {
     setForm((f) => ({ ...f, [field]: value }))
@@ -57,10 +63,13 @@ export default function ImpromptuPODialog({
 
   function validate() {
     const e: Partial<Record<keyof ImpromptuForm, string>> = {}
-    if (!form.sku_code)                     e.sku_code    = "SKU is required."
-    if (!form.mfg_id)                       e.mfg_id      = "Manufacturer is required."
-    if (!form.qty || Number(form.qty) <= 0) e.qty         = "Enter a valid quantity."
-    if (!form.expected_on)                  e.expected_on = "Expected dispatch date is required."
+    if (!form.sku_code)                        e.sku_code    = "SKU is required."
+    if (!form.mfg_id)                          e.mfg_id      = "Manufacturer is required."
+    if (!form.qty || Number(form.qty) <= 0)    e.qty         = "Enter a valid quantity."
+    if (!form.expected_on)                     e.expected_on = "Expected dispatch date is required."
+    if (form.expected_on && form.expected_on < today)
+                                               e.expected_on = "Backdating is not allowed. Select today or a future date."
+    if (!form.reason.trim())                   e.reason      = "Remarks are required for Impromptu POs."
     return e
   }
 
@@ -70,13 +79,17 @@ export default function ImpromptuPODialog({
 
     setSubmitting(true)
     try {
+      const unitPrice  = form.unit_price ? Number(form.unit_price) : undefined
+      const totalAmt   = unitPrice && Number(form.qty) ? unitPrice * Number(form.qty) : undefined
       const payload = {
-        mfg_id: Number(form.mfg_id),
-        sku_code: form.sku_code,
-        qty: Number(form.qty),
-        expected_on: form.expected_on,
-        destination: form.destination || undefined,
-        reason: form.reason.trim() || undefined,
+        mfg_id:       Number(form.mfg_id),
+        sku_code:     form.sku_code,
+        qty:          Number(form.qty),
+        unit_price:   unitPrice,
+        total_amount: totalAmt,
+        expected_on:  form.expected_on,
+        destination:  form.destination || undefined,
+        reason:       form.reason.trim(),
       }
       const res = isEdit
         ? await fetch(`/api/purchase-orders/${editData!.id}`, {
@@ -153,7 +166,7 @@ export default function ImpromptuPODialog({
             {errors.mfg_id && <p className="text-xs text-destructive">{errors.mfg_id}</p>}
           </div>
 
-          {/* Quantity + Expected Dispatch */}
+          {/* Quantity + Rate */}
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="ipo-qty">PO Quantity <span className="text-destructive">*</span></Label>
@@ -164,16 +177,26 @@ export default function ImpromptuPODialog({
               {errors.qty && <p className="text-xs text-destructive">{errors.qty}</p>}
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="ipo-dispatch">Expected Dispatch <span className="text-destructive">*</span></Label>
+              <Label htmlFor="ipo-rate">Rate per Unit (₹)</Label>
               <Input
-                id="ipo-dispatch" type="date"
-                value={form.expected_on} onChange={(e) => set("expected_on", e.target.value)}
+                id="ipo-rate" type="number" min={0} step="0.0001" placeholder="e.g. 12.50"
+                value={form.unit_price} onChange={(e) => set("unit_price", e.target.value)}
               />
-              {errors.expected_on && <p className="text-xs text-destructive">{errors.expected_on}</p>}
             </div>
           </div>
 
-          {/* Destination */}
+          {/* Expected Dispatch — no backdating */}
+          <div className="grid gap-1.5">
+            <Label htmlFor="ipo-dispatch">Expected Dispatch <span className="text-destructive">*</span></Label>
+            <Input
+              id="ipo-dispatch" type="date"
+              min={today}
+              value={form.expected_on} onChange={(e) => set("expected_on", e.target.value)}
+            />
+            {errors.expected_on && <p className="text-xs text-destructive">{errors.expected_on}</p>}
+          </div>
+
+          {/* Destination — defaults to Mother Warehouse */}
           <div className="grid gap-1.5">
             <Label htmlFor="ipo-dest">Destination Warehouse</Label>
             <select id="ipo-dest" value={form.destination} onChange={(e) => set("destination", e.target.value)} className={selectCls}>
@@ -186,14 +209,17 @@ export default function ImpromptuPODialog({
             </select>
           </div>
 
-          {/* Reason */}
+          {/* Remarks — mandatory for Impromptu POs */}
           <div className="grid gap-1.5">
-            <Label htmlFor="ipo-reason">Reason / Notes</Label>
+            <Label htmlFor="ipo-reason">
+              Remarks <span className="text-destructive">*</span>
+            </Label>
             <Textarea
               id="ipo-reason" rows={2}
               placeholder="Why is this PO being raised? Any special instructions…"
               value={form.reason} onChange={(e) => set("reason", e.target.value)}
             />
+            {errors.reason && <p className="text-xs text-destructive">{errors.reason}</p>}
           </div>
 
           {apiError && <p className="text-sm text-destructive">{apiError}</p>}

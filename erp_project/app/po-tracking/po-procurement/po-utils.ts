@@ -14,6 +14,12 @@ export const fmtMoney = (v: string | number | null | undefined) => {
 export const fmtDate = (d: string | null | undefined) =>
   d ? new Date(d).toLocaleDateString("en-CA") : "—"
 
+export const fmtRate = (v: string | number | null | undefined) => {
+  const n = num(v)
+  if (n === 0) return "—"
+  return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
+}
+
 export const isImpromptu = (po_no: string) => po_no.startsWith("IMP-")
 
 export function getPageNumbers(current: number, total: number): (number | "…")[] {

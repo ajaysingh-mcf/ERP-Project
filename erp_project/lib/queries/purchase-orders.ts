@@ -4,109 +4,140 @@
  * Real table: purchase_orders
  * Columns: id, po_no, mfg_id, date, sku_code, bom_id, qty, unit_price,
  *          total_amount, expected_on, received_qty, invoice_no, status,
- *          po_type, email_sent_at, attachment_key
+ *          po_type, email_sent_at, attachment_key, csv_source_key, destination
  */
+
+// ── Shared WHERE fragment (all filters) ──────────────────────────────────────
+// Params (20): [like×6, status×2, mfgCode×2, poType×2, dateFrom×2, dateTo×2, sku×2, destination×2]
+const FULL_WHERE = `
+  WHERE (? IS NULL OR po.po_no LIKE ? OR m.code LIKE ? OR m.name LIKE ? OR po.sku_code LIKE ? OR sk.name LIKE ?)
+    AND (? IS NULL OR po.status      = ?)
+    AND (? IS NULL OR m.code         = ?)
+    AND (? IS NULL OR po.po_type     = ?)
+    AND (? IS NULL OR po.date       >= ?)
+    AND (? IS NULL OR po.date       <= ?)
+    AND (? IS NULL OR po.sku_code    = ?)
+    AND (? IS NULL OR po.destination = ?)
+`
+
+// Params (18): [like×6, mfgCode×2, poType×2, dateFrom×2, dateTo×2, sku×2, destination×2]
+// Used by statusCounts and summaryStats which ignore the status filter.
+const SUMMARY_WHERE = `
+  WHERE (? IS NULL OR po.po_no LIKE ? OR m.code LIKE ? OR m.name LIKE ? OR po.sku_code LIKE ? OR sk.name LIKE ?)
+    AND (? IS NULL OR m.code         = ?)
+    AND (? IS NULL OR po.po_type     = ?)
+    AND (? IS NULL OR po.date       >= ?)
+    AND (? IS NULL OR po.date       <= ?)
+    AND (? IS NULL OR po.sku_code    = ?)
+    AND (? IS NULL OR po.destination = ?)
+`
+
+const FROM_JOINS = `
+  FROM purchase_orders po
+  INNER JOIN master_mfgs m  ON m.id        = po.mfg_id
+  LEFT  JOIN master_skus sk ON sk.sku_code = po.sku_code
+`
+
+const SELECT_COLS = `
+  SELECT
+    po.id, po.po_no, po.date, po.sku_code, po.qty, po.unit_price,
+    po.total_amount, po.expected_on, po.received_qty, po.invoice_no,
+    po.destination, po.status, po.po_type, po.attachment_key,
+    po.csv_source_key, po.email_sent_at,
+    m.id   AS mfg_id, m.code AS mfg_code, m.name AS mfg_name,
+    sk.name   AS sku_name, sk.status AS sku_status,
+    (SELECT raised_by FROM approvals WHERE module = 'PO' AND entity_id = po.id ORDER BY id DESC LIMIT 1) AS po_raised_by,
+    (SELECT email FROM details_mfg WHERE mfg_id = m.id LIMIT 1) AS mfg_email
+`
+
+const SAFE_SORT_COLS: Record<string, string> = {
+  date:         "po.date",
+  po_no:        "po.po_no",
+  mfg_name:     "m.name",
+  sku_code:     "po.sku_code",
+  qty:          "po.qty",
+  unit_price:   "po.unit_price",
+  total_amount: "po.total_amount",
+  expected_on:  "po.expected_on",
+  status:       "po.status",
+}
 
 export const purchaseOrdersSql = {
   /** All POs joined with manufacturer name, SKU name, and who originally raised each PO. */
   selectAll: `
-    SELECT
-      po.id, po.po_no, po.date, po.sku_code, po.qty, po.unit_price,
-      po.total_amount, po.expected_on, po.received_qty, po.invoice_no, po.destination, po.status, po.po_type,
-      po.attachment_key, po.csv_source_key, po.email_sent_at,
-      m.id   AS mfg_id, m.code AS mfg_code, m.name AS mfg_name, sk.name   AS sku_name, sk.status AS sku_status,
-      (SELECT raised_by FROM approvals WHERE module = 'PO' AND entity_id = po.id ORDER BY id DESC LIMIT 1) AS po_raised_by,
-      (SELECT email FROM details_mfg WHERE mfg_id = m.id LIMIT 1) AS mfg_email
-    FROM purchase_orders po
-    INNER JOIN master_mfgs m  ON m.id        = po.mfg_id
-    LEFT  JOIN master_skus sk ON sk.sku_code = po.sku_code
+    ${SELECT_COLS}
+    ${FROM_JOINS}
     ORDER BY po.date DESC, po.id DESC
   `,
 
   /**
-   * Paginated PO list with search + status filter.
-   * Params: [like×6, status, status, LIMIT, OFFSET]
-   * like = '%term%' or null (null disables the search filter)
-   * status = 'raised' etc. or null (null = all statuses)
+   * Paginated PO list with all filters.
+   * Use buildSelectPaginated(sortBy, sortDir) to get the sorted variant.
+   * Params: buildFilterParams(...) + [LIMIT, OFFSET]  (20 + 2 = 22 total)
    */
-  selectPaginated: `
-    SELECT
-      po.id, po.po_no, po.date, po.sku_code, po.qty, po.unit_price,
-      po.total_amount, po.expected_on, po.received_qty, po.invoice_no,
-      po.destination, po.status, po.po_type, po.attachment_key,
-      po.csv_source_key, po.email_sent_at,
-      m.id   AS mfg_id, m.code AS mfg_code, m.name AS mfg_name,
-      sk.name   AS sku_name, sk.status AS sku_status,
-      (SELECT raised_by FROM approvals WHERE module = 'PO' AND entity_id = po.id ORDER BY id DESC LIMIT 1) AS po_raised_by,
-      (SELECT email FROM details_mfg WHERE mfg_id = m.id LIMIT 1) AS mfg_email
-    FROM purchase_orders po
-    INNER JOIN master_mfgs m  ON m.id        = po.mfg_id
-    LEFT  JOIN master_skus sk ON sk.sku_code = po.sku_code
-    WHERE (? IS NULL OR po.po_no LIKE ? OR m.code LIKE ? OR m.name LIKE ? OR po.sku_code LIKE ? OR sk.name LIKE ?)
-      AND (? IS NULL OR po.status = ?)
-    ORDER BY po.date DESC, po.id DESC
-    LIMIT ? OFFSET ?
-  `,
+  buildSelectPaginated(sortBy = "date", sortDir: "asc" | "desc" = "desc"): string {
+    const col = SAFE_SORT_COLS[sortBy] ?? "po.date"
+    const dir = sortDir === "asc" ? "ASC" : "DESC"
+    return `
+      ${SELECT_COLS}
+      ${FROM_JOINS}
+      ${FULL_WHERE}
+      ORDER BY ${col} ${dir}, po.id ${dir}
+      LIMIT ? OFFSET ?
+    `
+  },
 
-  /** COUNT matching the selectPaginated WHERE. Params: [like×6, status, status] */
+  /** COUNT matching the full WHERE. Params: buildFilterParams(...)  (20 total) */
   countPaginated: `
     SELECT COUNT(*) AS total
-    FROM purchase_orders po
-    INNER JOIN master_mfgs m  ON m.id        = po.mfg_id
-    LEFT  JOIN master_skus sk ON sk.sku_code = po.sku_code
-    WHERE (? IS NULL OR po.po_no LIKE ? OR m.code LIKE ? OR m.name LIKE ? OR po.sku_code LIKE ? OR sk.name LIKE ?)
-      AND (? IS NULL OR po.status = ?)
+    ${FROM_JOINS}
+    ${FULL_WHERE}
   `,
 
-  /** Per-status counts for tab badges (search-filtered, ignores status param). Params: [like×6] */
+  /** Per-status counts for tab badges (ignores status param). Params: buildStatusCountParams(...)  (18 total) */
   statusCounts: `
     SELECT po.status, COUNT(*) AS cnt
-    FROM purchase_orders po
-    INNER JOIN master_mfgs m  ON m.id        = po.mfg_id
-    LEFT  JOIN master_skus sk ON sk.sku_code = po.sku_code
-    WHERE (? IS NULL OR po.po_no LIKE ? OR m.code LIKE ? OR m.name LIKE ? OR po.sku_code LIKE ? OR sk.name LIKE ?)
+    ${FROM_JOINS}
+    ${SUMMARY_WHERE}
     GROUP BY po.status
   `,
 
-  /** Summary stats for the cards (search-filtered, ignores status param). Params: [like×6] */
+  /** Summary stats for the cards (ignores status param). Params: buildStatusCountParams(...)  (14 total) */
   summaryStats: `
     SELECT
       COUNT(*) AS total,
-      SUM(po.status = 'raised') AS raised,
-      SUM(po.status = 'punched') AS punched,
+      SUM(po.status = 'raised')             AS raised,
+      SUM(po.status = 'punched')            AS punched,
       SUM(po.status = 'partially_received') AS partially_received,
-      SUM(CASE WHEN po.status NOT IN ('received','cancelled') THEN COALESCE(po.total_amount,0) ELSE 0 END) AS open_value
-    FROM purchase_orders po
-    INNER JOIN master_mfgs m  ON m.id        = po.mfg_id
-    LEFT  JOIN master_skus sk ON sk.sku_code = po.sku_code
-    WHERE (? IS NULL OR po.po_no LIKE ? OR m.code LIKE ? OR m.name LIKE ? OR po.sku_code LIKE ? OR sk.name LIKE ?)
+      SUM(CASE WHEN po.status NOT IN ('received','cancelled')
+               THEN COALESCE(po.total_amount, 0) ELSE 0 END) AS open_value
+    ${FROM_JOINS}
+    ${SUMMARY_WHERE}
   `,
 
-  /** Count of impromptu POs (identified by IMP- prefix) — kept for historical reporting. */
-  countImpromptu: `
-    SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE 'IMP-%'
-  `,
-
-  /** Count of normal POs (PO- prefix) — kept for historical reporting. */
-  countNormal: `
-    SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE 'PO-%'
-  `,
-
-  /** Count POs matching a brand+type+month prefix — used for brand-scoped PO number generation. Parameters: ['MCA-PO-202606-%'] */
+  /** Count of POs with a given po_no prefix — used for brand-scoped PO number generation. Parameters: ['MCA-PO-202606-%'] */
   countByPrefix: `
     SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE ?
   `,
 
-  /** Insert an impromptu PO as draft (pending approval). Parameters: [po_no, mfg_id, sku_code, qty, expected_on, po_type, destination] */
+  /**
+   * Insert an impromptu PO as draft (pending approval).
+   * Parameters: [po_no, mfg_id, sku_code, qty, unit_price, total_amount, expected_on, po_type, destination]
+   */
   insert: `
-    INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, po_type, destination)
-    VALUES (?, ?, CURDATE(), ?, ?, ?, 'draft', ?, ?)
+    INSERT INTO purchase_orders
+      (po_no, mfg_id, date, sku_code, qty, unit_price, total_amount, expected_on, status, po_type, destination)
+    VALUES (?, ?, CURDATE(), ?, ?, ?, ?, ?, 'draft', ?, ?)
   `,
 
-  /** Insert a normal PO directly as raised (no approval needed). Parameters: [po_no, mfg_id, sku_code, qty, expected_on, destination] */
+  /**
+   * Insert a normal PO directly as raised (no approval needed).
+   * Parameters: [po_no, mfg_id, sku_code, qty, unit_price, total_amount, expected_on, destination]
+   */
   insertNormal: `
-    INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, po_type, destination)
-    VALUES (?, ?, CURDATE(), ?, ?, ?, 'raised', 'normal', ?)
+    INSERT INTO purchase_orders
+      (po_no, mfg_id, date, sku_code, qty, unit_price, total_amount, expected_on, status, po_type, destination)
+    VALUES (?, ?, CURDATE(), ?, ?, ?, ?, ?, 'raised', 'normal', ?)
   `,
 
   /** Set status on a purchase_orders row. Parameters: [status, id] */
@@ -127,7 +158,7 @@ export const purchaseOrdersSql = {
     WHERE po.id = ? LIMIT 1
   `,
 
-  /** Lightweight SKU list for the Impromptu PO dropdown (includes status for blocking non-active SKUs). */
+  /** Lightweight SKU list for the Impromptu PO dropdown. */
   skuOptions: `
     SELECT id, sku_code, name, status
     FROM master_skus
@@ -135,7 +166,7 @@ export const purchaseOrdersSql = {
     ORDER BY sku_code ASC
   `,
 
-  /** All active warehouses for the Split PO destination dropdown. */
+  /** All warehouses for the destination dropdown. */
   warehouseOptions: `
     SELECT id, name, location, zone, type
     FROM master_warehouse
@@ -175,15 +206,24 @@ export const purchaseOrdersSql = {
     VALUES (?, ?, CURDATE(), ?, ?, ?, ?, ?)
   `,
 
-  /** Insert a PO directly as 'raised' for the bulk CSV approval flow. Parameters: [po_no, mfg_id, sku_code, qty, expected_on, destination, csv_source_key] */
+  /**
+   * Insert a PO directly as 'raised' for the bulk CSV flow.
+   * Parameters: [po_no, mfg_id, sku_code, qty, expected_on, destination, csv_source_key]
+   */
   insertBulkPo: `
-    INSERT INTO purchase_orders (po_no, mfg_id, date, sku_code, qty, expected_on, status, po_type, destination, csv_source_key)
+    INSERT INTO purchase_orders
+      (po_no, mfg_id, date, sku_code, qty, expected_on, status, po_type, destination, csv_source_key)
     VALUES (?, ?, CURDATE(), ?, ?, ?, 'raised', 'normal', ?, ?)
   `,
 
-  /** Update editable fields on a PO (draft/raised/punched). Parameters: [mfg_id, sku_code, qty, expected_on, destination, id] */
+  /**
+   * Update editable fields on a draft PO.
+   * Parameters: [mfg_id, sku_code, qty, unit_price, total_amount, expected_on, destination, id]
+   */
   updateDraft: `
-    UPDATE purchase_orders SET mfg_id = ?, sku_code = ?, qty = ?, expected_on = ?, destination = ?
+    UPDATE purchase_orders
+    SET mfg_id = ?, sku_code = ?, qty = ?, unit_price = ?, total_amount = ?,
+        expected_on = ?, destination = ?
     WHERE id = ?
   `,
 
@@ -212,4 +252,58 @@ export const purchaseOrdersSql = {
     WHERE po.id = ?
     LIMIT 1
   `,
+}
+
+// ── Filter parameter helpers ──────────────────────────────────────────────────
+
+/**
+ * Build the 20-element param array for selectPaginated / countPaginated.
+ * All-null values disable the corresponding filter.
+ */
+export function buildFilterParams(
+  search:      string | null,
+  status:      string | null,
+  mfgCode:     string | null,
+  poType:      string | null,
+  dateFrom:    string | null,
+  dateTo:      string | null,
+  sku:         string | null,
+  destination: string | null,
+): unknown[] {
+  const like = search ? `%${search}%` : null
+  return [
+    like, like, like, like, like, like, // search ×6
+    status,      status,                // status ×2
+    mfgCode,     mfgCode,               // mfgCode ×2
+    poType,      poType,                // poType ×2
+    dateFrom,    dateFrom,              // dateFrom ×2
+    dateTo,      dateTo,                // dateTo ×2
+    sku,         sku,                   // sku ×2
+    destination, destination,           // destination ×2
+  ]
+}
+
+/**
+ * Build the 18-element param array for statusCounts / summaryStats
+ * (same as buildFilterParams but without the status filter pair).
+ */
+export function buildStatusCountParams(
+  search:      string | null,
+  mfgCode:     string | null,
+  poType:      string | null,
+  dateFrom:    string | null,
+  dateTo:      string | null,
+  sku:         string | null,
+  destination: string | null,
+): unknown[] {
+  const like = search ? `%${search}%` : null
+  return [
+    like, like, like, like, like, like, // search ×6
+    mfgCode,     mfgCode,               // mfgCode ×2
+    poType,      poType,                // poType ×2
+    dateFrom,    dateFrom,              // dateFrom ×2
+    dateTo,      dateTo,                // dateTo ×2
+    sku,         sku,                   // sku ×2
+    destination, destination,           // destination ×2
+  ]
 }

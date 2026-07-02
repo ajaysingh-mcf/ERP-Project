@@ -37,7 +37,7 @@ export type BadgeVariant = "default" | "secondary" | "success" | "warning" | "de
 export const STATUS_CONFIG: Record<string, { label: string; variant: BadgeVariant }> = {
   draft:              { label: "Draft",               variant: "outline" },
   raised:             { label: "Raised",              variant: "secondary" },
-  punched:            { label: "Punched",             variant: "default" },
+  punched:            { label: "Inward POs",           variant: "default" },
   short_closed:       { label: "Short Closed",        variant: "warning" },
   partially_received: { label: "Partially Received",  variant: "warning" },
   received:           { label: "Received",            variant: "success" },
@@ -50,11 +50,11 @@ export type TabKey = (typeof TABS)[number]
 
 export const PAGE_SIZE = 20
 
-
 export type ImpromptuForm = {
   sku_code: string
   mfg_id: string
   qty: string
+  unit_price: string
   expected_on: string
   destination: string
   reason: string
@@ -65,12 +65,13 @@ export type EditData = {
   mfg_id: number
   sku_code: string
   qty: number | string
+  unit_price: number | string | null
   expected_on: string | null
   destination: string | null
 }
 
 export const EMPTY_FORM: ImpromptuForm = {
-  sku_code: "", mfg_id: "", qty: "", expected_on: "", destination: "", reason: "",
+  sku_code: "", mfg_id: "", qty: "", unit_price: "", expected_on: "", destination: "", reason: "",
 }
 
 export type SplitRow = { destination: string; qty: string }
