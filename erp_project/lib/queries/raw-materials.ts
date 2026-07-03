@@ -12,6 +12,14 @@ export const rawMaterials = {
     FROM master_rm ORDER BY name
   `,
 
+  /** Active raw materials only — used to populate the BOM wizard's RM picker. */
+  selectActive: `
+    SELECT id, rm_code, name, uom, status
+    FROM master_rm
+    WHERE status = 'active'
+    ORDER BY name
+  `,
+
   /**
    * Get all raw materials grouped by manufacturer
    * Used in RawMaterialsPage manufacturer view

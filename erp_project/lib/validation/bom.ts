@@ -1,0 +1,78 @@
+import { z } from "zod"
+
+// Route param for /api/masters/bom-master/[id]
+export const bomIdParamSchema = z.object({
+  id: z.coerce.number().int().positive("Invalid BOM id"),
+})
+
+export type BomIdParam = z.infer<typeof bomIdParamSchema>
+
+// RM percentages must total within this tolerance of 100%. Exported so the
+// wizard's client-side running-total banner uses the exact same bounds as the
+// server-side gate — single source of truth for the +/-0.1% rule.
+export const RM_TOTAL_MIN = 99.9
+export const RM_TOTAL_MAX = 100.1
+
+export function isRmTotalValid(total: number): boolean {
+  return total >= RM_TOTAL_MIN && total <= RM_TOTAL_MAX
+}
+
+// One RM or PM line, as entered manually or parsed from the wizard's CSV step.
+// All fields are mandatory except uom/effective_till — every CSV column must
+// be present per the "all CSV fields mandatory" requirement.
+export const bomLineSchema = z.object({
+  mtrl_type: z.enum(["rm", "pm"]),
+  mtrl_id: z.coerce.number().int().positive(),
+  amount: z.coerce.number().positive(), // for rm lines, this IS the % value
+  uom: z.string().trim().min(1).max(20).nullable().optional(),
+  effective_from: z.string().trim().min(1, "effective_from is required"),
+  effective_till: z.string().trim().nullable().optional(),
+})
+
+export const bomCheckExistingSchema = z.object({
+  action: z.literal("check-existing"),
+  sku_id: z.coerce.number().int().positive(),
+})
+
+export const bomCreateFullSchema = z
+  .object({
+    action: z.literal("create-full"),
+    mode: z.enum(["new-version", "update-existing"]),
+    sku_id: z.coerce.number().int().positive(),
+    bom_id: z.coerce.number().int().positive().optional(), // required when mode === "update-existing"
+    bom_code: z.string().trim().min(1).max(50).optional(), // required when mode === "new-version"
+    source: z.enum(["manual", "csv"]),
+    rm_lines: z.array(bomLineSchema).min(1, "At least one RM line is required"),
+    pm_lines: z.array(bomLineSchema),
+  })
+  .superRefine((data, ctx) => {
+    if (data.mode === "update-existing" && !data.bom_id) {
+      ctx.addIssue({ code: "custom", path: ["bom_id"], message: "bom_id is required for update-existing" })
+    }
+    if (data.mode === "new-version" && !data.bom_code) {
+      ctx.addIssue({ code: "custom", path: ["bom_code"], message: "bom_code is required for new-version" })
+    }
+    if (data.rm_lines.some((l) => l.mtrl_type !== "rm")) {
+      ctx.addIssue({ code: "custom", path: ["rm_lines"], message: "rm_lines must all have mtrl_type='rm'" })
+    }
+    if (data.pm_lines.some((l) => l.mtrl_type !== "pm")) {
+      ctx.addIssue({ code: "custom", path: ["pm_lines"], message: "pm_lines must all have mtrl_type='pm'" })
+    }
+    const rmTotal = data.rm_lines.reduce((sum, l) => sum + l.amount, 0)
+    if (!isRmTotalValid(rmTotal)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["rm_lines"],
+        message: `RM percentages must total between ${RM_TOTAL_MIN}% and ${RM_TOTAL_MAX}% (currently ${rmTotal.toFixed(2)}%).`,
+      })
+    }
+  })
+
+export const bomActionSchema = z.discriminatedUnion("action", [
+  bomCheckExistingSchema,
+  bomCreateFullSchema,
+])
+
+export type BomLine = z.infer<typeof bomLineSchema>
+export type BomCreateFull = z.infer<typeof bomCreateFullSchema>
+export type BomAction = z.infer<typeof bomActionSchema>

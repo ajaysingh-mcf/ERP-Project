@@ -197,6 +197,31 @@ export type BOM = {
   effective_till: Date | string | null;
   last_updated: Date | string | null;
   created_by: string | null;
+  mtrl_name: string | null;
+  mtrl_code: string | null;
+};
+
+/** One row per BOM header, used by the BOM Master listing page. */
+export type BomListItem = {
+  bom_id: number | null;
+  bom_code: string | null;
+  sku_code: string | null;
+  sku_name: string | null;
+  created_at: Date | string | null;
+  effective_from: Date | string | null;
+  effective_till: Date | string | null;
+  status: string | null;
+};
+
+/** BOM detail side-panel payload: header + all material lines. */
+export type BomDetailResponse = {
+  bom_id: number | null;
+  bom_code: string | null;
+  sku_id: number | null;
+  sku_code: string | null;
+  status: string | null;
+  created_at: Date | string | null;
+  lines: BOM[];
 };
 
 export type bomType = {

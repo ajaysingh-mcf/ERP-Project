@@ -1,8 +1,9 @@
 /**
  * SERVER component for /masters/bom-master.
  *
- * Reads ?page, ?size, ?search, ?type, ?status from URL searchParams and runs a
+ * Reads ?page, ?size, ?search, ?status from URL searchParams and runs a
  * DB-level LIMIT/OFFSET query so only the requested slice is fetched.
+ * One row per BOM header (see bom.selectPaginatedGrouped).
  */
 
 import { auth } from "@/lib/auth"
@@ -10,8 +11,13 @@ import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
+import { query } from "@/lib/db"
 import { bom } from "@/lib/queries/bom"
-import type { BOM } from "@/types/masters"
+import { skus as skusSql } from "@/lib/queries/skus"
+import { rawMaterials as rmSql } from "@/lib/queries/raw-materials"
+import { packingMaterials as pmSql } from "@/lib/queries/packing-materials"
+import type { BomListItem, Sku } from "@/types/masters"
+import type { BomMaterialOption } from "./BomLineEditorGrid"
 import BOMMasterComponent from "./BOMMasterComponent"
 
 export default async function BOMMasterPage({
@@ -30,25 +36,29 @@ export default async function BOMMasterPage({
   const sp            = await searchParams
   const { page, size, offset } = parsePaginationParams(sp)
   const search        = String(sp.search ?? "")
-  const typeFilter    = String(sp.type   ?? "")
   const statusFilter  = String(sp.status ?? "")
 
   const like   = search       ? `%${search}%` : null
-  const type   = typeFilter   ? typeFilter    : null
   const status = statusFilter ? statusFilter  : null
 
-  // ── DB query (paginated) ───────────────────────────────────────────────────
-  // Param order: [like×3, type×2, status×2, LIMIT, OFFSET] (data)
-  //              [like×3, type×2, status×2]                (count)
+  // ── DB query (paginated, one row per BOM header) ───────────────────────────
+  // Param order: [like×3, status×2, LIMIT, OFFSET] (data)
+  //              [like×3, status×2]                (count)
   const pageStart = performance.now()
-  console.log(`[AUDIT] BOM Master load - page=${page}, size=${size}, search=${search || "none"}, type=${type || "all"}, status=${status || "all"}`)
+  console.log(`[AUDIT] BOM Master load - page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
 
-  const [rows, countRows] = await Promise.all([
-    timedQuery<BOM>(bom.selectPaginated, [like, like, like, type, type, status, status, size, offset], { label: "selectPaginated" }),
-    timedQuery<{ total: number }>(bom.countAll, [like, like, like, type, type, status, status], { label: "countAll" }),
+  const [rows, countRows, skuRows, rmRows, pmRows] = await Promise.all([
+    timedQuery<BomListItem>(bom.selectPaginatedGrouped, [like, like, like, status, status, size, offset], { label: "selectPaginatedGrouped" }),
+    timedQuery<{ total: number }>(bom.countGrouped, [like, like, like, status, status], { label: "countGrouped" }),
+    query<Sku>(skusSql.selectActive, []),
+    query<{ id: number; rm_code: string | null; name: string; uom: string | null }>(rmSql.selectActive, []),
+    query<{ id: number; pm_code: string | null; name: string; uom: string | null }>(pmSql.selectActive, []),
   ])
   const total = Number(countRows[0]?.total ?? 0)
   console.log(`[AUDIT] BOM Master complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
+
+  const rmMaterials: BomMaterialOption[] = rmRows.map((r) => ({ id: r.id, code: r.rm_code, name: r.name, uom: r.uom }))
+  const pmMaterials: BomMaterialOption[] = pmRows.map((r) => ({ id: r.id, code: r.pm_code, name: r.name, uom: r.uom }))
 
   return (
     <div className="p-6">
@@ -64,8 +74,11 @@ export default async function BOMMasterPage({
         page={page}
         pageSize={size}
         currentSearch={search}
-        currentType={typeFilter}
         currentStatus={statusFilter}
+        skus={skuRows}
+        rmMaterials={rmMaterials}
+        pmMaterials={pmMaterials}
+        accessLevel={access}
       />
     </div>
   )

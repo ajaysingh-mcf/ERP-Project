@@ -73,6 +73,12 @@ export const entityLabelSql: Record<string, string> = {
     SELECT u.name AS code, NULL AS name, NULL AS secondary_code, NULL AS secondary_name
     FROM users u WHERE u.id = ? LIMIT 1
   `,
+  BOM: `
+    SELECT b.bom_code AS code, s.sku_code AS name, NULL AS secondary_code, s.name AS secondary_name
+    FROM master_bom b
+    LEFT JOIN master_skus s ON s.id = b.sku_id
+    WHERE b.id = ? LIMIT 1
+  `,
 }
 
 export const approvalsSql = {

@@ -29,6 +29,7 @@ export const MODULE_LABEL: Record<string, string> = {
   MFG: "Manufacturer",
   PO: "Impromptu PO",
   PO_BULK: "Bulk PO Upload",
+  BOM: "BOM",
 }
 
 export const MODULE_COLOR: Record<string, string> = {
@@ -43,6 +44,7 @@ export const MODULE_COLOR: Record<string, string> = {
   MFG: "bg-amber-50 text-amber-700 border-amber-200",
   PO: "bg-yellow-50 text-yellow-700 border-yellow-200",
   PO_BULK: "bg-cyan-50 text-cyan-700 border-cyan-200",
+  BOM: "bg-lime-50 text-lime-700 border-lime-200",
 }
 
 export function getInitials(name: string) {

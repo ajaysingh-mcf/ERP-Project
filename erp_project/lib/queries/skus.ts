@@ -14,6 +14,14 @@ export const skus = {
     ORDER BY sku_code ASC
   `,
 
+  /** Active SKUs only — used to populate the BOM wizard's SKU picker. */
+  selectActive: `
+    SELECT id, sku_code, name, brand, category, status
+    FROM master_skus
+    WHERE status = 'active'
+    ORDER BY sku_code ASC
+  `,
+
   /**
    * Fetch a single SKU by id (used before update to snapshot for history).
    * Parameters: [id]

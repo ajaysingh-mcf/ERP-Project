@@ -1,0 +1,21 @@
+/**
+ * Small formatting/display helpers shared across the BOM master list, detail
+ * panel, and table. Kept dependency-free (no client hooks) so they can be
+ * imported from server or client code alike.
+ */
+
+export function formatDate(val: Date | string | null) {
+  if (!val) return "—"
+  const d = typeof val === "string" ? new Date(val) : val
+  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+}
+
+/** yyyy-mm-dd for <input type="date">. */
+export function formatDateInput(val: Date | string | null) {
+  if (!val) return ""
+  const d = typeof val === "string" ? new Date(val) : val
+  if (Number.isNaN(d.getTime())) return ""
+  return d.toISOString().slice(0, 10)
+}
+
+export const LOCKED_STATUSES = new Set(["in_review", "in review"])

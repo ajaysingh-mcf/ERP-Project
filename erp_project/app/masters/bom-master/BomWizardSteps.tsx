@@ -1,0 +1,267 @@
+"use client"
+
+/**
+ * The five step bodies rendered by BomCreationWizard's dialog. Split out so
+ * the wizard shell only handles dialog chrome, close-confirm, and footer
+ * nav — each step here is pure presentation over useBomWizard's state.
+ */
+
+import { Button } from "@/components/ui/button"
+import { BomLineEditorGrid, rmTotal, type BomLineRow, type BomMaterialOption } from "./BomLineEditorGrid"
+import { CSV_HEADER } from "./bom-csv"
+import type { EntryMethod } from "./useBomWizard"
+import type { Sku } from "@/types/masters"
+
+export function Step1SkuSelect({
+  skus,
+  skuId,
+  loading,
+  onSelect,
+}: {
+  skus: Sku[]
+  skuId: number | null
+  loading: boolean
+  onSelect: (id: number) => void
+}) {
+  return (
+    <div className="space-y-3 py-2">
+      <label className="block text-xs font-medium mb-1">
+        SKU <span className="text-destructive">*</span>
+      </label>
+      <select
+        className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        value={skuId ?? ""}
+        onChange={(e) => e.target.value && onSelect(Number(e.target.value))}
+        disabled={loading}
+      >
+        <option value="">Select SKU…</option>
+        {skus.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.sku_code} — {s.name}
+          </option>
+        ))}
+      </select>
+      {loading && <p className="text-xs text-muted-foreground">Checking for an existing BOM…</p>}
+    </div>
+  )
+}
+
+export function Step2ExistingBom({
+  existingBomCode,
+  onUpdateExisting,
+  onCreateNewVersion,
+}: {
+  existingBomCode: string | null
+  onUpdateExisting: () => void
+  onCreateNewVersion: () => void
+}) {
+  return (
+    <div className="space-y-4 py-2">
+      <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-800 dark:bg-amber-900/20 dark:border-amber-900 dark:text-amber-400">
+        A BOM already exists for this SKU ({existingBomCode}). Would you like to update the
+        existing BOM or create a new version?
+      </div>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <Button variant="outline" size="sm" onClick={onUpdateExisting}>
+          Update Existing BOM
+        </Button>
+        <Button size="sm" onClick={onCreateNewVersion}>
+          Create New BOM Version →
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+export function Step3EntryMethod({ onChoose }: { onChoose: (method: EntryMethod) => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 py-2">
+      <button
+        type="button"
+        onClick={() => onChoose("manual")}
+        className="rounded-lg border border-border p-4 text-left hover:border-primary transition-colors"
+      >
+        <p className="font-medium text-sm">Enter Manually</p>
+        <p className="text-xs text-muted-foreground mt-1">Add RM and PM lines one by one.</p>
+      </button>
+      <button
+        type="button"
+        onClick={() => onChoose("csv")}
+        className="rounded-lg border border-border p-4 text-left hover:border-primary transition-colors"
+      >
+        <p className="font-medium text-sm">Upload CSV</p>
+        <p className="text-xs text-muted-foreground mt-1">Import all RM/PM lines from a file.</p>
+      </button>
+    </div>
+  )
+}
+
+export function Step4LineEntry({
+  bomCode,
+  onChangeBomCode,
+  entryMethod,
+  csvParsed,
+  csvErrors,
+  onCsvFile,
+  rmRows,
+  pmRows,
+  onChangeRm,
+  onChangePm,
+  rmMaterials,
+  pmMaterials,
+}: {
+  bomCode: string
+  onChangeBomCode: (v: string) => void
+  entryMethod: EntryMethod | null
+  csvParsed: boolean
+  csvErrors: string[]
+  onCsvFile: (file: File) => void
+  rmRows: BomLineRow[]
+  pmRows: BomLineRow[]
+  onChangeRm: (rows: BomLineRow[]) => void
+  onChangePm: (rows: BomLineRow[]) => void
+  rmMaterials: BomMaterialOption[]
+  pmMaterials: BomMaterialOption[]
+}) {
+  return (
+    <div className="space-y-4 py-2">
+      <div>
+        <label className="block text-xs font-medium mb-1">
+          BOM Code <span className="text-destructive">*</span>
+        </label>
+        <input
+          type="text"
+          className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          value={bomCode}
+          onChange={(e) => onChangeBomCode(e.target.value)}
+        />
+      </div>
+
+      {entryMethod === "csv" && !csvParsed ? (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Columns required (all mandatory except effective_till):{" "}
+            <code className="text-xs">{CSV_HEADER.join(", ")}</code>
+          </p>
+          <input
+            type="file"
+            accept=".csv"
+            onChange={(e) => e.target.files?.[0] && onCsvFile(e.target.files[0])}
+            className="text-sm"
+          />
+          {csvErrors.length > 0 && (
+            <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive space-y-1 max-h-40 overflow-y-auto">
+              {csvErrors.map((e, i) => <p key={i}>{e}</p>)}
+            </div>
+          )}
+        </div>
+      ) : (
+        <BomLineEditorGrid
+          rmRows={rmRows}
+          pmRows={pmRows}
+          onChangeRm={onChangeRm}
+          onChangePm={onChangePm}
+          rmMaterials={rmMaterials}
+          pmMaterials={pmMaterials}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Step 5's per-line breakdown — resolves each row's material name/code so
+ *  the reviewer sees exactly what's being submitted, not just a line count. */
+function SummaryLineList({
+  title,
+  rows,
+  materials,
+  totalBadge,
+}: {
+  title: string
+  rows: BomLineRow[]
+  materials: BomMaterialOption[]
+  totalBadge?: string
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-muted-foreground">{title} ({rows.length})</p>
+        {totalBadge && (
+          <span className="text-xs font-mono rounded-full px-2 py-0.5 bg-muted text-muted-foreground">
+            {totalBadge}
+          </span>
+        )}
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-2">None added.</p>
+      ) : (
+        <div className="rounded-lg border divide-y">
+          {rows.map((row, i) => {
+            const mat = materials.find((m) => m.id === row.mtrl_id)
+            return (
+              <div key={i} className="flex items-center justify-between gap-3 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{mat?.name ?? `ID ${row.mtrl_id ?? "—"}`}</p>
+                  <p className="text-xs text-muted-foreground font-mono">{mat?.code ?? "—"}</p>
+                </div>
+                <p className="text-sm font-semibold shrink-0 tabular-nums">
+                  {row.amount || "—"}
+                  {row.uom ? <span className="text-muted-foreground font-normal ml-1 text-xs uppercase">{row.uom}</span> : null}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function Step5Review({
+  skus,
+  skuId,
+  bomCode,
+  rmRows,
+  pmRows,
+  rmMaterials,
+  pmMaterials,
+}: {
+  skus: Sku[]
+  skuId: number | null
+  bomCode: string
+  rmRows: BomLineRow[]
+  pmRows: BomLineRow[]
+  rmMaterials: BomMaterialOption[]
+  pmMaterials: BomMaterialOption[]
+}) {
+  return (
+    <div className="space-y-4 py-2 text-sm">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <p className="text-xs text-muted-foreground">SKU</p>
+          <p className="font-medium">{skus.find((s) => s.id === skuId)?.sku_code ?? "—"}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">BOM Code</p>
+          <p className="font-mono font-medium">{bomCode}</p>
+        </div>
+      </div>
+
+      <SummaryLineList
+        title="Raw Materials (RM)"
+        rows={rmRows}
+        materials={rmMaterials}
+        totalBadge={`${rmTotal(rmRows).toFixed(2)}%`}
+      />
+      <SummaryLineList
+        title="Packing Materials (PM)"
+        rows={pmRows}
+        materials={pmMaterials}
+      />
+
+      <p className="text-xs text-muted-foreground">
+        Submitting will raise this BOM for approval. It becomes active once approved.
+      </p>
+    </div>
+  )
+}

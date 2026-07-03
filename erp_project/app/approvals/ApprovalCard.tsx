@@ -134,6 +134,101 @@ function FieldDiffGrid({ items }: { items: Approval["items"] }) {
   )
 }
 
+// ── BomLineDiffTable — readable rendering of a BOM's line:<type>:<id>:<field>
+//    flat approval_items (see lib/approvals/module-handlers.ts bomHandler for
+//    the write side). Groups items by material, one row per line, instead of
+//    ~40 raw flat FieldDiffGrid cells. ─────────────────────────────────────────
+
+type BomLineRowDiff = {
+  mtrlType: "rm" | "pm"
+  mtrlId: string
+  removed: boolean
+  fields: Record<string, { old: string; new: string }>
+}
+
+function parseBomApprovalItems(items: Approval["items"]) {
+  const modeItem = items.find((i) => i.field_name === "__mode__")
+  const mode = modeItem?.new_value === "update-existing" ? "update-existing" : "new-version"
+
+  const lineMap = new Map<string, BomLineRowDiff>()
+  for (const it of items) {
+    const m = it.field_name.match(/^line:(rm|pm):(\d+):(.+)$/)
+    if (!m) continue
+    const [, mtrlType, mtrlId, field] = m
+    const key = `${mtrlType}:${mtrlId}`
+    if (!lineMap.has(key)) {
+      lineMap.set(key, { mtrlType: mtrlType as "rm" | "pm", mtrlId, removed: false, fields: {} })
+    }
+    const entry = lineMap.get(key)!
+    if (field === "__removed__") entry.removed = true
+    else entry.fields[field] = { old: it.old_value, new: it.new_value }
+  }
+  return { mode, lines: [...lineMap.values()] }
+}
+
+function BomLineDiffTable({ items }: { items: Approval["items"] }) {
+  const { mode, lines } = parseBomApprovalItems(items)
+  const rmLines = lines.filter((l) => l.mtrlType === "rm")
+  const pmLines = lines.filter((l) => l.mtrlType === "pm")
+
+  function renderLine(line: BomLineRowDiff) {
+    if (line.removed) {
+      return (
+        <div key={`${line.mtrlType}:${line.mtrlId}`} className="rounded-md border border-border bg-background p-3 opacity-60">
+          <p className="text-xs line-through text-muted-foreground">
+            Line removed: {line.mtrlType.toUpperCase()} #{line.mtrlId}
+          </p>
+        </div>
+      )
+    }
+    return (
+      <div key={`${line.mtrlType}:${line.mtrlId}`} className="rounded-md border border-border bg-background p-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+          {line.mtrlType} #{line.mtrlId}
+        </p>
+        <div className="space-y-1">
+          {Object.entries(line.fields).map(([field, { old: oldVal, new: newVal }]) => (
+            <div key={field} className="flex items-center gap-1.5 text-xs">
+              <span className="w-24 shrink-0 text-muted-foreground capitalize">{field.replace(/_/g, " ")}</span>
+              <span className="flex-1 min-w-0 rounded bg-red-50 border border-red-100 px-2 py-0.5 text-red-700 font-medium truncate">
+                {oldVal || "—"}
+              </span>
+              <span className="shrink-0 text-muted-foreground font-mono">→</span>
+              <span className="flex-1 min-w-0 rounded bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-emerald-700 font-medium truncate">
+                {newVal || "—"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <Badge variant="secondary" className="text-[10px]">
+        {mode === "new-version" ? "New Version" : "Update Existing"}
+      </Badge>
+      {rmLines.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+            RM ({rmLines.length})
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{rmLines.map(renderLine)}</div>
+        </div>
+      )}
+      {pmLines.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+            PM ({pmLines.length})
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{pmLines.map(renderLine)}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── EntityInfo ────────────────────────────────────────────────────────────────
 
 function EntityInfo({ approval }: { approval: Approval }) {
@@ -188,6 +283,7 @@ export default function ApprovalCard({
 }) {
   const moduleColor = MODULE_COLOR[approval.module] ?? "bg-slate-50 text-slate-700 border-slate-200"
   const isBulk      = approval.module === "PO_BULK"
+  const isBom       = approval.module === "BOM"
 
   return (
     <div className={`rounded-xl border border-border bg-card overflow-hidden transition-all ${isExpanded ? "ring-1 ring-primary/20 shadow-sm" : ""}`}>
@@ -238,7 +334,7 @@ export default function ApprovalCard({
       {isExpanded && (
         <div className="border-t border-border bg-muted/20 px-5 py-4">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            {isBulk ? "Uploaded File" : "Field Changes"}
+            {isBulk ? "Uploaded File" : isBom ? "Formulation Changes" : "Field Changes"}
           </p>
           {isBulk ? (
             <CsvFileCard
@@ -247,6 +343,8 @@ export default function ApprovalCard({
               openingFileFor={openingFileFor}
               onOpen={onOpenCsvFile}
             />
+          ) : isBom ? (
+            <BomLineDiffTable items={approval.items} />
           ) : (
             <FieldDiffGrid items={approval.items} />
           )}

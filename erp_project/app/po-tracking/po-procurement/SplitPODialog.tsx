@@ -166,7 +166,7 @@ export default function SplitPODialog({
         <div className="space-y-2 m-2">
           {rows.map((row, i) => (
             <div key={i} className="flex items-center gap-2">
-              <span className="w-5 text-center text-xs text-muted-foreground flex-shrink-0">{i + 1}</span>
+              <span className="w-5 text-center text-xs text-muted-foreground shrink">{i + 1}</span>
               <select
                 value={row.destination}
                 onChange={(e) => setRow(i, "destination", e.target.value)}

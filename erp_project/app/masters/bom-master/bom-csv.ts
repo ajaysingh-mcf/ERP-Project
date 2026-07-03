@@ -1,0 +1,78 @@
+/**
+ * CSV import parsing for BomCreationWizard's Step 4 "Upload CSV" entry
+ * method. Pure function, no client hooks, so it's easy to unit test in
+ * isolation from the wizard's UI state.
+ */
+
+import type { BomLineRow, BomMaterialOption } from "./BomLineEditorGrid"
+
+export const CSV_HEADER = ["mtrl_type", "mtrl_code", "amount", "uom", "effective_from", "effective_till"]
+
+export function parseBomCsv(
+  text: string,
+  rmMaterials: BomMaterialOption[],
+  pmMaterials: BomMaterialOption[]
+): { rows: BomLineRow[]; errors: string[] } {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0)
+  if (lines.length === 0) return { rows: [], errors: ["The file is empty."] }
+
+  const header = lines[0].split(",").map((h) => h.trim().toLowerCase())
+  const missingCols = CSV_HEADER.filter((c) => !header.includes(c))
+  if (missingCols.length > 0) {
+    return { rows: [], errors: [`Missing required column(s): ${missingCols.join(", ")}.`] }
+  }
+
+  const colIndex = Object.fromEntries(CSV_HEADER.map((c) => [c, header.indexOf(c)]))
+  const rows: BomLineRow[] = []
+  const errors: string[] = []
+
+  lines.slice(1).forEach((line, i) => {
+    const rowNum = i + 2 // account for header + 1-index
+    const cells = line.split(",").map((c) => c.trim())
+    const mtrlType = cells[colIndex.mtrl_type]?.toLowerCase()
+    const mtrlCode = cells[colIndex.mtrl_code]
+    const amountRaw = cells[colIndex.amount]
+    const uom = cells[colIndex.uom]
+    const effectiveFrom = cells[colIndex.effective_from]
+    const effectiveTill = cells[colIndex.effective_till] || ""
+
+    if (mtrlType !== "rm" && mtrlType !== "pm") {
+      errors.push(`Row ${rowNum}: mtrl_type must be "rm" or "pm" (got "${mtrlType}").`)
+      return
+    }
+    if (!mtrlCode) {
+      errors.push(`Row ${rowNum}: mtrl_code is required.`)
+      return
+    }
+    const materials = mtrlType === "rm" ? rmMaterials : pmMaterials
+    const material = materials.find((m) => m.code?.toLowerCase() === mtrlCode.toLowerCase())
+    if (!material) {
+      errors.push(`Row ${rowNum}: no ${mtrlType.toUpperCase()} material found with code "${mtrlCode}".`)
+      return
+    }
+    const amount = Number(amountRaw)
+    if (!amountRaw || !Number.isFinite(amount) || amount <= 0) {
+      errors.push(`Row ${rowNum}: amount must be a positive number (got "${amountRaw}").`)
+      return
+    }
+    if (!uom) {
+      errors.push(`Row ${rowNum}: uom is required.`)
+      return
+    }
+    if (!effectiveFrom) {
+      errors.push(`Row ${rowNum}: effective_from is required.`)
+      return
+    }
+
+    rows.push({
+      mtrl_type: mtrlType,
+      mtrl_id: material.id,
+      amount: String(amount),
+      uom,
+      effective_from: effectiveFrom,
+      effective_till: effectiveTill,
+    })
+  })
+
+  return { rows, errors }
+}

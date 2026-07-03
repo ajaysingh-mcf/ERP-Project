@@ -20,6 +20,7 @@ import { packingMaterials as pmSql } from "@/lib/queries/packing-materials"
 import { vendors as vendorSql } from "@/lib/queries/vendors"
 import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
+import { bom as bomSql } from "@/lib/queries/bom"
 import { getFileBuffer } from "@/lib/s3"
 import { recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 import { STATUS } from "@/lib/constants"
@@ -456,6 +457,107 @@ const poBulkHandler: ModuleHandler = {
   },
 }
 
+// ── BOM (spans master_bom + details_bom + history_bom) ────────────────────────
+//
+// One handler covers both "create new version" and "update existing in place",
+// since both converge on the same master_bom.status lifecycle. The mode and the
+// full RM/PM line diff are encoded as flat approval_items rows (see
+// app/api/masters/bom-master/route.ts for how they're written at submit time):
+//   - a "__mode__" sentinel item: new_value is "new-version" | "update-existing"
+//   - one item per (mtrl_type, mtrl_id, field) tuple: field_name =
+//     "line:<rm|pm>:<mtrl_id>:<field>", e.g. "line:rm:12:amount"
+//   - a dropped line (present before, absent from the new submission) gets a
+//     synthetic "line:<type>:<id>:__removed__" marker (old="1", new="")
+//
+// details_bom rows are only ever written HERE, at approval time, for BOTH
+// modes — never at submit time. This keeps half-approved formulations out of
+// costing/reporting queries that join details_bom with no status filter, and
+// keeps the CURRENT lines of an "update existing" BOM fully live/queryable
+// while its edit is pending.
+
+type BomLineDiff = {
+  mtrlType: "rm" | "pm"
+  mtrlId: number
+  removed: boolean
+  fields: Record<string, string> // field -> new_value
+}
+
+function parseBomLineItems(items: DiffItem[]): { mode: "new-version" | "update-existing"; lines: BomLineDiff[] } {
+  const modeItem = items.find((i) => i.field_name === "__mode__")
+  const mode: "new-version" | "update-existing" =
+    modeItem?.new_value === "update-existing" ? "update-existing" : "new-version"
+
+  const lineMap = new Map<string, BomLineDiff>()
+  for (const it of items) {
+    const m = it.field_name.match(/^line:(rm|pm):(\d+):(.+)$/)
+    if (!m) continue
+    const [, mtrlType, mtrlIdStr, field] = m
+    const key = `${mtrlType}:${mtrlIdStr}`
+    if (!lineMap.has(key)) {
+      lineMap.set(key, { mtrlType: mtrlType as "rm" | "pm", mtrlId: Number(mtrlIdStr), removed: false, fields: {} })
+    }
+    const entry = lineMap.get(key)!
+    if (field === "__removed__") entry.removed = true
+    else entry.fields[field] = it.new_value
+  }
+  return { mode, lines: [...lineMap.values()] }
+}
+
+const bomHandler: ModuleHandler = {
+  async setStatus(conn, entityId, status) {
+    await conn.execute(bomSql.setBomStatus, [status, entityId])
+  },
+
+  async applyAndArchive(conn, entityId, items, approverId) {
+    const { mode, lines } = parseBomLineItems(items)
+
+    const [headerRows] = await conn.execute(bomSql.selectBomHeaderRawById, [entityId])
+    const header = (headerRows as any[])[0]
+    if (!header) throw new Error(`BOM ${entityId} not found`)
+
+    // Current lines, keyed the same way as the diff — used as a fallback for
+    // any field that didn't change (and so has no approval_item), and as the
+    // archival source for "update existing".
+    const [currentRows] = await conn.execute(bomSql.selectDetailLinesRawByBomId, [entityId])
+    const currentByKey = new Map<string, any>(
+      (currentRows as any[]).map((r) => [`${r.mtrl_type}:${r.mtrl_id}`, r])
+    )
+
+    if (mode === "update-existing") {
+      // 1. Snapshot EVERY current line into history_bom before touching anything.
+      for (const cur of currentRows as any[]) {
+        await conn.execute(bomSql.archiveDetailLineToHistory, [
+          cur.bom_id, cur.mtrl_type, cur.mtrl_id, cur.amount, cur.uom, null,
+          cur.effective_from, cur.effective_till, cur.status, cur.updated_by ?? approverId,
+        ])
+      }
+      // 2. Wipe current lines; the new set (minus removed ones) is reinserted below.
+      await conn.execute(bomSql.deleteDetailLinesByBomId, [entityId])
+    }
+
+    for (const line of lines) {
+      if (line.removed) continue // update-existing only: line dropped, don't reinsert
+      const key = `${line.mtrlType}:${line.mtrlId}`
+      const cur = currentByKey.get(key)
+      await conn.execute(bomSql.insertDetailLine, [
+        entityId, line.mtrlType, line.mtrlId,
+        Number(line.fields.amount ?? cur?.amount ?? 0),
+        line.fields.uom ?? cur?.uom ?? null,
+        line.fields.effective_from ?? cur?.effective_from ?? null,
+        line.fields.effective_till ?? cur?.effective_till ?? null,
+        "active", approverId,
+      ])
+    }
+
+    // 3. Activate this BOM and deactivate any other active BOM for the same
+    //    sku_id — enforces "only one active BOM per SKU" at approval time.
+    await conn.execute(bomSql.setBomStatusWithUpdater, [STATUS.ACTIVE, approverId, entityId])
+    if (header.sku_id) {
+      await conn.execute(bomSql.deactivateOtherActiveBomsForSku, [header.sku_id, entityId])
+    }
+  },
+}
+
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 export const MODULE_HANDLERS: Record<string, ModuleHandler> = {
@@ -470,4 +572,5 @@ export const MODULE_HANDLERS: Record<string, ModuleHandler> = {
   MFG:     mfgHandler,
   PO:      poHandler,
   PO_BULK: poBulkHandler,
+  BOM:     bomHandler,
 }

@@ -10,6 +10,14 @@ export const packingMaterials = {
     FROM master_pm ORDER BY name
   `,
 
+  /** Active packing materials only — used to populate the BOM wizard's PM picker. */
+  selectActive: `
+    SELECT id, pm_code, name, uom, status
+    FROM master_pm
+    WHERE status = 'active'
+    ORDER BY name
+  `,
+
    /** Get all Packing material along with vendor details and prices. */
   selectAllByVendor: `
     SELECT
