@@ -1,7 +1,12 @@
 import React from "react"
 import {
-  Document, Page, Text, View, StyleSheet, renderToBuffer,
+  Document, Page, Text, View, StyleSheet, Font, renderToBuffer,
 } from "@react-pdf/renderer"
+
+// react-pdf only wraps text at whitespace by default, so a long unbroken
+// token (e.g. a long PO code) overflows its column into the next one.
+// Allow breaking at any character when a word doesn't fit.
+Font.registerHyphenationCallback((word) => Array.from(word))
 
 export type PoEmailData = {
   po_no: string
