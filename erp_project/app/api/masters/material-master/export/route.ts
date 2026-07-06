@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
     const rows = await query<Record<string, unknown>>(dataSql, filterParams)
 
     const filename = buildExportFilename(`material_master_${typeLabel}`, format, { search: search || null, status: status || null })
+    console.log(`[/api/masters/material-master/export] served ${rows.length} rows as ${format} (material=${typeLabel})`)
 
     if (format === "xlsx") {
       const buffer = await buildXlsx(sheetName, columns, rows)

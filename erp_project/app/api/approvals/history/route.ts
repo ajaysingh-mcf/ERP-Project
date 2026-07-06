@@ -1,0 +1,72 @@
+// GET /api/approvals/history?module=&status=&page=&size=
+// Returns paginated, resolved (approved/rejected) approvals with field-level
+// diff items — the audit trail counterpart to GET /api/approvals (pending).
+// Any authenticated user can view; there is no action endpoint here since
+// history rows are read-only (already actioned).
+
+import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@/lib/auth"
+import { query } from "@/lib/db"
+import { paginate, parsePaginationParams } from "@/lib/pagination"
+import { approvalsSql, entityLabelSql } from "@/lib/queries/approvals"
+import logger from "@/lib/logger"
+
+export async function GET(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user) {
+    logger.warn({ requestId: crypto.randomUUID(), route: "/api/approvals/history", message: "Unauthenticated access attempt" })
+    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
+  }
+
+  const ctx = {
+    requestId: crypto.randomUUID(),
+    userId: session.user.id,
+    route: "/api/approvals/history",
+  }
+  const logCtx = { ...ctx, module: "GET_APPROVAL_HISTORY" }
+
+  const sp = Object.fromEntries(req.nextUrl.searchParams)
+  const { page, size, offset } = parsePaginationParams(sp)
+  const moduleFilter = sp.module || null
+  const statusFilter = sp.status || null
+
+  logger.info({ ...logCtx, page, size, moduleFilter, statusFilter, message: "Fetching approval history started" })
+
+  try {
+    const result = await paginate<any>(
+      approvalsSql.listHistory,
+      [moduleFilter, moduleFilter, statusFilter, statusFilter, size, offset],
+      approvalsSql.countHistory,
+      [moduleFilter, moduleFilter, statusFilter, statusFilter],
+      page,
+      size
+    )
+
+    const approvals = await Promise.all(
+      result.rows.map(async (a) => {
+        const [items, labelRows] = await Promise.all([
+          query<any>(approvalsSql.getItems, [a.id]),
+          entityLabelSql[a.module]
+            ? query<any>(entityLabelSql[a.module], [a.entity_id])
+            : Promise.resolve([]),
+        ])
+        const label = labelRows[0] ?? {}
+        return {
+          ...a,
+          items,
+          entity_code: label.code ?? null,
+          entity_name: label.name ?? null,
+          entity_secondary_code: label.secondary_code ?? null,
+          entity_secondary_name: label.secondary_name ?? null,
+        }
+      })
+    )
+
+    logger.info({ ...logCtx, count: approvals.length, total: result.total, message: "Approval history fetched successfully" })
+
+    return NextResponse.json({ rows: approvals, total: result.total, page: result.page, pageSize: result.pageSize })
+  } catch (err: any) {
+    logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Failed to fetch approval history" })
+    return NextResponse.json({ error: "Database error" }, { status: 500 })
+  }
+}

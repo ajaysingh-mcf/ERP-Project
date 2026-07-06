@@ -25,9 +25,9 @@ export const POST = withGateway({
       const { type, uom, hsn_code } = body
 
       const eventId = `rm-create-${Date.now()}`
-      const logCtx = { ...ctx, eventId, module: "RM_CREATE" }
+      const logCtx = { ...ctx, eventId, module: "RM_MAT" }
       logger.info({ ...logCtx, name, make, inci_name, message: "Raw material create started" })
-      recordRawEvent("RM_CREATE", eventId, { name, make, inci_name })
+      recordRawEvent("RM_MAT", eventId, { name, make, inci_name })
       const dupRows = await query<{ id: number }>(rawMaterials.checkDuplicate, [name, make, inci_name])
 
       if (dupRows.length > 0) {
@@ -64,12 +64,12 @@ export const POST = withGateway({
           }
         }
         await conn.commit()
-        recordProcessedEvent("RM_CREATE", eventId, { rmId, approvalId })
+        recordProcessedEvent("RM_MAT", eventId, { rmId, approvalId })
         logger.info({ ...logCtx, rmId, approvalId, message: "Raw material created successfully" })
         return NextResponse.json({ ok: true, approval_id: approvalId })
       } catch (err: any) {
         await conn.rollback()
-        recordFailedEvent("RM_CREATE", eventId, { name }, err.message)
+        recordFailedEvent("RM_MAT", eventId, { name }, err.message)
         logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Raw material create failed" })
         throw new ApiError(500, "internal", "Database error: " + err.message)
       } finally {
@@ -84,10 +84,10 @@ export const POST = withGateway({
       const { uom, hsn_code } = body
 
       const eventId = `pm-create-${Date.now()}`
-      const logCtx = { ...ctx, eventId, module: "PM_CREATE" }
+      const logCtx = { ...ctx, eventId, module: "PM" }
 
       logger.info({ ...logCtx, name, type, message: "Packing material create started" })
-      recordRawEvent("PM_CREATE", eventId, { name, type })
+      recordRawEvent("PM", eventId, { name, type })
 
       const dupRows = await query<{ id: number }>(PMMaterials.checkDuplicate, [name, type])
 
@@ -133,13 +133,13 @@ export const POST = withGateway({
         }
 
         await conn.commit()
-        recordProcessedEvent("PM_CREATE", eventId, { pmId, approvalId })
+        recordProcessedEvent("PM", eventId, { pmId, approvalId })
         logger.info({ ...logCtx, pmId, approvalId, message: "Packing material created successfully" })
 
         return NextResponse.json({ ok: true, approval_id: approvalId })
       } catch (err: any) {
         await conn.rollback()
-        recordFailedEvent("PM_CREATE", eventId, { name, type }, err.message)
+        recordFailedEvent("PM", eventId, { name, type }, err.message)
         logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Packing material create failed" })
         throw new ApiError(500, "internal", "Database error: " + err.message)
       } finally {

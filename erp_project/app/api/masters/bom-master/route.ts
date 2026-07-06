@@ -22,11 +22,13 @@ import { ApiError } from "@/lib/gateway/errors"
 import { bomActionSchema } from "@/lib/validation/bom"
 import { bom as bomSql, BOM_STATUS_IN_REVIEW } from "@/lib/queries/bom"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import logger from "@/lib/logger"
 
 export const POST = withGateway({
   schema: bomActionSchema,
   access: { pageSlug: "/masters", level: "editor" },
-  handler: async ({ body, session }) => {
+  handler: async ({ body, session, ctx }) => {
     const userId = Number(session.user.id)
 
     // ── check-existing: dry-run, no mutation ──────────────────────────────
@@ -44,6 +46,11 @@ export const POST = withGateway({
     }
 
     // ── create-full: single atomic submit ─────────────────────────────────
+    const eventId = `bom-submit-${body.sku_id}-${Date.now()}`
+    const logCtx = { ...ctx, eventId, module: "BOM" }
+    logger.info({ ...logCtx, skuId: body.sku_id, mode: body.mode, lineCount: body.rm_lines.length + body.pm_lines.length, message: "BOM submit started" })
+    recordRawEvent("BOM", eventId, { skuId: body.sku_id, mode: body.mode, lineCount: body.rm_lines.length + body.pm_lines.length, source: body.source })
+
     const conn: PoolConnection = await pool.getConnection()
     await conn.beginTransaction()
     try {
@@ -115,9 +122,13 @@ export const POST = withGateway({
       }
 
       await conn.commit()
+      logger.info({ ...logCtx, bomId, approvalId, message: "BOM submitted for approval" })
+      recordProcessedEvent("BOM", eventId, { bomId, approvalId, skuId: body.sku_id, mode: body.mode })
       return NextResponse.json({ ok: true, bom_id: bomId, approval_id: approvalId })
     } catch (err: any) {
       await conn.rollback()
+      recordFailedEvent("BOM", eventId, { skuId: body.sku_id, mode: body.mode }, err.message)
+      logger.error({ ...logCtx, err: err.message, message: "BOM submit failed" })
       if (err instanceof ApiError) throw err
       throw new ApiError(500, "internal", "Database error: " + err.message)
     } finally {

@@ -20,7 +20,8 @@ import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
 import { rawMaterials } from "@/lib/queries/raw-materials"
 import { packingMaterials } from "@/lib/queries/packing-materials"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
-import type { Vendor, Mfg } from "@/types/masters"
+import { skus as skusSql } from "@/lib/queries/skus"
+import type { Vendor, Mfg, Sku } from "@/types/masters"
 
 const REVALIDATE_SECONDS = 120
 
@@ -57,6 +58,39 @@ export const getRmDistinctInciNames = unstable_cache(
 export const getPmDistinctTypes = unstable_cache(
   () => timedQuery<{ make: string }>(packingMaterials.selectDistinctMakes, [], { label: "pm.selectDistinctMakes (cached)" }),
   ["ref-pm-types"],
+  { revalidate: REVALIDATE_SECONDS, tags: ["ref:pm"] }
+)
+
+// ── BOM master dropdowns ──────────────────────────────────────────────────
+// SKU/RM/PM "active" lists feeding the BOM creation wizard + line-editor
+// grid's material pickers. Same rarely-changing-lookup shape as the vendor/
+// mfg lists above, so they share those tags' invalidation story.
+
+export const getActiveSkuList = unstable_cache(
+  () => timedQuery<Sku>(skusSql.selectActive, [], { label: "skus.selectActive (cached)" }),
+  ["ref-sku-active-list"],
+  { revalidate: REVALIDATE_SECONDS, tags: ["ref:skus"] }
+)
+
+export const getActiveRmMaterialOptions = unstable_cache(
+  () =>
+    timedQuery<{ id: number; rm_code: string | null; name: string; uom: string | null }>(
+      rawMaterials.selectActive,
+      [],
+      { label: "rm.selectActive (cached)" }
+    ),
+  ["ref-rm-active-options"],
+  { revalidate: REVALIDATE_SECONDS, tags: ["ref:rm"] }
+)
+
+export const getActivePmMaterialOptions = unstable_cache(
+  () =>
+    timedQuery<{ id: number; pm_code: string | null; name: string; uom: string | null }>(
+      packingMaterials.selectActive,
+      [],
+      { label: "pm.selectActive (cached)" }
+    ),
+  ["ref-pm-active-options"],
   { revalidate: REVALIDATE_SECONDS, tags: ["ref:pm"] }
 )
 

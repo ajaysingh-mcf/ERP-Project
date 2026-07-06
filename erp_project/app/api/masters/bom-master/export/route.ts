@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
     )
 
     const filename = buildExportFilename("bom_master", format, { type: type || null, status: status || null, search: search || null })
+    console.log(`[/api/masters/bom-master/export] served ${rows.length} rows as ${format}`)
 
     if (format === "xlsx") {
       const buffer = await buildXlsx("BOM Master", BOM_EXPORT_COLUMNS, rows)

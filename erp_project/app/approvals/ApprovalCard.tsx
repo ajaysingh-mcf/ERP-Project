@@ -4,10 +4,72 @@ import { useState } from "react"
 import { ChevronDown, ChevronRight, Check, X, Clock, FileText, ExternalLink, Loader2 as SpinIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import type { Approval } from "./approvals-types"
-import { MODULE_LABEL, MODULE_COLOR, getInitials, fmtDate } from "./approvals-types"
+import { MODULE_LABEL, MODULE_COLOR, HISTORY_STATUS_COLOR, getInitials, fmtDate } from "./approvals-types"
 
-// ── CsvFileCard ───────────────────────────────────────────────────────────────
+/** RM/PM id → { code, name }, used to resolve a BOM line's bare mtrl_id.
+ *  Split by type since rm/pm ids are independent sequences and can collide. */
+export type MaterialMap = {
+  rm: Record<number, { code: string | null; name: string }>
+  pm: Record<number, { code: string | null; name: string }>
+}
+
+// ── DiffTable ─────────────────────────────────────────────────────────────────
+// Shared red/green "Old Value → New Value" comparison table used by every
+// approval type below (field diffs, BOM lines, bulk CSV upload) so all
+// approval kinds read the same way instead of each inventing its own layout.
+
+type DiffRow = {
+  key: string
+  label: string
+  old: React.ReactNode
+  new: React.ReactNode
+  /** Full-width row (e.g. "line removed") instead of the old/new columns. */
+  fullWidth?: React.ReactNode
+}
+
+function DiffTable({ rows }: { rows: DiffRow[] }) {
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent bg-muted/40">
+            <TableHead className="h-8 text-[10px] font-semibold uppercase tracking-wide">Field</TableHead>
+            <TableHead className="h-8 text-[10px] font-semibold uppercase tracking-wide">Old Value</TableHead>
+            <TableHead className="h-8 text-[10px] font-semibold uppercase tracking-wide">New Value</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={r.key} className="hover:bg-transparent">
+              <TableCell className="py-2 text-xs font-medium capitalize text-foreground w-[28%] align-top">
+                {r.label}
+              </TableCell>
+              {r.fullWidth ? (
+                <TableCell colSpan={2} className="py-2 text-xs align-top">
+                  {r.fullWidth}
+                </TableCell>
+              ) : (
+                <>
+                  <TableCell className="py-2 bg-red-50 dark:bg-red-950/30 text-xs text-red-700 dark:text-red-400 font-medium align-top">
+                    {r.old}
+                  </TableCell>
+                  <TableCell className="py-2 bg-emerald-50 dark:bg-emerald-950/30 text-xs text-emerald-700 dark:text-emerald-400 font-medium align-top">
+                    {r.new}
+                  </TableCell>
+                </>
+              )}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+// ── CsvFileCard — rendered as a one-row DiffTable so the bulk upload reads the
+//    same as every other approval kind (Field | Old Value | New Value). ──────
 
 function CsvFileCard({ approvalId, items, openingFileFor, onOpen }: {
   approvalId:    number
@@ -20,27 +82,33 @@ function CsvFileCard({ approvalId, items, openingFileFor, onOpen }: {
   const busy     = openingFileFor === approvalId
 
   return (
-    <div className="rounded-lg border border-border bg-background p-3.5 flex items-center gap-3">
-      <div className="rounded-full bg-cyan-50 p-2 shrink-0">
-        <FileText className="h-4 w-4 text-cyan-600" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{filename || "bulk-upload.csv"}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">CSV bulk PO upload</p>
-      </div>
-      {s3Key && (
-        <button
-          onClick={() => onOpen(approvalId, s3Key)}
-          disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-md border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-700 hover:bg-cyan-100 transition-colors disabled:opacity-50 shrink-0"
-        >
-          {busy
-            ? <><SpinIcon className="h-3.5 w-3.5 animate-spin" /> Opening…</>
-            : <><ExternalLink className="h-3.5 w-3.5" /> Open File</>
-          }
-        </button>
-      )}
-    </div>
+    <DiffTable
+      rows={[
+        {
+          key: "csv",
+          label: "CSV File",
+          old: "—",
+          new: (
+            <div className="flex items-center gap-2">
+              <FileText className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{filename || "bulk-upload.csv"}</span>
+              {s3Key && (
+                <button
+                  onClick={() => onOpen(approvalId, s3Key)}
+                  disabled={busy}
+                  className="ml-auto inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-white/60 px-2 py-1 text-[11px] font-medium hover:bg-white transition-colors disabled:opacity-50 shrink-0 dark:bg-black/20 dark:border-emerald-900"
+                >
+                  {busy
+                    ? <><SpinIcon className="h-3 w-3 animate-spin" /> Opening…</>
+                    : <><ExternalLink className="h-3 w-3" /> Open File</>
+                  }
+                </button>
+              )}
+            </div>
+          ),
+        },
+      ]}
+    />
   )
 }
 
@@ -94,44 +162,22 @@ function DocViewButton({ s3Key, variant }: { s3Key: string; variant: "old" | "ne
   )
 }
 
-// ── FieldDiffGrid ─────────────────────────────────────────────────────────────
+// ── FieldDiffTable ────────────────────────────────────────────────────────────
 
-function FieldDiffGrid({ items }: { items: Approval["items"] }) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-      {items.map((item) => {
-        const isDoc  = DOC_FIELDS.has(item.field_name)
-        const label  = item.field_name
-          .replace(/_key$/, "")
-          .replace(/_/g, " ")
+function FieldDiffTable({ items }: { items: Approval["items"] }) {
+  const rows: DiffRow[] = items.map((item) => {
+    const isDoc = DOC_FIELDS.has(item.field_name)
+    const label = item.field_name.replace(/_key$/, "").replace(/_/g, " ")
 
-        return (
-          <div key={item.field_name} className="rounded-md border border-border bg-background p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              {label}
-            </p>
-            <div className="flex items-center gap-1.5">
-              {isDoc && item.old_value ? (
-                <DocViewButton s3Key={item.old_value} variant="old" />
-              ) : (
-                <span className="flex-1 min-w-0 rounded bg-red-50 border border-red-100 px-2 py-1 text-xs text-red-700 font-medium truncate">
-                  {item.old_value || "—"}
-                </span>
-              )}
-              <span className="shrink-0 text-muted-foreground font-mono text-[11px]">→</span>
-              {isDoc && item.new_value ? (
-                <DocViewButton s3Key={item.new_value} variant="new" />
-              ) : (
-                <span className="flex-1 min-w-0 rounded bg-emerald-50 border border-emerald-100 px-2 py-1 text-xs text-emerald-700 font-medium truncate">
-                  {item.new_value || "—"}
-                </span>
-              )}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
+    return {
+      key: item.field_name,
+      label,
+      old: isDoc && item.old_value ? <DocViewButton s3Key={item.old_value} variant="old" /> : (item.old_value || "—"),
+      new: isDoc && item.new_value ? <DocViewButton s3Key={item.new_value} variant="new" /> : (item.new_value || "—"),
+    }
+  })
+
+  return <DiffTable rows={rows} />
 }
 
 // ── BomLineDiffTable — readable rendering of a BOM's line:<type>:<id>:<field>
@@ -166,63 +212,74 @@ function parseBomApprovalItems(items: Approval["items"]) {
   return { mode, lines: [...lineMap.values()] }
 }
 
-function BomLineDiffTable({ items }: { items: Approval["items"] }) {
+function materialLabel(mtrlType: "rm" | "pm", mtrlId: string, materialMap?: MaterialMap) {
+  const mat = materialMap?.[mtrlType]?.[Number(mtrlId)]
+  if (!mat) return `${mtrlType.toUpperCase()} #${mtrlId}`
+  return `${mat.code ?? `#${mtrlId}`} — ${mat.name}`
+}
+
+function BomLineDiffTable({ items, materialMap }: { items: Approval["items"]; materialMap?: MaterialMap }) {
   const { mode, lines } = parseBomApprovalItems(items)
   const rmLines = lines.filter((l) => l.mtrlType === "rm")
   const pmLines = lines.filter((l) => l.mtrlType === "pm")
 
   function renderLine(line: BomLineRowDiff) {
+    const label = materialLabel(line.mtrlType, line.mtrlId, materialMap)
+
     if (line.removed) {
       return (
-        <div key={`${line.mtrlType}:${line.mtrlId}`} className="rounded-md border border-border bg-background p-3 opacity-60">
-          <p className="text-xs line-through text-muted-foreground">
-            Line removed: {line.mtrlType.toUpperCase()} #{line.mtrlId}
-          </p>
+        <div key={`${line.mtrlType}:${line.mtrlId}`}>
+          <DiffTable
+            rows={[{
+              key: "removed",
+              label,
+              old: "",
+              new: "",
+              fullWidth: (
+                <span className="text-red-700 dark:text-red-400 font-medium line-through">
+                  Line removed
+                </span>
+              ),
+            }]}
+          />
         </div>
       )
     }
+
+    const rows: DiffRow[] = Object.entries(line.fields).map(([field, { old: oldVal, new: newVal }]) => ({
+      key: field,
+      label: field.replace(/_/g, " "),
+      old: oldVal || "—",
+      new: newVal || "—",
+    }))
+
     return (
-      <div key={`${line.mtrlType}:${line.mtrlId}`} className="rounded-md border border-border bg-background p-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-          {line.mtrlType} #{line.mtrlId}
-        </p>
-        <div className="space-y-1">
-          {Object.entries(line.fields).map(([field, { old: oldVal, new: newVal }]) => (
-            <div key={field} className="flex items-center gap-1.5 text-xs">
-              <span className="w-24 shrink-0 text-muted-foreground capitalize">{field.replace(/_/g, " ")}</span>
-              <span className="flex-1 min-w-0 rounded bg-red-50 border border-red-100 px-2 py-0.5 text-red-700 font-medium truncate">
-                {oldVal || "—"}
-              </span>
-              <span className="shrink-0 text-muted-foreground font-mono">→</span>
-              <span className="flex-1 min-w-0 rounded bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-emerald-700 font-medium truncate">
-                {newVal || "—"}
-              </span>
-            </div>
-          ))}
-        </div>
+      <div key={`${line.mtrlType}:${line.mtrlId}`} className="space-y-1">
+        <p className="text-xs font-semibold">{label}</p>
+        <DiffTable rows={rows} />
       </div>
     )
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <Badge variant="secondary" className="text-[10px]">
         {mode === "new-version" ? "New Version" : "Update Existing"}
       </Badge>
       {rmLines.length > 0 && (
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+        <div className="space-y-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             RM ({rmLines.length})
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{rmLines.map(renderLine)}</div>
+          {rmLines.map(renderLine)}
         </div>
       )}
       {pmLines.length > 0 && (
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+        <div className="space-y-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             PM ({pmLines.length})
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{pmLines.map(renderLine)}</div>
+          {pmLines.map(renderLine)}
         </div>
       )}
     </div>
@@ -268,7 +325,7 @@ function EntityInfo({ approval }: { approval: Approval }) {
 
 export default function ApprovalCard({
   approval, isExpanded, isApprover, loading, error, openingFileFor,
-  onToggle, onApprove, onReject, onOpenCsvFile,
+  onToggle, onApprove, onReject, onOpenCsvFile, materialMap,
 }: {
   approval:       Approval
   isExpanded:     boolean
@@ -280,6 +337,8 @@ export default function ApprovalCard({
   onApprove:      () => void
   onReject:       () => void
   onOpenCsvFile:  (approvalId: number, s3Key: string) => void
+  /** RM/PM id → { code, name }, used to resolve BOM line materials by id. */
+  materialMap?:   MaterialMap
 }) {
   const moduleColor = MODULE_COLOR[approval.module] ?? "bg-slate-50 text-slate-700 border-slate-200"
   const isBulk      = approval.module === "PO_BULK"
@@ -296,6 +355,11 @@ export default function ApprovalCard({
               <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${moduleColor}`}>
                 {MODULE_LABEL[approval.module] ?? approval.module}
               </span>
+              {approval.status && (
+                <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold capitalize tracking-wide ${HISTORY_STATUS_COLOR[approval.status] ?? "bg-slate-50 text-slate-700 border-slate-200"}`}>
+                  {approval.status}
+                </span>
+              )}
               {isBulk ? (
                 <Badge variant="secondary" className="gap-1 text-[10px] h-4">
                   <FileText className="h-2.5 w-2.5" /> 1 CSV file
@@ -333,6 +397,18 @@ export default function ApprovalCard({
       {/* Expanded diff */}
       {isExpanded && (
         <div className="border-t border-border bg-muted/20 px-5 py-4">
+          {approval.status && (
+            <div className="mb-3 text-xs text-muted-foreground">
+              {approval.status === "approved" ? "Approved" : "Rejected"} by{" "}
+              <span className="font-medium text-foreground">{approval.approved_by_name ?? "—"}</span>
+              {approval.approved_on && <> on {fmtDate(approval.approved_on)}</>}
+              {approval.status === "rejected" && approval.remarks && (
+                <p className="mt-1.5 rounded-md border border-red-100 bg-red-50 px-2.5 py-1.5 text-red-700">
+                  {approval.remarks}
+                </p>
+              )}
+            </div>
+          )}
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
             {isBulk ? "Uploaded File" : isBom ? "Formulation Changes" : "Field Changes"}
           </p>
@@ -344,9 +420,9 @@ export default function ApprovalCard({
               onOpen={onOpenCsvFile}
             />
           ) : isBom ? (
-            <BomLineDiffTable items={approval.items} />
+            <BomLineDiffTable items={approval.items} materialMap={materialMap} />
           ) : (
-            <FieldDiffGrid items={approval.items} />
+            <FieldDiffTable items={approval.items} />
           )}
         </div>
       )}

@@ -1,25 +1,25 @@
 "use client"
 
 /**
- * Slide-in detail/edit panel for a selected BOM row. Doubles as the edit
- * surface for "Update Existing BOM" and the listing's Edit button — all
- * state comes from useBomDetailPanel, this component is pure presentation.
+ * Slide-in read-only detail panel for a selected BOM row. Editing happens in
+ * a separate dialog (BomEditDialog.tsx) opened via the "Edit BOM" button
+ * here — kept apart from this panel so the two don't compete for space and
+ * the panel doesn't have to switch between read/edit layouts.
  */
 
 import { X, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { formatDate, LOCKED_STATUSES } from "./bom-format"
 import { BomStatusBadge } from "./BomStatusBadge"
-import { BomLineEditorGrid, type BomLineRow, type BomMaterialOption } from "./BomLineEditorGrid"
 import type { BomDetailResponse } from "@/types/masters"
 
 export function BomDetailPanel({
   detail,
   detailLoading,
   detailError,
-  editMode,
   activeMtrlType,
   onChangeMtrlType,
   rmLines,
@@ -30,21 +30,10 @@ export function BomDetailPanel({
   canEdit,
   onClose,
   onEdit,
-  editRmRows,
-  editPmRows,
-  onChangeEditRm,
-  onChangeEditPm,
-  rmMaterials,
-  pmMaterials,
-  saveError,
-  saving,
-  onCancelEdit,
-  onSaveEdit,
 }: {
   detail: BomDetailResponse | null
   detailLoading: boolean
   detailError: string | null
-  editMode: boolean
   activeMtrlType: "rm" | "pm"
   onChangeMtrlType: (t: "rm" | "pm") => void
   rmLines: BomDetailResponse["lines"]
@@ -55,16 +44,6 @@ export function BomDetailPanel({
   canEdit: boolean
   onClose: () => void
   onEdit: (bomId: number) => void
-  editRmRows: BomLineRow[]
-  editPmRows: BomLineRow[]
-  onChangeEditRm: (rows: BomLineRow[]) => void
-  onChangeEditPm: (rows: BomLineRow[]) => void
-  rmMaterials: BomMaterialOption[]
-  pmMaterials: BomMaterialOption[]
-  saveError: string | null
-  saving: boolean
-  onCancelEdit: () => void
-  onSaveEdit: () => void
 }) {
   return (
     <Card className="max-h-[calc(100vh-3rem)] flex flex-col">
@@ -74,9 +53,7 @@ export function BomDetailPanel({
             <CardTitle className="text-base font-semibold font-mono">
               {detail?.bom_code ?? "—"}
             </CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {editMode ? "Editing BOM" : "BOM Detail"}
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">BOM Detail</p>
           </div>
           <Button
             variant="ghost"
@@ -99,7 +76,7 @@ export function BomDetailPanel({
           <p className="text-sm text-destructive py-6 text-center">{detailError}</p>
         )}
 
-        {detail && !detailLoading && !detailError && !editMode && (
+        {detail && !detailLoading && !detailError && (
           <>
             {/* ── Key fields summary ── */}
             <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
@@ -173,9 +150,16 @@ export function BomDetailPanel({
                       className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"
                     >
                       <div className="min-w-0">
-                        <p className="font-medium truncate">
-                          {line.mtrl_name ?? `ID ${line.mtrl_id ?? "—"}`}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium truncate">
+                            {line.mtrl_name ?? `ID ${line.mtrl_id ?? "—"}`}
+                          </p>
+                          {line.mtrl_master_status && line.mtrl_master_status !== "active" && (
+                            <Badge variant="warning" className="shrink-0 text-[10px] px-1.5 py-0">
+                              Inactive
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground font-mono mt-0.5">
                           {line.mtrl_code ?? `#${line.mtrl_id ?? "—"}`} · From {formatDate(line.effective_from)}
                         </p>
@@ -201,32 +185,6 @@ export function BomDetailPanel({
                 This BOM has a pending approval and can't be edited until it's resolved.
               </p>
             )}
-          </>
-        )}
-
-        {detail && !detailLoading && !detailError && editMode && (
-          <>
-            {saveError && (
-              <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
-                {saveError}
-              </div>
-            )}
-            <BomLineEditorGrid
-              rmRows={editRmRows}
-              pmRows={editPmRows}
-              onChangeRm={onChangeEditRm}
-              onChangePm={onChangeEditPm}
-              rmMaterials={rmMaterials}
-              pmMaterials={pmMaterials}
-            />
-            <div className="flex justify-end gap-2 pt-2 border-t">
-              <Button variant="outline" size="sm" onClick={onCancelEdit} disabled={saving}>
-                Cancel
-              </Button>
-              <Button size="sm" onClick={onSaveEdit} disabled={saving}>
-                {saving ? "Submitting…" : "Save for Approval"}
-              </Button>
-            </div>
           </>
         )}
       </CardContent>

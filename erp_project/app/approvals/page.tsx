@@ -5,6 +5,8 @@ import { redirect } from "next/navigation"
 import { query } from "@/lib/db"
 import { timedQuery } from "@/lib/query-timing"
 import { approvalsSql, entityLabelSql } from "@/lib/queries/approvals"
+import { getActiveRmMaterialOptions, getActivePmMaterialOptions } from "@/lib/cached-reference-data"
+import { buildMaterialMap } from "./material-map"
 import ApprovalsClient from "./ApprovalsClient"
 
 export const dynamic = "force-dynamic"
@@ -16,7 +18,11 @@ export default async function ApprovalsPage() {
   const pageStart = performance.now()
   console.log(`[AUDIT] Approvals load`)
 
-  const rows = await timedQuery<any>(approvalsSql.listPending, [], { label: "listPending" })
+  const [rows, rmRows, pmRows] = await Promise.all([
+    timedQuery<any>(approvalsSql.listPending, [], { label: "listPending" }),
+    getActiveRmMaterialOptions(),
+    getActivePmMaterialOptions(),
+  ])
   const approvals = await Promise.all(
     rows.map(async (a) => {
       const [items, labelRows] = await Promise.all([
@@ -41,5 +47,11 @@ export default async function ApprovalsPage() {
 
   const isApprover = session.user.roles?.some((r) => ["admin", "manager"].includes(r)) ?? false
 
-  return <ApprovalsClient approvals={approvals} isApprover={isApprover} />
+  return (
+    <ApprovalsClient
+      approvals={approvals}
+      isApprover={isApprover}
+      materialMap={buildMaterialMap(rmRows, pmRows)}
+    />
+  )
 }

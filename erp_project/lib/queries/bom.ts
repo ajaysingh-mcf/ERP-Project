@@ -202,7 +202,8 @@ export const bom = {
       bd.effective_from, bd.effective_till, bd.last_updated,
       b.created_by,
       COALESCE(rm.name, pm.name) AS mtrl_name,
-      COALESCE(rm.rm_code, pm.pm_code) AS mtrl_code
+      COALESCE(rm.rm_code, pm.pm_code) AS mtrl_code,
+      COALESCE(rm.status, pm.status) AS mtrl_master_status
     FROM details_bom AS bd
     INNER JOIN master_bom AS b ON b.id = bd.bom_id
     LEFT JOIN master_skus AS s ON s.id = b.sku_id
@@ -265,6 +266,19 @@ export const bom = {
   `,
 
   /**
+   * IDs of every OTHER active BOM for the same sku_id, read BEFORE
+   * deactivateOtherActiveBomsForSku runs — MariaDB's UPDATE has no RETURNING,
+   * so this is how the caller knows which BOMs it's about to deactivate (one
+   * bom.deactivated event per id, per event-catalog.md's fan-out design).
+   * Parameters: [sku_id, keep_bom_id]
+   */
+  selectOtherActiveBomsForSku: `
+    SELECT id
+    FROM master_bom
+    WHERE sku_id = ? AND id <> ? AND status = 'active'
+  `,
+
+  /**
    * Flip every OTHER active BOM for the same sku_id to inactive — enforces
    * "only one active BOM per SKU" after a new/updated BOM is activated.
    * Parameters: [sku_id, keep_bom_id]
@@ -273,5 +287,65 @@ export const bom = {
     UPDATE master_bom
     SET status = 'inactive', updated_at = NOW()
     WHERE sku_id = ? AND id <> ? AND status = 'active'
+  `,
+
+  // ============ HISTORY QUERIES (read-only "BOM History" page) ============
+  // history_bom only ever gets rows written by bomHandler.applyAndArchive
+  // (see lib/approvals/module-handlers.ts) when an "update existing BOM"
+  // approval is applied — it snapshots the full line set that's about to be
+  // overwritten. A BOM with no history_bom rows has never been revised.
+
+  /**
+   * Paginated listing, one row per BOM header that has at least one archived
+   * line — mirrors selectPaginatedGrouped's shape so the History page can
+   * reuse BomTable/BomListItem as-is.
+   * Params: [like, like, like, LIMIT, OFFSET]
+   */
+  selectHistoryPaginatedGrouped: `
+    SELECT
+      b.id AS bom_id, b.bom_code, s.sku_code, s.name AS sku_name,
+      b.created_at,
+      MIN(h.effective_from) AS effective_from,
+      MAX(h.effective_till) AS effective_till,
+      b.status AS status
+    FROM history_bom AS h
+    INNER JOIN master_bom AS b ON b.id = h.bom_id
+    LEFT JOIN master_skus AS s ON s.id = b.sku_id
+    WHERE (? IS NULL OR b.bom_code LIKE ? OR s.sku_code LIKE ?)
+    GROUP BY b.id, b.bom_code, s.sku_code, s.name, b.created_at, b.status
+    ORDER BY MAX(h.last_updated) DESC
+    LIMIT ? OFFSET ?
+  `,
+
+  /** Matching COUNT for selectHistoryPaginatedGrouped. Params: [like, like, like] */
+  countHistoryGrouped: `
+    SELECT COUNT(DISTINCT b.id) AS total
+    FROM history_bom AS h
+    INNER JOIN master_bom AS b ON b.id = h.bom_id
+    LEFT JOIN master_skus AS s ON s.id = b.sku_id
+    WHERE (? IS NULL OR b.bom_code LIKE ? OR s.sku_code LIKE ?)
+  `,
+
+  /**
+   * All archived lines for one BOM, newest snapshot first — the History
+   * page's detail-panel equivalent of selectDetailLinesByBomId. Params: [bom_id]
+   */
+  selectHistoryLinesByBomId: `
+    SELECT
+      b.bom_code, h.bom_id, s.sku_code,
+      h.mtrl_id, h.mtrl_type, h.uom, h.amount,
+      h.mtrl_cost, h.status AS material_status, b.status AS bom_status,
+      h.effective_from, h.effective_till, h.last_updated,
+      b.created_by,
+      COALESCE(rm.name, pm.name) AS mtrl_name,
+      COALESCE(rm.rm_code, pm.pm_code) AS mtrl_code,
+      COALESCE(rm.status, pm.status) AS mtrl_master_status
+    FROM history_bom AS h
+    INNER JOIN master_bom AS b ON b.id = h.bom_id
+    LEFT JOIN master_skus AS s ON s.id = b.sku_id
+    LEFT JOIN master_rm AS rm ON rm.id = h.mtrl_id AND h.mtrl_type = 'rm'
+    LEFT JOIN master_pm AS pm ON pm.id = h.mtrl_id AND h.mtrl_type = 'pm'
+    WHERE h.bom_id = ?
+    ORDER BY h.last_updated DESC, h.mtrl_type ASC, h.mtrl_id ASC
   `,
 }

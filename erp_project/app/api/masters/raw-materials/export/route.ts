@@ -95,6 +95,7 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await query<Record<string, unknown>>(dataSql, filterParams)
+    console.log(`[/api/masters/raw-materials/export] served ${rows.length} rows as ${format} (view=${viewLabel})`)
 
     if (format === "xlsx") {
       const buffer = await buildXlsx(sheetName, columns, rows)

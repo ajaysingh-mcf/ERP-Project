@@ -8,9 +8,11 @@ import { query } from "@/lib/db"
 import { approvalsSql, entityLabelSql } from "@/lib/queries/approvals"
 import logger from "@/lib/logger"
 export async function GET() {
+  const requestId = crypto.randomUUID()
+
   const session = await auth()
   if (!session?.user) {
-    logger.warn({ requestId: crypto.randomUUID(), route: "/api/approvals", message: "Unauthenticated access attempt" })
+    logger.warn({ requestId, route: "/api/approvals", message: "Unauthenticated access attempt" })
     return NextResponse.json(
       { error: "Unauthenticated" },
       { status: 401 }
@@ -18,7 +20,7 @@ export async function GET() {
   }
 
   const ctx = {
-    requestId: crypto.randomUUID(),
+    requestId,
     userId: session.user.id,
     route: "/api/approvals",
   }

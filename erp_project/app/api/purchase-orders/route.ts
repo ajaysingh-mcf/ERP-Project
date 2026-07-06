@@ -130,6 +130,7 @@ export const POST = withGateway({
       }
 
       await conn.commit()
+      logger.info({ ...ctx, filename, s3Key, inserted, skipped, message: "Bulk CSV PO insert committed" })
       recordProcessedEvent("PO_BULK", eventId, { filename, s3Key, inserted, skipped })
       return NextResponse.json({ ok: true, inserted, skipped })
     } catch (err: any) {
@@ -191,6 +192,7 @@ export const POST = withGateway({
       ])
       const poId = (poResult as any).insertId
       await conn.commit()
+      logger.info({ ...ctx, poId, po_no, message: "Normal PO created" })
       recordProcessedEvent("PO", eventId, { poId, po_no })
       return NextResponse.json({ ok: true, po_no })
     } catch (err: any) {
@@ -236,11 +238,13 @@ export const POST = withGateway({
     }
 
     await conn.commit()
+    logger.info({ ...ctx, poId, po_no, approvalId, message: "Impromptu PO submitted for approval" })
     recordProcessedEvent("PO", eventId, { poId, po_no, approvalId })
     return NextResponse.json({ ok: true, approval_id: approvalId, po_no })
   } catch (err: any) {
     await conn.rollback()
     recordFailedEvent("PO", eventId, { mfg_id, sku_code, qty, expected_on, destination, reason }, err.message)
+    logger.error({ ...ctx, err: err.message, stack: err.stack, message: "Impromptu PO create failed" })
     if (err.code === "ER_DUP_ENTRY") {
       throw new ApiError(409, "duplicate", "PO number already exists, please retry.")
     }

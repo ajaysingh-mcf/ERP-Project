@@ -2,18 +2,21 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Check, ShieldCheck } from "lucide-react"
+import { Check, ShieldCheck, History } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import type { Approval } from "./approvals-types"
-import ApprovalCard from "./ApprovalCard"
+import ApprovalCard, { type MaterialMap } from "./ApprovalCard"
 import RejectDialog from "./RejectDialog"
 
 export default function ApprovalsClient({
   approvals: initialApprovals,
   isApprover,
+  materialMap,
 }: {
-  approvals:  Approval[]
-  isApprover: boolean
+  approvals:   Approval[]
+  isApprover:  boolean
+  materialMap: MaterialMap
 }) {
   const router = useRouter()
 
@@ -102,12 +105,18 @@ export default function ApprovalsClient({
               : "Master-data changes awaiting your review"}
           </p>
         </div>
-        {!isApprover && (
-          <div className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
-            <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-            View only — admin or manager role required
-          </div>
-        )}
+        <div className="flex items-center gap-2.5">
+          {!isApprover && (
+            <div className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+              View only — admin or manager role required
+            </div>
+          )}
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => router.push("/approvals/history")}>
+            <History className="h-3.5 w-3.5" />
+            View History
+          </Button>
+        </div>
       </div>
 
       {/* Empty state */}
@@ -136,6 +145,7 @@ export default function ApprovalsClient({
               onApprove={() => handleApprove(approval)}
               onReject={() => setRejectTarget(approval)}
               onOpenCsvFile={openCsvFile}
+              materialMap={materialMap}
             />
           ))}
         </div>

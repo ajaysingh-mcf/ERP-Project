@@ -15,6 +15,16 @@ export type Approval = {
   entity_name: string | null
   entity_secondary_code: string | null
   entity_secondary_name: string | null
+  /** Present only on /approvals/history rows — resolved approvals. */
+  status?: "approved" | "rejected"
+  approved_by_name?: string | null
+  approved_on?: string | null
+  remarks?: string | null
+}
+
+export const HISTORY_STATUS_COLOR: Record<string, string> = {
+  approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  rejected: "bg-red-50 text-red-700 border-red-200",
 }
 
 export const MODULE_LABEL: Record<string, string> = {
@@ -55,5 +65,8 @@ export function fmtDate(iso: string) {
   return new Date(iso).toLocaleString("en-IN", {
     day: "2-digit", month: "short", year: "numeric",
     hour: "2-digit", minute: "2-digit",
+    // Explicit IST — don't rely on the host process's local timezone, which
+    // differs between dev machines and deployment targets.
+    timeZone: "Asia/Kolkata",
   })
 }

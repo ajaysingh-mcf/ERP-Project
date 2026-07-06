@@ -96,6 +96,8 @@ export async function GET(req: NextRequest) {
           effective_from: sp.get("effective_from")           || null,
         })
 
+    console.log(`[/api/masters/packing-materials/export] served ${rows.length} rows as ${format} (view=${viewLabel})`)
+
     if (format === "xlsx") {
       const buffer = await buildXlsx(sheetName, columns, rows)
       return new NextResponse(buffer, {

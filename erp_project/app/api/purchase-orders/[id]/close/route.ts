@@ -26,26 +26,33 @@ export async function POST(
   if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
   const eventId = `po-short-close-${poId}-${Date.now()}`
   const logCtx = { requestId: crypto.randomUUID(), userId, route: `/api/purchase-orders/${poId}/close` }
-  recordRawEvent("purchase_order_short_closed",eventId ,  { poId, userId })
-  const poRows = await query<{ id: number; po_no: string; status: string; qty: number; received_qty: number | null }>(
-    purchaseOrdersSql.selectForEdit,
-    [poId]
-  )
-  const po = poRows[0]
-  if (!po) {
-    logger.warn({ ...logCtx, poId, message: "PO not found" })
-    return NextResponse.json({ error: `PO id=${poId} not found` }, { status: 404 })
-  }
+  recordRawEvent("PO_CLOSE", eventId, { poId, userId })
 
-  if (!CLOSEABLE.has(po.status)) {
-    return NextResponse.json(
-      { error: `Cannot short-close a PO with status '${po.status}'. Allowed: raised, punched, partially_received.` },
-      { status: 409 }
+  try {
+    const poRows = await query<{ id: number; po_no: string; status: string; qty: number; received_qty: number | null }>(
+      purchaseOrdersSql.selectForEdit,
+      [poId]
     )
-  }
+    const po = poRows[0]
+    if (!po) {
+      logger.warn({ ...logCtx, poId, message: "PO not found" })
+      return NextResponse.json({ error: `PO id=${poId} not found` }, { status: 404 })
+    }
 
-  await execute(purchaseOrdersSql.setStatus, ["short_closed", poId])
-  logger.info({ ...logCtx, poId, po_no: po.po_no, previousStatus: po.status, message: "PO manually short_closed" })
-  recordProcessedEvent("purchase_order_short_closed", eventId , { poId, poNo: po.po_no, userId })
-  return NextResponse.json({ ok: true })
+    if (!CLOSEABLE.has(po.status)) {
+      return NextResponse.json(
+        { error: `Cannot short-close a PO with status '${po.status}'. Allowed: raised, punched, partially_received.` },
+        { status: 409 }
+      )
+    }
+
+    await execute(purchaseOrdersSql.setStatus, ["short_closed", poId])
+    logger.info({ ...logCtx, poId, po_no: po.po_no, previousStatus: po.status, message: "PO manually short_closed" })
+    recordProcessedEvent("PO_CLOSE", eventId, { poId, poNo: po.po_no, userId })
+    return NextResponse.json({ ok: true })
+  } catch (err: any) {
+    recordFailedEvent("PO_CLOSE", eventId, { poId, userId }, err.message)
+    logger.error({ ...logCtx, poId, err: err.message, stack: err.stack, message: "PO short-close failed" })
+    return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
+  }
 }

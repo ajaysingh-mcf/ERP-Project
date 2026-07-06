@@ -1,4 +1,4 @@
-﻿> **Related docs:** [Architecture](./architecture.md) · [Architecture Evolution](./architecture-evolution.md)
+﻿> **Related docs:** [Architecture](./architecture.md) · [Architecture Evolution](./architecture-evolution.md) · [Event Catalog](./event-catalog.md)
 
 # Event-Driven Architecture â€” Options & Decision Document
 

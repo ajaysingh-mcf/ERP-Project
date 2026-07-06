@@ -11,12 +11,13 @@ import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
-import { query } from "@/lib/db"
 import { bom } from "@/lib/queries/bom"
-import { skus as skusSql } from "@/lib/queries/skus"
-import { rawMaterials as rmSql } from "@/lib/queries/raw-materials"
-import { packingMaterials as pmSql } from "@/lib/queries/packing-materials"
-import type { BomListItem, Sku } from "@/types/masters"
+import {
+  getActiveSkuList,
+  getActiveRmMaterialOptions,
+  getActivePmMaterialOptions,
+} from "@/lib/cached-reference-data"
+import type { BomListItem } from "@/types/masters"
 import type { BomMaterialOption } from "./BomLineEditorGrid"
 import BOMMasterComponent from "./BOMMasterComponent"
 
@@ -50,9 +51,9 @@ export default async function BOMMasterPage({
   const [rows, countRows, skuRows, rmRows, pmRows] = await Promise.all([
     timedQuery<BomListItem>(bom.selectPaginatedGrouped, [like, like, like, status, status, size, offset], { label: "selectPaginatedGrouped" }),
     timedQuery<{ total: number }>(bom.countGrouped, [like, like, like, status, status], { label: "countGrouped" }),
-    query<Sku>(skusSql.selectActive, []),
-    query<{ id: number; rm_code: string | null; name: string; uom: string | null }>(rmSql.selectActive, []),
-    query<{ id: number; pm_code: string | null; name: string; uom: string | null }>(pmSql.selectActive, []),
+    getActiveSkuList(),
+    getActiveRmMaterialOptions(),
+    getActivePmMaterialOptions(),
   ])
   const total = Number(countRows[0]?.total ?? 0)
   console.log(`[AUDIT] BOM Master complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)

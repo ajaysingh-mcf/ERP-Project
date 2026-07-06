@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
     )
 
     const filename = buildExportFilename("vendors", format, { type: type || null, zone: zone || null, search: search || null })
+    console.log(`[/api/masters/vendors/export] served ${rows.length} rows as ${format}`)
 
     if (format === "xlsx") {
       const buffer = await buildXlsx("Vendors", VENDOR_EXPORT_COLUMNS, rows)

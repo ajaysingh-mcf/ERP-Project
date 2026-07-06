@@ -14,17 +14,20 @@
  */
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
+import { History } from "lucide-react"
 import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
 import {
   MasterToolbar,
   MasterToolbarActions,
 } from "@/components/masters/MasterToolbar"
 import { DownloadButton } from "@/components/masters/DownloadButton"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { BomCreationWizard } from "./BomCreationWizard"
 import { type BomMaterialOption } from "./BomLineEditorGrid"
 import { BomTable } from "./BomTable"
 import { BomDetailPanel } from "./BomDetailPanel"
+import { BomEditDialog } from "./BomEditDialog"
 import { useBomDetailPanel } from "./useBomDetailPanel"
 import type { AccessLevel } from "@/lib/permissions"
 import type { BomListItem, Sku } from "@/types/masters"
@@ -99,6 +102,15 @@ export default function BOMMasterComponent({
         </select>
 
         <MasterToolbarActions>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => router.push("/masters/bom-master/history")}
+          >
+            <History className="h-3.5 w-3.5" />
+            BOM History
+          </Button>
           <DownloadButton
             endpoint="/api/masters/bom-master/export"
             label="BOM Master"
@@ -154,7 +166,6 @@ export default function BOMMasterComponent({
               detail={panel.detail}
               detailLoading={panel.detailLoading}
               detailError={panel.detailError}
-              editMode={panel.editMode}
               activeMtrlType={panel.activeMtrlType}
               onChangeMtrlType={panel.setActiveMtrlType}
               rmLines={panel.rmLines}
@@ -165,21 +176,28 @@ export default function BOMMasterComponent({
               canEdit={canEdit}
               onClose={panel.closeDetail}
               onEdit={panel.openEditMode}
-              editRmRows={panel.editRmRows}
-              editPmRows={panel.editPmRows}
-              onChangeEditRm={panel.setEditRmRows}
-              onChangeEditPm={panel.setEditPmRows}
-              rmMaterials={rmMaterials}
-              pmMaterials={pmMaterials}
-              saveError={panel.saveError}
-              saving={panel.saving}
-              onCancelEdit={panel.cancelEdit}
-              onSaveEdit={panel.saveEdit}
             />
           )}
         </div>
 
       </div>
+
+      {/* ── Edit dialog — opened via "Update Existing BOM" or the table's
+             per-row Edit button, kept separate from the detail panel above ── */}
+      <BomEditDialog
+        open={panel.editMode}
+        bomCode={panel.detail?.bom_code ?? null}
+        rmRows={panel.editRmRows}
+        pmRows={panel.editPmRows}
+        onChangeRm={panel.setEditRmRows}
+        onChangePm={panel.setEditPmRows}
+        rmMaterials={rmMaterials}
+        pmMaterials={pmMaterials}
+        saveError={panel.saveError}
+        saving={panel.saving}
+        onCancel={panel.cancelEdit}
+        onSave={panel.saveEdit}
+      />
     </>
   )
 }

@@ -434,12 +434,12 @@ export const POST = withGateway({
         }
         await conn.commit()
         logger.info({ ...logCtx, inserted, skipped, message: "Transaction committed successfully" })
-        recordProcessedEvent("MFG_S3BULK", eventId, { source: "s3", s3Key: key, inserted, skipped })
+        recordProcessedEvent("MFG_BULK", eventId, { source: "s3", s3Key: key, inserted, skipped })
         return NextResponse.json({ inserted, skipped })
       } catch (err: any) {
         await conn.rollback()
         logger.warn({ ...logCtx, inserted, skipped, message: "Transaction rolled back" })
-        recordFailedEvent("MFG_S3BULK", eventId, { source: "s3", s3Key: key }, err.message)
+        recordFailedEvent("MFG_BULK", eventId, { source: "s3", s3Key: key }, err.message)
         logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Manufacturer bulk insert failed" })
         throw new ApiError(500, "internal", "Import failed: " + err.message)
       } finally {

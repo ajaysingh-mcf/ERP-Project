@@ -24,6 +24,7 @@ import { bom as bomSql } from "@/lib/queries/bom"
 import { getFileBuffer } from "@/lib/s3"
 import { recordProcessedEvent, recordFailedEvent } from "@/lib/events"
 import { STATUS } from "@/lib/constants"
+import logger from "@/lib/logger"
 
 export type DiffItem = { field_name: string; old_value: string; new_value: string }
 
@@ -552,8 +553,24 @@ const bomHandler: ModuleHandler = {
     // 3. Activate this BOM and deactivate any other active BOM for the same
     //    sku_id — enforces "only one active BOM per SKU" at approval time.
     await conn.execute(bomSql.setBomStatusWithUpdater, [STATUS.ACTIVE, approverId, entityId])
+    logger.info({ module: "BOM", bomId: entityId, skuId: header.sku_id, approverId, message: "BOM activated" })
+    recordProcessedEvent("BOM", `bom-activated-${entityId}-${Date.now()}`, { bomId: entityId, skuId: header.sku_id, approverId })
+
     if (header.sku_id) {
-      await conn.execute(bomSql.deactivateOtherActiveBomsForSku, [header.sku_id, entityId])
+      // Read the sibling ids BEFORE deactivating — MariaDB's UPDATE has no
+      // RETURNING, so this is the only way to know which BOMs are about to
+      // be deactivated and log/emit one event per sibling, not one for the
+      // whole batch.
+      const [siblingRows] = await conn.execute(bomSql.selectOtherActiveBomsForSku, [header.sku_id, entityId])
+      const siblingIds = (siblingRows as any[]).map((r) => r.id)
+
+      if (siblingIds.length > 0) {
+        await conn.execute(bomSql.deactivateOtherActiveBomsForSku, [header.sku_id, entityId])
+        for (const siblingId of siblingIds) {
+          logger.info({ module: "BOM", bomId: siblingId, skuId: header.sku_id, supersededBy: entityId, message: "BOM deactivated (superseded)" })
+          recordProcessedEvent("BOM", `bom-deactivated-${siblingId}-${Date.now()}`, { bomId: siblingId, skuId: header.sku_id, supersededBy: entityId })
+        }
+      }
     }
   },
 }

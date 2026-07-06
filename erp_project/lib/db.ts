@@ -15,6 +15,16 @@ export const pool =
     waitForConnections: true,
     queueLimit: 0,
     ssl: { rejectUnauthorized: false },
+    // The RDS session/global time_zone is UTC (confirmed via `SELECT
+    // @@session.time_zone`), but mysql2's default `timezone: 'local'` parses
+    // DATETIME columns using the Node process's OS timezone (IST in prod/dev
+    // here). That mismatch made every DATETIME/TIMESTAMP value round-trip
+    // through toLocaleString() as if it were already IST, displaying raw UTC
+    // digits as if they were local time (5.5h behind real IST). Pinning this
+    // to UTC makes mysql2 parse the raw value correctly, producing a Date
+    // object with the true UTC instant — the process's local formatting then
+    // converts it to IST correctly.
+    timezone: "+00:00",
     // Keep TCP connections alive so the DB server doesn't drop idle pool
     // connections after its wait_timeout, which causes ECONNRESET.
     enableKeepAlive: true,

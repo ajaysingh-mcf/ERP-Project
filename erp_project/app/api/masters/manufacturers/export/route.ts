@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
     )
 
     const filename = buildExportFilename("manufacturers", format, { search: search || null })
+    console.log(`[/api/masters/manufacturers/export] served ${rows.length} rows as ${format}`)
 
     if (format === "xlsx") {
       const buffer = await buildXlsx("Manufacturers", MFG_EXPORT_COLUMNS, rows)

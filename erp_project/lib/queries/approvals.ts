@@ -174,4 +174,42 @@ export const approvalsSql = {
     ORDER BY a.approved_on DESC
     LIMIT 1
   `,
+
+  /**
+   * Resolved approvals (approved or rejected) — the audit trail behind the
+   * "Approval History" page. `approvals` rows are never deleted, so this is
+   * the same table `listPending` reads, just the complementary status set.
+   * Params: [module, module, status, status, LIMIT, OFFSET]
+   *   module — a MODULE_LABEL key or null (no filter)
+   *   status — 'approved'|'rejected' or null (no filter — both shown)
+   */
+  listHistory: `
+    SELECT
+      a.id,
+      a.module,
+      a.entity_id,
+      a.raised_on,
+      a.status,
+      a.remarks,
+      a.approved_on,
+      u.name  AS raised_by_name,
+      ua.name AS approved_by_name
+    FROM approvals a
+    JOIN users u ON u.id = a.raised_by
+    LEFT JOIN users ua ON ua.id = a.approved_by
+    WHERE a.status IN ('approved', 'rejected')
+      AND (? IS NULL OR a.module = ?)
+      AND (? IS NULL OR a.status = ?)
+    ORDER BY a.approved_on DESC
+    LIMIT ? OFFSET ?
+  `,
+
+  /** Matching COUNT for listHistory. Params: [module, module, status, status] */
+  countHistory: `
+    SELECT COUNT(*) AS total
+    FROM approvals a
+    WHERE a.status IN ('approved', 'rejected')
+      AND (? IS NULL OR a.module = ?)
+      AND (? IS NULL OR a.status = ?)
+  `,
 }

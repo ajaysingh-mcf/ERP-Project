@@ -1,4 +1,4 @@
-> **Related docs:** [Architecture](./architecture.md) · [Event-Driven Options](./event-driven-options.md)
+> **Related docs:** [Architecture](./architecture.md) · [Event-Driven Options](./event-driven-options.md) · [Event Catalog](./event-catalog.md) · [Interaction Logging Map](./interaction-logging-map.md) · [Event Instrumentation Blueprint](./event-instrumentation-blueprint.md)
 
 # ERP Architecture Evolution Plan
 

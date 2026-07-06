@@ -68,6 +68,8 @@ export async function GET(req: NextRequest) {
     // ── Build and return file ─────────────────────────────────────────────────
     const filename = buildExportFilename("skus", format, { search: search || null, status: status || null })
 
+    console.log(`[/api/masters/skus/export] served ${rows.length} rows as ${format}`)
+
     if (format === "xlsx") {
       const buffer = await buildXlsx("SKUs", SKU_EXPORT_COLUMNS, rows)
       return new NextResponse(buffer, {

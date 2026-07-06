@@ -199,6 +199,10 @@ export type BOM = {
   created_by: string | null;
   mtrl_name: string | null;
   mtrl_code: string | null;
+  /** master_rm.status / master_pm.status for this line's material — distinct
+   *  from material_status (the details_bom line's own status). Used to flag
+   *  lines referencing a material that's since been deactivated. */
+  mtrl_master_status: string | null;
 };
 
 /** One row per BOM header, used by the BOM Master listing page. */
