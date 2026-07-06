@@ -23,6 +23,12 @@ export const authConfig: NextAuthConfig = {
 
   session: { strategy: "jwt" },
 
+  // Explicit for clarity -- NextAuth would auto-read process.env.AUTH_SECRET
+  // anyway, but the "missing secret" errors we've been chasing were all
+  // caused by Amplify not actually injecting the Console-configured value at
+  // runtime, so make the dependency visible here rather than implicit.
+  secret: process.env.AUTH_SECRET,
+
   // Amplify Hosting fronts the app behind a platform-managed domain (and we've
   // been juggling several *.amplifyapp.com app IDs while testing), so Auth.js
   // can't be pinned to one fixed trusted host up front.
