@@ -1,20 +1,18 @@
 import type { NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
 
-// This config is imported by middleware.ts, which runs on the Edge runtime —
-// it must not pull in "@/lib/env" (validates DB/AWS/Gmail vars too), so the
-// two OAuth vars it needs are read directly from process.env here instead.
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required environment variable: ${name}`);
-  return value;
-}
-
+// This config is imported by proxy.ts, which Amplify Hosting runs as an
+// isolated compute unit that does not receive the app's environment
+// variables (a known Amplify limitation, independent of Node vs Edge
+// runtime). proxy.ts only decodes an already-issued session JWT — it never
+// performs the OAuth handshake — so falling back to an empty string here is
+// safe: the real handshake happens in lib/auth.ts's NextAuth handlers, which
+// run as a normal Next.js route and do receive real env vars.
 export const authConfig: NextAuthConfig = {
   providers: [
     Google({
-      clientId:     required("GOOGLE_CLIENT_ID"),
-      clientSecret: required("GOOGLE_CLIENT_SECRET"),
+      clientId:     process.env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
     }),
   ],
 
