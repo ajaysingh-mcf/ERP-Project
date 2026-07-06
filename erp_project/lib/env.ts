@@ -27,11 +27,11 @@ export const DB_POOL_SIZE = Number(process.env.DB_POOL_SIZE ?? 10)
 
 // ── AWS S3 ───────────────────────────────────────────────────────────────────
 
-export const AWS_REGION            = required("AWS_REGION")
-export const AWS_ACCESS_KEY_ID     = required("AWS_ACCESS_KEY_ID")
-export const AWS_SECRET_ACCESS_KEY = required("AWS_SECRET_ACCESS_KEY")
-export const AWS_S3_BUCKET_FILES   = required("AWS_S3_BUCKET_FILES")
-export const AWS_S3_BUCKET_EVENTS  = required("AWS_S3_BUCKET_EVENTS")
+export const AWS_REGION            = required("REGION_AWS")
+export const AWS_ACCESS_KEY_ID     = required("ACCESS_KEY_ID_AWS")
+export const AWS_SECRET_ACCESS_KEY = required("SECRET_ACCESS_KEY_AWS")
+export const AWS_S3_BUCKET_FILES   = required("S3_BUCKET_FILES_AWS")
+export const AWS_S3_BUCKET_EVENTS  = required("S3_BUCKET_EVENTS_AWS")
 
 // ── Gmail SMTP ───────────────────────────────────────────────────────────────
 
