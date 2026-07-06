@@ -22,4 +22,9 @@ export const authConfig: NextAuthConfig = {
   },
 
   session: { strategy: "jwt" },
+
+  // Amplify Hosting fronts the app behind a platform-managed domain (and we've
+  // been juggling several *.amplifyapp.com app IDs while testing), so Auth.js
+  // can't be pinned to one fixed trusted host up front.
+  trustHost: true,
 };
