@@ -78,6 +78,10 @@ export function QuickCreateVendorModal({
         zone: form.zone.trim() || null,
         registered_name: null,
         status: "active",
+        gst_certificate_key: null,
+        cancelled_cheque_key: null,
+        pan_card_key: null,
+        misc_document_key: null,
       }
       toast({ title: "Vendor created", description: newVendor.name, variant: "success" })
       onSuccess(newVendor)
