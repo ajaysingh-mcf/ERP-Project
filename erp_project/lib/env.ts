@@ -1,10 +1,11 @@
 /**
  * Central environment configuration.
  *
- * All required env vars are validated here at module load time.
- * If any required var is missing the process throws immediately with a clear
- * message — misconfigured deployments fail at cold start, not silently during
- * the first request that happens to hit the affected code path.
+ * Env vars are read here at module load time. On Amplify Hosting Compute the
+ * whole app runs as one shared Lambda across all routes, so throwing here
+ * would crash cold start for every route -- including ones that never touch
+ * the missing var. Instead we warn and fall back to an empty string, so a
+ * single misconfigured var only breaks the feature that actually uses it.
  *
  * Usage:
  *   import { DB_HOST, AWS_REGION, GMAIL_USER } from "@/lib/env"
@@ -12,7 +13,10 @@
 
 function required(name: string): string {
   const value = process.env[name]
-  if (!value) throw new Error(`Missing required environment variable: ${name}`)
+  if (!value) {
+    console.error(`[env] Missing environment variable: ${name}`)
+    return ""
+  }
   return value
 }
 
