@@ -61,6 +61,14 @@ const fileFormat = winston.format.combine(
 
 // ── logger ─────────────────────────────────────────────────────────────────
 
+// Serverless platforms (Vercel, Amplify Hosting compute, etc.) run on a
+// read-only filesystem -- DailyRotateFile's mkdir('logs/') crashes the whole
+// process on import. Those platforms already capture stdout/stderr in their
+// own log viewers, so file transports are only useful for a real persistent
+// server (VERCEL and AWS_LAMBDA_FUNCTION_NAME are set by their respective
+// platforms; this covers self-hosted/VM deployments too).
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || "info",
   transports: [
@@ -68,21 +76,23 @@ const logger = winston.createLogger({
       format: consoleFormat,
     }),
 
-    new DailyRotateFile({
-      format: fileFormat,
-      filename: "logs/app-%DATE%.log",
-      datePattern: "YYYY-MM-DD",
-      maxFiles: "14d",
-      maxSize: "20m",
-    }),
+    ...(isServerless ? [] : [
+      new DailyRotateFile({
+        format: fileFormat,
+        filename: "logs/app-%DATE%.log",
+        datePattern: "YYYY-MM-DD",
+        maxFiles: "14d",
+        maxSize: "20m",
+      }),
 
-    new DailyRotateFile({
-      level: "error",
-      format: fileFormat,
-      filename: "logs/error-%DATE%.log",
-      datePattern: "YYYY-MM-DD",
-      maxFiles: "30d",
-    }),
+      new DailyRotateFile({
+        level: "error",
+        format: fileFormat,
+        filename: "logs/error-%DATE%.log",
+        datePattern: "YYYY-MM-DD",
+        maxFiles: "30d",
+      }),
+    ]),
   ],
 });
 
