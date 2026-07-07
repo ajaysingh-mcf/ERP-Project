@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -60,7 +61,10 @@ function MfgCard({ row, totalPlan }: { row: MfgOverviewRow; totalPlan: number })
   )
 }
 
+const CARD_CAP = 6
+
 export default function ManufacturingOverviewClient({ rows }: { rows: MfgOverviewRow[] }) {
+  const [showAllCards, setShowAllCards] = useState(false)
   const totalPlan = rows.reduce((sum, r) => sum + Number(r.this_month_plan ?? 0), 0)
   const maxPlan = Math.max(1, ...rows.map((r) => Number(r.this_month_plan ?? 0)))
 
@@ -74,13 +78,29 @@ export default function ManufacturingOverviewClient({ rows }: { rows: MfgOvervie
     )
   }
 
+  // Highest production share first — the cards a user most likely wants are
+  // the ones already capturing the most volume, so those survive the cap.
+  const cardsSorted = [...rows].sort((a, b) => Number(b.this_month_plan ?? 0) - Number(a.this_month_plan ?? 0))
+  const overflowCount = cardsSorted.length - CARD_CAP
+  const visibleCards = overflowCount > 0 && !showAllCards ? cardsSorted.slice(0, CARD_CAP) : cardsSorted
+
   return (
     <div className="space-y-6 text-xs">
       {/* ── Per-manufacturer cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {rows.map((row) => (
-          <MfgCard key={row.id} row={row} totalPlan={totalPlan} />
-        ))}
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visibleCards.map((row) => (
+            <MfgCard key={row.id} row={row} totalPlan={totalPlan} />
+          ))}
+        </div>
+        {overflowCount > 0 && (
+          <button
+            onClick={() => setShowAllCards((v) => !v)}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showAllCards ? "Show less" : `Show all ${cardsSorted.length} manufacturers (+${overflowCount})`}
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

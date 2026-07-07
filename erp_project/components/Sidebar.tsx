@@ -65,10 +65,17 @@ interface SidebarProps {
   mfgs?: { id: number; name: string }[]
 }
 
+// Sections with more children than this show only the first CHILD_CAP and
+// collapse the rest behind a "Show more" toggle — keeps a growing list (e.g.
+// manufacturers under MFG Management) from pushing every section below it
+// down the sidebar.
+const CHILD_CAP = 5
+
 export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [openSections, setOpenSections] = useState<string[]>(["Masters"])
+  const [expandedSections, setExpandedSections] = useState<string[]>([])
 
   // MFG Management's children depend on the live manufacturer list (passed
   // down from the server), so this item is built per-render rather than
@@ -87,6 +94,11 @@ export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
 
   const toggleSection = (label: string) =>
     setOpenSections(prev =>
+      prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]
+    )
+
+  const toggleExpanded = (label: string) =>
+    setExpandedSections(prev =>
       prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]
     )
 
@@ -203,24 +215,41 @@ export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
                 ) : (
                   triggerBtn
                 )}
-                {!collapsed && isOpen && (
-                  <div className="ml-6 mt-0.5 mb-1 space-y-0.5 border-l border-sidebar-border pl-3">
-                    {item.children!.map(child => (
-                      <Link
-                        key={child.href}
-                        href={child.href}
-                        className={cn(
-                          "block px-2 py-1.5 rounded-md text-sm transition-colors",
-                          isChildActive(item.children!, child.href)
-                            ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
-                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                        )}
-                      >
-                        {child.label}
-                      </Link>
-                    ))}
-                  </div>
-                )}
+                {!collapsed && isOpen && (() => {
+                  const children = item.children!
+                  const overflowCount = children.length - CHILD_CAP
+                  const activeChild = bestActiveChild(children)
+                  const activeIsHidden = !!activeChild && children.indexOf(activeChild) >= CHILD_CAP
+                  const isExpanded = expandedSections.includes(item.label) || activeIsHidden
+                  const visibleChildren = overflowCount > 0 && !isExpanded ? children.slice(0, CHILD_CAP) : children
+
+                  return (
+                    <div className="ml-6 mt-0.5 mb-1 space-y-0.5 border-l border-sidebar-border pl-3">
+                      {visibleChildren.map(child => (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          className={cn(
+                            "block px-2 py-1.5 rounded-md text-sm transition-colors",
+                            isChildActive(children, child.href)
+                              ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
+                              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                          )}
+                        >
+                          {child.label}
+                        </Link>
+                      ))}
+                      {overflowCount > 0 && (
+                        <button
+                          onClick={() => toggleExpanded(item.label)}
+                          className="block w-full text-left px-2 py-1.5 rounded-md text-sm text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                        >
+                          {isExpanded ? "Show less" : `Show more (${overflowCount})`}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             )
           })}
