@@ -1,5 +1,14 @@
 # AWS Setup Commands (hosting account)
 
+> **Architecture update (2026-07-07):** for testing, the ALB + Auto Scaling Group
+> described in steps 6-7 below were torn down in favor of a single standalone EC2
+> instance with an **Elastic IP** attached directly (no load balancer). The app is
+> reachable at `http://35.154.13.21` on port 80 (container maps `-p 80:3000`
+> instead of `-p 3000:3000`). Deploys now go out via `aws ssm send-command`
+> targeting `Key=tag:Name,Values=erp-app` instead of an ASG instance refresh — see
+> `.github/workflows/deploy.yml`. Steps 6-7 (ALB/ASG) are left below for reference
+> if load balancing/redundancy is reintroduced later; they are not currently live.
+
 Run these yourself against the **hosting** AWS account (not the bucket-access account
 currently in your default CLI profile). Replace anything in `<ANGLE_BRACKETS>`.
 Work top to bottom — later steps depend on IDs from earlier ones.

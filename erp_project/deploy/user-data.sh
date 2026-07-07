@@ -63,12 +63,13 @@ aws ecr get-login-password --region "$AWS_REGION" \
 
 echo "== Pulling and starting the app container =="
 mkdir -p /var/log/erp
+chown 999:999 /var/log/erp  # matches the container's non-root "nextjs" user (uid/gid 999)
 docker pull "${ECR_REPO_URI}:${IMAGE_TAG}"
 docker rm -f erp 2>/dev/null || true
 docker run -d \
   --name erp \
   --restart unless-stopped \
-  -p 3000:3000 \
+  -p 80:3000 \
   --env-file /etc/erp/env \
   -v /var/log/erp:/app/logs \
   "${ECR_REPO_URI}:${IMAGE_TAG}"
