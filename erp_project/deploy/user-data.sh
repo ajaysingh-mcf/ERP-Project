@@ -9,6 +9,8 @@ AWS_REGION="ap-south-1"
 ECR_REPO_URI="230235764844.dkr.ecr.ap-south-1.amazonaws.com/erp-app"
 SSM_PARAM_PATH="/erp/prod"
 IMAGE_TAG="latest"
+DOMAIN="erp.mcaffeine.com"
+CERTBOT_EMAIL="ajay.singh@mcaffeine.com"
 
 echo "== Installing Docker =="
 dnf update -y
@@ -69,9 +71,66 @@ docker rm -f erp 2>/dev/null || true
 docker run -d \
   --name erp \
   --restart unless-stopped \
-  -p 80:3000 \
+  -p 127.0.0.1:3000:3000 \
   --env-file /etc/erp/env \
   -v /var/log/erp:/app/logs \
   "${ECR_REPO_URI}:${IMAGE_TAG}"
+
+echo "== Installing nginx + Certbot (reverse proxy + HTTPS) =="
+dnf install -y nginx python3-pip
+systemctl enable nginx
+pip3 install certbot certbot-nginx
+ln -sf /usr/local/bin/certbot /usr/bin/certbot
+
+cat > /etc/nginx/conf.d/erp.conf <<NGINXCONF
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-Host \$host;
+        proxy_set_header X-Forwarded-Port 443;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+NGINXCONF
+rm -f /etc/nginx/conf.d/default.conf
+systemctl restart nginx
+
+# Requires the domain's DNS to already point at this instance's IP (Elastic
+# IP re-association happens before this script runs, so it should).
+certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect
+
+cat > /etc/systemd/system/certbot-renew.service <<'EOF'
+[Unit]
+Description=Certbot renewal
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx"
+EOF
+
+cat > /etc/systemd/system/certbot-renew.timer <<'EOF'
+[Unit]
+Description=Run certbot renew twice daily
+
+[Timer]
+OnCalendar=*-*-* 03,15:00:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now certbot-renew.timer
 
 echo "== Done =="

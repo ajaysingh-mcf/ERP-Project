@@ -51,6 +51,6 @@ jobs:
               \"aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $REGISTRY\",
               \"docker pull $REGISTRY/$ECR_REPOSITORY:latest\",
               \"docker rm -f erp || true\",
-              \"docker run -d --name erp --restart unless-stopped -p 80:3000 --env-file /etc/erp/env -v /var/log/erp:/app/logs $REGISTRY/$ECR_REPOSITORY:latest\"
+              \"docker run -d --name erp --restart unless-stopped -p 127.0.0.1:3000:3000 --env-file /etc/erp/env -v /var/log/erp:/app/logs $REGISTRY/$ECR_REPOSITORY:latest\"
             ]}" \
             --query 'Command.CommandId' --output text

@@ -2,12 +2,23 @@
 
 > **Architecture update (2026-07-07):** for testing, the ALB + Auto Scaling Group
 > described in steps 6-7 below were torn down in favor of a single standalone EC2
-> instance with an **Elastic IP** attached directly (no load balancer). The app is
-> reachable at `http://35.154.13.21` on port 80 (container maps `-p 80:3000`
-> instead of `-p 3000:3000`). Deploys now go out via `aws ssm send-command`
-> targeting `Key=tag:Name,Values=erp-app` instead of an ASG instance refresh — see
+> instance with an **Elastic IP** (`35.154.13.21`) attached directly (no load
+> balancer). Deploys now go out via `aws ssm send-command` targeting
+> `Key=tag:Name,Values=erp-app` instead of an ASG instance refresh — see
 > `.github/workflows/deploy.yml`. Steps 6-7 (ALB/ASG) are left below for reference
 > if load balancing/redundancy is reintroduced later; they are not currently live.
+>
+> **Domain + HTTPS added (same day):** the app is reachable at
+> `https://erp.mcaffeine.com` via **nginx** running directly on the instance as a
+> reverse proxy in front of the container (`nginx` on 80/443 → container on
+> `127.0.0.1:3000`, not exposed publicly). TLS is a free **Let's Encrypt**
+> certificate via Certbot, auto-renewed by a systemd timer (`certbot-renew.timer`).
+> `AUTH_URL=https://erp.mcaffeine.com` is set in SSM (`/erp/prod/AUTH_URL`) so
+> NextAuth doesn't have to derive its own origin — without it, Auth.js fell back
+> to the container's internal bind address (`0.0.0.0:3000`) in generated callback
+> URLs, breaking Google Sign-In. All of this is baked into `deploy/user-data.sh`
+> so a replacement instance reproduces it automatically (DNS must already point
+> at the new instance's Elastic IP before Certbot runs).
 
 Run these yourself against the **hosting** AWS account (not the bucket-access account
 currently in your default CLI profile). Replace anything in `<ANGLE_BRACKETS>`.
