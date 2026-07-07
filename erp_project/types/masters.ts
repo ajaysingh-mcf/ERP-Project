@@ -238,3 +238,41 @@ export type bomType = {
 export type bom_detailsType = {
 
 }
+
+/** MFG Management line status — a manufacturer's SKU-level production state. */
+export type MfgLineStatus = "active" | "on_hold" | "tech_transfer"
+
+/**
+ * `master_bom_mfg` joined with `master_bom`/`master_skus`/`master_mfgs` — one
+ * row per SKU a manufacturer produces. Used by app/manufacturing/[mfgId].
+ */
+export type MfgLine = {
+  id: number
+  bom_id: number
+  mfg_id: number
+  status: MfgLineStatus
+  effective_from: string | null
+  effective_to: string | null
+  monthly_capacity: number | null
+  this_month_plan: number | null
+  last_batch_date: string | null
+  remarks: string | null
+  bom_code: string | null
+  sku_code: string | null
+  sku_name: string | null
+  brand: string | null
+  mfg_code: string
+  mfg_name: string
+}
+
+/** Aggregated per-manufacturer production + PO stats. Used by app/manufacturing (Overview). */
+export type MfgOverviewRow = {
+  id: number
+  code: string
+  name: string
+  capacity: number
+  this_month_plan: number
+  active_skus: number
+  open_pos: number
+  open_value: number
+}

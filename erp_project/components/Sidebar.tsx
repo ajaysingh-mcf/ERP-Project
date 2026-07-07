@@ -35,7 +35,6 @@ const NAV: NavItem[] = [
       {label: "Material Master",     href:"/masters/material-master"}
     ],
   },
-  { label: "MFG Management",      icon: Factory,      children: [] },
   { label: "Planning",            icon: CalendarDays, children: [] },
   // "PO Tracking" (formerly "Production Tracking") groups the purchase-order
   // workflow pages. Children render as a collapsible sub-list — the generic
@@ -63,12 +62,28 @@ const NAV: NavItem[] = [
 
 interface SidebarProps {
   user?: { name?: string | null; email?: string | null }
+  mfgs?: { id: number; name: string }[]
 }
 
-export default function Sidebar({ user }: SidebarProps) {
+export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [openSections, setOpenSections] = useState<string[]>(["Masters"])
+
+  // MFG Management's children depend on the live manufacturer list (passed
+  // down from the server), so this item is built per-render rather than
+  // living in the static NAV array above.
+  const nav: NavItem[] = [
+    NAV[0], NAV[1],
+    {
+      label: "MFG Management", icon: Factory,
+      children: [
+        { label: "Overview", href: "/manufacturing" },
+        ...mfgs.map(m => ({ label: m.name, href: `/manufacturing/${m.id}` })),
+      ],
+    },
+    ...NAV.slice(2),
+  ]
 
   const toggleSection = (label: string) =>
     setOpenSections(prev =>
@@ -116,7 +131,7 @@ export default function Sidebar({ user }: SidebarProps) {
 
         {/* Nav items */}
         <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5 scrollbar-none [&::-webkit-scrollbar]:hidden">
-          {NAV.map(item => {
+          {nav.map(item => {
             const active = isSectionActive(item)
             const hasChildren = (item.children?.length ?? 0) > 0
             const isOpen = openSections.includes(item.label)

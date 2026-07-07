@@ -27,6 +27,7 @@ RUN mkdir -p /app/logs && chown nextjs:nodejs /app/logs
 VOLUME /app/logs
 
 USER nextjs
+
 EXPOSE 3000
 
 CMD ["node", "server.js"]

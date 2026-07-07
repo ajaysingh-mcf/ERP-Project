@@ -368,17 +368,21 @@ model master_bom {
 }
 
 model master_bom_mfg {
-  id             Int         @id @default(autoincrement())
-  bom_id         Int
-  mfg_id         Int
-  status         String      @db.VarChar(50)
-  effective_from DateTime    @db.Date
-  effective_to   DateTime?   @db.Date
-  created_on     DateTime?   @default(now()) @db.DateTime(0)
-  created_by     Int?
-  master_bom     master_bom  @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bomfg_bom")
-  users          users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bomfg_creator")
-  master_mfgs    master_mfgs @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bomfg_mfg")
+  id               Int         @id @default(autoincrement())
+  bom_id           Int
+  mfg_id           Int
+  status           String      @db.VarChar(50)
+  effective_from   DateTime    @db.Date
+  effective_to     DateTime?   @db.Date
+  monthly_capacity Int?
+  this_month_plan  Int?
+  last_batch_date  DateTime?   @db.Date
+  remarks          String?     @db.VarChar(255)
+  created_on       DateTime?   @default(now()) @db.DateTime(0)
+  created_by       Int?
+  master_bom       master_bom  @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bomfg_bom")
+  users            users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bomfg_creator")
+  master_mfgs      master_mfgs @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bomfg_mfg")
 
   @@unique([bom_id, mfg_id], map: "uq_bom_mfg")
   @@index([created_by], map: "fk_bomfg_creator")

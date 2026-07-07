@@ -8,11 +8,12 @@ import { ToastProvider } from "@/components/ui/toast"
 interface Props {
   children: React.ReactNode
   user?: { name?: string | null; email?: string | null }
+  mfgs?: { id: number; name: string }[]
 }
 
 const AUTH_ROUTES = ["/auth/"]
 
-export default function ClientLayout({ children, user }: Props) {
+export default function ClientLayout({ children, user, mfgs }: Props) {
   const pathname = usePathname()
   const isAuthPage = AUTH_ROUTES.some(r => pathname.startsWith(r))
 
@@ -21,7 +22,7 @@ export default function ClientLayout({ children, user }: Props) {
   return (
     <ToastProvider>
       <div className="flex h-screen overflow-hidden bg-background">
-        <Sidebar user={user} />
+        <Sidebar user={user} mfgs={mfgs} />
         <div className="flex flex-col flex-1 overflow-hidden">
           <TopBar />
           <main className="flex-1 overflow-auto scrollbar-none [&::-webkit-scrollbar]:hidden">

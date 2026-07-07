@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import { auth } from "@/lib/auth";
 import ClientLayout from "@/components/ClientLayout";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { timedQuery } from "@/lib/query-timing";
+import { manufacturingSql } from "@/lib/queries/manufacturing";
 
 const merriweatherHeading = Merriweather({ subsets: ["latin"], variable: "--font-heading" });
 const roboto = Roboto({ subsets: ["latin"], variable: "--font-sans" });
@@ -23,6 +25,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const user = session?.user
     ? { name: session.user.name, email: session.user.email }
     : undefined;
+  const mfgs = session
+    ? await timedQuery<{ id: number; name: string }>(manufacturingSql.selectActiveForNav, [], { label: "manufacturing.selectActiveForNav" })
+    : [];
 
   return (
     <html
@@ -42,7 +47,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body className="h-full">
         <ThemeProvider>
-          <ClientLayout user={user}>{children}</ClientLayout>
+          <ClientLayout user={user} mfgs={mfgs}>{children}</ClientLayout>
         </ThemeProvider>
       </body>
     </html>
