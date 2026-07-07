@@ -16,6 +16,7 @@ type FormState = {
   bom_id: string
   status: MfgLineStatus
   effective_from: string
+  effective_to: string
   monthly_capacity: string
   this_month_plan: string
   last_batch_date: string
@@ -26,6 +27,7 @@ const EMPTY_FORM: FormState = {
   bom_id: "",
   status: "active",
   effective_from: new Date().toISOString().slice(0, 10),
+  effective_to: "",
   monthly_capacity: "",
   this_month_plan: "",
   last_batch_date: "",
@@ -56,6 +58,7 @@ export default function LineDialog({
         bom_id: String(editData.bom_id),
         status: editData.status,
         effective_from: editData.effective_from ?? "",
+        effective_to: editData.effective_to ?? "",
         monthly_capacity: editData.monthly_capacity != null ? String(editData.monthly_capacity) : "",
         this_month_plan: editData.this_month_plan != null ? String(editData.this_month_plan) : "",
         last_batch_date: editData.last_batch_date ?? "",
@@ -82,6 +85,7 @@ export default function LineDialog({
             action: "update",
             id: editData.id,
             status: form.status,
+            effective_to: form.effective_to || null,
             monthly_capacity: form.monthly_capacity ? Number(form.monthly_capacity) : null,
             this_month_plan: form.this_month_plan ? Number(form.this_month_plan) : null,
             last_batch_date: form.last_batch_date || null,
@@ -93,6 +97,7 @@ export default function LineDialog({
             mfg_id: mfgId,
             status: form.status,
             effective_from: form.effective_from,
+            effective_to: form.effective_to || null,
             monthly_capacity: form.monthly_capacity ? Number(form.monthly_capacity) : null,
             this_month_plan: form.this_month_plan ? Number(form.this_month_plan) : null,
             last_batch_date: form.last_batch_date || null,
@@ -164,12 +169,20 @@ export default function LineDialog({
               </div>
             )}
             <div className="grid gap-1.5">
-              <Label htmlFor="ml-batch">Last Batch</Label>
+              <Label htmlFor="ml-till">Effective To</Label>
               <Input
-                id="ml-batch" type="date"
-                value={form.last_batch_date} onChange={(e) => set("last_batch_date", e.target.value)}
+                id="ml-till" type="date"
+                value={form.effective_to} onChange={(e) => set("effective_to", e.target.value)}
               />
             </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="ml-batch">Last Batch</Label>
+            <Input
+              id="ml-batch" type="date"
+              value={form.last_batch_date} onChange={(e) => set("last_batch_date", e.target.value)}
+            />
           </div>
 
           <div className="grid gap-1.5">

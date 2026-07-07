@@ -8,6 +8,7 @@ export const createMfgLineSchema = z.object({
   mfg_id: z.coerce.number().int().positive(),
   status: mfgLineStatusSchema,
   effective_from: z.string().trim().min(1, "effective_from is required"),
+  effective_to: z.string().trim().nullable().optional(),
   monthly_capacity: z.coerce.number().int().nonnegative().nullable().optional(),
   this_month_plan: z.coerce.number().int().nonnegative().nullable().optional(),
   last_batch_date: z.string().trim().nullable().optional(),
@@ -18,6 +19,7 @@ export const updateMfgLineSchema = z.object({
   action: z.literal("update"),
   id: z.coerce.number().int().positive(),
   status: mfgLineStatusSchema,
+  effective_to: z.string().trim().nullable().optional(),
   monthly_capacity: z.coerce.number().int().nonnegative().nullable().optional(),
   this_month_plan: z.coerce.number().int().nonnegative().nullable().optional(),
   last_batch_date: z.string().trim().nullable().optional(),
@@ -32,3 +34,37 @@ export const mfgLineActionSchema = z.discriminatedUnion("action", [
 export type CreateMfgLine = z.infer<typeof createMfgLineSchema>
 export type UpdateMfgLine = z.infer<typeof updateMfgLineSchema>
 export type MfgLineAction = z.infer<typeof mfgLineActionSchema>
+
+// ── JW / Shrink Wrap / Shipper costs (bom_misc) ─────────────────────────────
+
+export const miscCostTypeSchema = z.enum(["jw", "shrink", "shipper"])
+export const miscCostStatusSchema = z.enum(["active", "inactive", "discontinued"])
+
+export const createMiscCostSchema = z.object({
+  action: z.literal("create-misc"),
+  bom_id: z.coerce.number().int().positive(),
+  mfg_id: z.coerce.number().int().positive(),
+  type: miscCostTypeSchema,
+  cost: z.coerce.number().nonnegative(),
+  effective_from: z.string().trim().min(1, "effective_from is required"),
+  effective_till: z.string().trim().nullable().optional(),
+  status: miscCostStatusSchema,
+})
+
+export const updateMiscCostSchema = z.object({
+  action: z.literal("update-misc"),
+  id: z.coerce.number().int().positive(),
+  cost: z.coerce.number().nonnegative(),
+  effective_from: z.string().trim().min(1, "effective_from is required"),
+  effective_till: z.string().trim().nullable().optional(),
+  status: miscCostStatusSchema,
+})
+
+export const miscCostActionSchema = z.discriminatedUnion("action", [
+  createMiscCostSchema,
+  updateMiscCostSchema,
+])
+
+export type CreateMiscCost = z.infer<typeof createMiscCostSchema>
+export type UpdateMiscCost = z.infer<typeof updateMiscCostSchema>
+export type MiscCostAction = z.infer<typeof miscCostActionSchema>

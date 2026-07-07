@@ -21,7 +21,8 @@ import { rawMaterials } from "@/lib/queries/raw-materials"
 import { packingMaterials } from "@/lib/queries/packing-materials"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { skus as skusSql } from "@/lib/queries/skus"
-import type { Vendor, Mfg, Sku } from "@/types/masters"
+import { manufacturingSql } from "@/lib/queries/manufacturing"
+import type { Vendor, Mfg, Sku, AgreedPmRateRow, AgreedRmRateRow, RmVendorRow, RmVendorHistoryRow } from "@/types/masters"
 
 const REVALIDATE_SECONDS = 120
 
@@ -105,4 +106,36 @@ export const getPoDropdownOptions = unstable_cache(
   },
   ["ref-po-dropdown-options"],
   { revalidate: REVALIDATE_SECONDS, tags: ["ref:po-options"] }
+)
+
+// ── Manufacturing module: RM Vendor / Agreed Rates ──────────────────────────
+// Agreed rm_mrm_fixed/pm_mrm_fixed rates rarely change (only on an RM_RATE/
+// PM_RATE approval) — cache per-manufacturer and revalidate on a long timer,
+// backstopped by an immediate revalidateTag() right after that approval
+// commits (see app/api/approvals/[id]/route.ts), so a rate change shows up
+// on next load instead of waiting out the timer.
+const MFG_RATES_REVALIDATE_SECONDS = 900
+
+export const getRmVendorByMfg = unstable_cache(
+  (mfgId: number) => timedQuery<RmVendorRow>(manufacturingSql.selectRmVendorByMfg, [mfgId], { label: "manufacturing.selectRmVendorByMfg (cached)" }),
+  ["ref-mfg-rm-vendor"],
+  { revalidate: MFG_RATES_REVALIDATE_SECONDS, tags: ["ref:mfg-rm-rates"] }
+)
+
+export const getRmVendorHistoryByMfg = unstable_cache(
+  (mfgId: number) => timedQuery<RmVendorHistoryRow>(manufacturingSql.selectRmVendorHistoryByMfg, [mfgId], { label: "manufacturing.selectRmVendorHistoryByMfg (cached)" }),
+  ["ref-mfg-rm-vendor-history"],
+  { revalidate: MFG_RATES_REVALIDATE_SECONDS, tags: ["ref:mfg-rm-rates"] }
+)
+
+export const getAgreedRmRatesByMfg = unstable_cache(
+  (mfgId: number) => timedQuery<AgreedRmRateRow>(manufacturingSql.selectAgreedRmRatesByMfg, [mfgId], { label: "manufacturing.selectAgreedRmRatesByMfg (cached)" }),
+  ["ref-mfg-agreed-rm-rates"],
+  { revalidate: MFG_RATES_REVALIDATE_SECONDS, tags: ["ref:mfg-rm-rates"] }
+)
+
+export const getAgreedPmRatesByMfg = unstable_cache(
+  (mfgId: number) => timedQuery<AgreedPmRateRow>(manufacturingSql.selectAgreedPmRatesByMfg, [mfgId], { label: "manufacturing.selectAgreedPmRatesByMfg (cached)" }),
+  ["ref-mfg-agreed-pm-rates"],
+  { revalidate: MFG_RATES_REVALIDATE_SECONDS, tags: ["ref:mfg-pm-rates"] }
 )

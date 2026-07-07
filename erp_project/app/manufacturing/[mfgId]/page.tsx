@@ -4,10 +4,26 @@ import { redirect, notFound } from "next/navigation"
 import { timedQuery } from "@/lib/query-timing"
 import { manufacturingSql } from "@/lib/queries/manufacturing"
 import { manufacturers as manufacturersSql } from "@/lib/queries/manufacturers"
-import type { MfgLine } from "@/types/masters"
+import { getRmVendorByMfg, getRmVendorHistoryByMfg, getAgreedRmRatesByMfg, getAgreedPmRatesByMfg } from "@/lib/cached-reference-data"
+import type {
+  FinalCostingRow, MfgLine, MfgLineOption,
+  MiscCostLine, MiscCostType,
+} from "@/types/masters"
+import TabBar, { type MfgTab } from "./TabBar"
 import ManufacturingLinesClient from "./ManufacturingLinesClient"
+import MiscCostClient from "./MiscCostClient"
+import RmVendorTable from "./RmVendorTable"
+import AgreedRatesClient from "./AgreedRatesClient"
+import FinalCostingTable from "./FinalCostingTable"
 
 export const dynamic = "force-dynamic"
+
+const VALID_TABS: MfgTab[] = [
+  "active", "on_hold", "tech_transfer",
+  "misc_cost",
+  "rm_vendor", "agreed_rates", "final_costing",
+]
+const LINE_STATUS_TABS: MfgTab[] = ["active", "on_hold", "tech_transfer"]
 
 export default async function ManufacturerDetailPage({
   params,
@@ -27,16 +43,13 @@ export default async function ManufacturerDetailPage({
   if (!Number.isFinite(id)) notFound()
 
   const sp = await searchParams
-  const tabFilter = String(sp.tab ?? "active")
-  const status = ["active", "on_hold", "tech_transfer"].includes(tabFilter) ? tabFilter : "active"
+  const tabParam = String(sp.tab ?? "active")
+  const tab = (VALID_TABS.includes(tabParam as MfgTab) ? tabParam : "active") as MfgTab
 
-  const [mfgRows, lineRows, statusCountRows, bomOptions] = await Promise.all([
+  const [mfgRows, statusCountRows] = await Promise.all([
     timedQuery<{ id: number; code: string; name: string }>(manufacturersSql.selectNameById, [id]),
-    timedQuery<MfgLine>(manufacturingSql.selectLinesByMfg, [id, status, status], { label: "manufacturing.selectLinesByMfg" }),
     timedQuery<{ status: string; cnt: number }>(manufacturingSql.statusCountsByMfg, [id], { label: "manufacturing.statusCountsByMfg" }),
-    timedQuery<{ id: number; bom_code: string; sku_code: string | null; sku_name: string | null }>(manufacturingSql.bomOptionsForMfg, [id], { label: "manufacturing.bomOptionsForMfg" }),
   ])
-
   const mfg = mfgRows[0]
   if (!mfg) notFound()
 
@@ -49,13 +62,91 @@ export default async function ManufacturerDetailPage({
         <h1 className="text-lg font-bold tracking-tight">{mfg.name}</h1>
         <p className="text-muted-foreground text-xs mt-0.5 font-mono">{mfg.code}</p>
       </div>
-      <ManufacturingLinesClient
-        mfgId={id}
-        rows={lineRows}
-        statusCounts={statusCounts}
-        currentTab={status as "active" | "on_hold" | "tech_transfer"}
-        bomOptions={bomOptions}
-      />
+
+      <div className="space-y-4">
+        <TabBar mfgId={id} currentTab={tab} statusCounts={statusCounts} />
+        {LINE_STATUS_TABS.includes(tab) && <LineStatusTabContent mfgId={id} tab={tab} status={tab} />}
+        {tab === "misc_cost" && <MiscTabContent mfgId={id} />}
+        {tab === "rm_vendor" && <RmVendorTabContent mfgId={id} />}
+        {tab === "agreed_rates" && <AgreedRatesTabContent mfgId={id} />}
+        {tab === "final_costing" && <FinalCostingTabContent mfgId={id} />}
+      </div>
     </div>
   )
+}
+
+async function LineStatusTabContent({ mfgId, status }: { mfgId: number; tab: MfgTab; status: string }) {
+  const [lineRows, bomOptions] = await Promise.all([
+    timedQuery<MfgLine>(manufacturingSql.selectLinesByMfg, [mfgId, status, status], { label: "manufacturing.selectLinesByMfg" }),
+    timedQuery<{ id: number; bom_code: string; sku_code: string | null; sku_name: string | null }>(manufacturingSql.bomOptionsForMfg, [mfgId], { label: "manufacturing.bomOptionsForMfg" }),
+  ])
+  return (
+    <ManufacturingLinesClient
+      mfgId={mfgId}
+      rows={lineRows}
+      currentTab={status as "active" | "on_hold" | "tech_transfer"}
+      bomOptions={bomOptions}
+    />
+  )
+}
+
+async function MiscTabContent({ mfgId }: { mfgId: number }) {
+  const [rows, options] = await Promise.all([
+    timedQuery<MiscCostLine>(manufacturingSql.selectMiscByMfg, [mfgId], { label: "manufacturing.selectMiscByMfg" }),
+    timedQuery<MfgLineOption>(manufacturingSql.selectMfgLineOptions, [mfgId], { label: "manufacturing.selectMfgLineOptions" }),
+  ])
+  return <MiscCostClient mfgId={mfgId} rows={rows} options={options} />
+}
+
+async function RmVendorTabContent({ mfgId }: { mfgId: number }) {
+  const [rows, historyRows] = await Promise.all([
+    getRmVendorByMfg(mfgId),
+    getRmVendorHistoryByMfg(mfgId),
+  ])
+  return <RmVendorTable rows={rows} historyRows={historyRows} />
+}
+
+async function AgreedRatesTabContent({ mfgId }: { mfgId: number }) {
+  const [rmRows, pmRows] = await Promise.all([
+    getAgreedRmRatesByMfg(mfgId),
+    getAgreedPmRatesByMfg(mfgId),
+  ])
+  return <AgreedRatesClient rmRows={rmRows} pmRows={pmRows} />
+}
+
+async function FinalCostingTabContent({ mfgId }: { mfgId: number }) {
+  const [lineRows, materialCostRows, miscCostRows] = await Promise.all([
+    timedQuery<MfgLine>(manufacturingSql.selectLinesByMfg, [mfgId, "active", "active"], { label: "manufacturing.selectLinesByMfg (costing)" }),
+    timedQuery<{ bom_id: number; rm_cost: string; pm_cost: string }>(manufacturingSql.selectMaterialCostByMfg, [mfgId, mfgId, mfgId], { label: "manufacturing.selectMaterialCostByMfg" }),
+    timedQuery<{ bom_id: number; type: MiscCostType; cost: string }>(manufacturingSql.selectMiscCostsByMfg, [mfgId], { label: "manufacturing.selectMiscCostsByMfg" }),
+  ])
+
+  const materialByBom = new Map(materialCostRows.map((r) => [r.bom_id, { rm: Number(r.rm_cost), pm: Number(r.pm_cost) }]))
+  const miscByBom = new Map<number, Record<MiscCostType, number>>()
+  for (const r of miscCostRows) {
+    const entry = miscByBom.get(r.bom_id) ?? { jw: 0, shrink: 0, shipper: 0 }
+    entry[r.type] = Number(r.cost)
+    miscByBom.set(r.bom_id, entry)
+  }
+
+  const rows: FinalCostingRow[] = lineRows.map((l) => {
+    const material = materialByBom.get(l.bom_id) ?? { rm: 0, pm: 0 }
+    const misc = miscByBom.get(l.bom_id) ?? { jw: 0, shrink: 0, shipper: 0 }
+    const wastage = (material.rm + material.pm) * 0.10
+    const total = material.rm + material.pm + wastage + misc.jw + misc.shrink + misc.shipper
+    return {
+      bom_id: l.bom_id,
+      sku_code: l.sku_code,
+      sku_name: l.sku_name,
+      rm_cost: material.rm,
+      pm_cost: material.pm,
+      jw: misc.jw,
+      shrink: misc.shrink,
+      shipper: misc.shipper,
+      wastage,
+      total,
+    }
+  })
+
+  return <FinalCostingTable rows={rows} />
 }

@@ -11,40 +11,73 @@ import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
 import { mfgLineActionSchema } from "@/lib/validation/manufacturing"
 import { manufacturingSql } from "@/lib/queries/manufacturing"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import logger from "@/lib/logger"
 
 export const POST = withGateway({
   schema: mfgLineActionSchema,
   access: { pageSlug: "/manufacturing", level: "editor" },
-  handler: async ({ body, session }) => {
+  handler: async ({ body, session, ctx }) => {
     const userId = Number(session.user.id)
 
     if (body.action === "create") {
-      const result = await execute(manufacturingSql.insertLine, [
-        body.bom_id,
-        body.mfg_id,
+      const eventId = `mfgline-create-${body.mfg_id}-${body.bom_id}-${Date.now()}`
+      const logCtx = { ...ctx, eventId, module: "MFG_LINE_CREATE" }
+      logger.info({ ...logCtx, mfgId: body.mfg_id, bomId: body.bom_id, status: body.status, message: "Manufacturing line create started" })
+      recordRawEvent("MFG_LINE", eventId, { mfgId: body.mfg_id, bomId: body.bom_id, status: body.status })
+
+      try {
+        const result = await execute(manufacturingSql.insertLine, [
+          body.bom_id,
+          body.mfg_id,
+          body.status,
+          body.effective_from,
+          body.effective_to ?? null,
+          body.monthly_capacity ?? null,
+          body.this_month_plan ?? null,
+          body.last_batch_date ?? null,
+          body.remarks ?? null,
+          userId,
+        ])
+        logger.info({ ...logCtx, id: result.insertId, message: "Manufacturing line created" })
+        recordProcessedEvent("MFG_LINE", eventId, { id: result.insertId, mfgId: body.mfg_id, bomId: body.bom_id })
+        return NextResponse.json({ ok: true, id: result.insertId })
+      } catch (err: any) {
+        recordFailedEvent("MFG_LINE", eventId, { mfgId: body.mfg_id, bomId: body.bom_id }, err.message)
+        logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Manufacturing line create failed" })
+        throw new ApiError(500, "internal", "Database error")
+      }
+    }
+
+    // action === "update"
+    const eventId = `mfgline-update-${body.id}-${Date.now()}`
+    const logCtx = { ...ctx, eventId, module: "MFG_LINE_UPDATE" }
+    logger.info({ ...logCtx, id: body.id, status: body.status, message: "Manufacturing line update started" })
+    recordRawEvent("MFG_LINE_UPDATE", eventId, { id: body.id, status: body.status })
+
+    const rows = await query<{ id: number }>(manufacturingSql.selectLineById, [body.id])
+    if (!rows[0]) {
+      logger.warn({ ...logCtx, id: body.id, message: "Manufacturing line not found" })
+      throw new ApiError(404, "not_found", "Manufacturing line not found.")
+    }
+
+    try {
+      await execute(manufacturingSql.updateLine, [
         body.status,
-        body.effective_from,
+        body.effective_to ?? null,
         body.monthly_capacity ?? null,
         body.this_month_plan ?? null,
         body.last_batch_date ?? null,
         body.remarks ?? null,
-        userId,
+        body.id,
       ])
-      return NextResponse.json({ ok: true, id: result.insertId })
+      logger.info({ ...logCtx, id: body.id, message: "Manufacturing line updated" })
+      recordProcessedEvent("MFG_LINE_UPDATE", eventId, { id: body.id })
+      return NextResponse.json({ ok: true })
+    } catch (err: any) {
+      recordFailedEvent("MFG_LINE_UPDATE", eventId, { id: body.id }, err.message)
+      logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Manufacturing line update failed" })
+      throw new ApiError(500, "internal", "Database error")
     }
-
-    // action === "update"
-    const rows = await query<{ id: number }>(manufacturingSql.selectLineById, [body.id])
-    if (!rows[0]) throw new ApiError(404, "not_found", "Manufacturing line not found.")
-
-    await execute(manufacturingSql.updateLine, [
-      body.status,
-      body.monthly_capacity ?? null,
-      body.this_month_plan ?? null,
-      body.last_batch_date ?? null,
-      body.remarks ?? null,
-      body.id,
-    ])
-    return NextResponse.json({ ok: true })
   },
 })

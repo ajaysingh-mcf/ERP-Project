@@ -261,6 +261,9 @@ export type MfgLine = {
   sku_code: string | null
   sku_name: string | null
   brand: string | null
+  /** `details_sku.filling` — the SKU's fill volume/weight; often empty. */
+  filling: number | null
+  filling_uom: string | null
   mfg_code: string
   mfg_name: string
 }
@@ -275,4 +278,84 @@ export type MfgOverviewRow = {
   active_skus: number
   open_pos: number
   open_value: number
+}
+
+/** `bom_misc` cost type — job work, shrink wrap, shipper (plus utility/margin/rm_loss, unused by this UI). */
+export type MiscCostType = "jw" | "shrink" | "shipper"
+
+/** `bom_misc` joined with `master_bom`/`master_skus`. Used by the JW/Shrink Wrap/Shipper tabs. */
+export type MiscCostLine = {
+  id: number
+  bom_id: number
+  mfg_id: number
+  type: MiscCostType
+  cost: number | null
+  effective_from: string | null
+  effective_till: string | null
+  status: string
+  bom_code: string | null
+  sku_code: string | null
+  sku_name: string | null
+}
+
+/** SKU/BOM option scoped to lines a manufacturer already produces — for the JW/Shrink/Shipper "Add" dialog. */
+export type MfgLineOption = { id: number; bom_code: string | null; sku_code: string | null; sku_name: string | null }
+
+/** `rm_mrm_fixed` joined with `master_rm`/`master_vendors` for one manufacturer. Used by the RM Vendor tab. */
+export type RmVendorRow = {
+  rm_code: string | null
+  rm_name: string
+  make: string | null
+  type: string | null
+  approved_vendor_code: string | null
+  vendor_name: string | null
+  curr_rate: string | null
+  effective_from: string | null
+  uom: string | null
+  status: string
+}
+
+/** A superseded RM×vendor rate period for one manufacturer, from history_mrm. Used by the RM Vendor tab's history section. */
+export type RmVendorHistoryRow = {
+  rm_code: string | null
+  rm_name: string
+  vendor_name: string | null
+  rate: string | null
+  effective_from: string | null
+  effective_to: string | null
+}
+
+/** Agreed RM rate for one manufacturer. rm_mrm_fixed has no effective_to column. */
+export type AgreedRmRateRow = {
+  code: string | null
+  name: string
+  curr_rate: string | null
+  effective_from: string | null
+  uom: string | null
+  status: string
+}
+
+/** Agreed PM rate for one manufacturer. */
+export type AgreedPmRateRow = {
+  code: string | null
+  name: string
+  curr_rate: string | null
+  effective_from: string | null
+  effective_to: string | null
+  uom: string | null
+  status: string
+}
+
+/** One row per SKU in the Agreed Final Costing tab — computed, not stored. */
+export type FinalCostingRow = {
+  bom_id: number
+  sku_code: string | null
+  sku_name: string | null
+  rm_cost: number
+  pm_cost: number
+  jw: number
+  shrink: number
+  shipper: number
+  wastage: number
+  total: number
 }

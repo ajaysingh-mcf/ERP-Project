@@ -10,6 +10,7 @@
 // Auth: only users with the "admin" or "manager" role may call this endpoint.
 
 import { NextRequest, NextResponse } from "next/server"
+import { revalidateTag } from "next/cache"
 import type { PoolConnection } from "mysql2/promise"
 import { auth } from "@/lib/auth"
 import { query, execute, pool } from "@/lib/db"
@@ -105,6 +106,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       logger.info({ ...eventLogCtx, message: "Approval rejected, entity reverted to draft", approverId })
     }
     await conn.commit()
+
+    // Manufacturer-scoped rm_mrm_fixed/pm_mrm_fixed rate reads are cached
+    // (see lib/cached-reference-data.ts) since they rarely change — bust
+    // that cache immediately on approve/reject instead of waiting out the
+    // timer, so the Manufacturing module's RM Vendor / Agreed Rates tabs
+    // reflect this change on next load.
+    if (approval.module === "RM_RATE") revalidateTag("ref:mfg-rm-rates", "max")
+    if (approval.module === "PM_RATE") revalidateTag("ref:mfg-pm-rates", "max")
 
     recordProcessedEvent("APPROVAL", eventId, {
       approvalId, module: approval.module, entityId: approval.entity_id, approverId, action,

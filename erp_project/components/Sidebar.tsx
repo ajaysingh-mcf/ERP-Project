@@ -90,13 +90,23 @@ export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
       prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]
     )
 
-  const isChildActive = (href: string) =>
-    pathname === href || pathname.startsWith(href + "/")
+  // A child matches if the pathname equals its href or is nested under it
+  // (e.g. a detail page not represented as its own nav item). When several
+  // children match — e.g. "/manufacturing" (Overview) is a prefix of
+  // "/manufacturing/5" (a manufacturer's page) — only the most specific
+  // (longest href) one should be highlighted, never both at once.
+  const bestActiveChild = (children: NavChild[]): NavChild | undefined => {
+    const matches = children.filter(c => pathname === c.href || pathname.startsWith(c.href + "/"))
+    return matches.sort((a, b) => b.href.length - a.href.length)[0]
+  }
+
+  const isChildActive = (children: NavChild[], href: string) =>
+    bestActiveChild(children)?.href === href
 
   const isSectionActive = (item: NavItem) =>
     item.href
       ? pathname === item.href
-      : (item.children ?? []).some(c => isChildActive(c.href))
+      : bestActiveChild(item.children ?? []) !== undefined
 
   const initials = user?.name
     ? user.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)
@@ -201,7 +211,7 @@ export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
                         href={child.href}
                         className={cn(
                           "block px-2 py-1.5 rounded-md text-sm transition-colors",
-                          isChildActive(child.href)
+                          isChildActive(item.children!, child.href)
                             ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
                             : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
                         )}
