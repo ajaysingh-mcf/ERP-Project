@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.env*
+logs
+*.log
+npm-debug.log*
+.DS_Store
+tsconfig.tsbuildinfo
+architecture-discussion-framework.md
+README.md
+docs
