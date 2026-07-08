@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { CostImpactAlert } from "@/components/masters/CostImpactAlert"
 import type { PMVendor } from "@/types/masters"
 
 type RejectionInfo = {
@@ -128,6 +129,13 @@ export function EditPmVendorRateDialog({
 
         <div className="grid gap-4 py-2">
           <div className="text-xs text-muted-foreground">Vendor: {row.vendor_code}</div>
+
+          <CostImpactAlert
+            endpoint="/api/masters/packing-materials"
+            materialIdField="pm_id"
+            materialId={row.pm_id}
+            scope="vendor"
+          />
 
           {isDraft && !loadingInfo && rejection && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1">

@@ -122,6 +122,36 @@ export const bom = {
   `,
 
   /**
+   * Every active SKU whose active BOM references this material — portfolio-wide,
+   * used by the RM/PM vendor-rate edit dialogs' cost-impact alert.
+   * Params: [mtrl_type, mtrl_id]
+   */
+  selectActiveSkusUsingMaterial: `
+    SELECT DISTINCT s.sku_code, s.name
+    FROM details_bom bd
+    INNER JOIN master_bom b ON b.id = bd.bom_id AND b.status = 'active'
+    INNER JOIN master_skus s ON s.id = b.sku_id
+    WHERE bd.mtrl_type = ? AND bd.mtrl_id = ? AND bd.status = 'active'
+    ORDER BY s.sku_code ASC
+  `,
+
+  /**
+   * Same as selectActiveSkusUsingMaterial, but narrowed to SKUs one specific
+   * manufacturer actually produces (via master_bom_mfg) — used by the RM/PM
+   * manufacturer-rate edit dialogs' cost-impact alert.
+   * Params: [mfg_id, mtrl_type, mtrl_id]
+   */
+  selectActiveSkusUsingMaterialForMfg: `
+    SELECT DISTINCT s.sku_code, s.name
+    FROM details_bom bd
+    INNER JOIN master_bom b ON b.id = bd.bom_id AND b.status = 'active'
+    INNER JOIN master_bom_mfg mbm ON mbm.bom_id = b.id AND mbm.status = 'active' AND mbm.mfg_id = ?
+    INNER JOIN master_skus s ON s.id = b.sku_id
+    WHERE bd.mtrl_type = ? AND bd.mtrl_id = ? AND bd.status = 'active'
+    ORDER BY s.sku_code ASC
+  `,
+
+  /**
    * Bare header lookup for existence/status checks before mutating. Params: [id]
    */
   selectBomHeaderRawById: `

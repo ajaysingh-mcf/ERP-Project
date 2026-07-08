@@ -41,9 +41,9 @@ const NAV: NavItem[] = [
   // logic further down (the `hasChildren` branch) handles open/close + active
   // highlighting, so adding entries here is all that's needed.
   {
-    label: "PO Tracking", icon: Activity,
+    label: "Production Tracking", icon: Activity,
     children: [
-      { label: "PO Procurement",    href: "/po-tracking/po-procurement" },
+      { label: "FG POs Tracking",    href: "/po-tracking/po-procurement" },
       { label: "RM/PM Procurement", href: "/po-tracking/rm-pm-procurement" },
       { label: "Dispatch Calendar", href: "/po-tracking/dispatch-calendar" },
     ],
@@ -83,7 +83,7 @@ export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
   const nav: NavItem[] = [
     NAV[0], NAV[1],
     {
-      label: "MFG Management", icon: Factory,
+      label: "MFG Cost Manager", icon: Factory,
       children: [
         { label: "Overview", href: "/manufacturing" },
         ...mfgs.map(m => ({ label: m.name, href: `/manufacturing/${m.id}` })),

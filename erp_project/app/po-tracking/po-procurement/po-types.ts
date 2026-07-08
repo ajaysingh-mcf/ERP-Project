@@ -32,14 +32,14 @@ export type SkuOption       = { id: number; sku_code: string; name: string; stat
 export type MfgOption       = { id: number; code: string; name: string }
 export type WarehouseOption = { id: number; name: string; location: string | null; zone: string | null; type: "CWH" | "MWH" }
 
-export type BadgeVariant = "default" | "secondary" | "success" | "warning" | "destructive" | "outline"
+export type BadgeVariant = "default" | "secondary" | "success" | "warning" | "info" | "destructive" | "outline"
 
 export const STATUS_CONFIG: Record<string, { label: string; variant: BadgeVariant }> = {
   draft:              { label: "Draft",               variant: "outline" },
   raised:             { label: "Raised",              variant: "secondary" },
   punched:            { label: "Inward POs",           variant: "default" },
   short_closed:       { label: "Short Closed",        variant: "warning" },
-  partially_received: { label: "Partially Received",  variant: "warning" },
+  partially_received: { label: "Partially Received",  variant: "info" },
   received:           { label: "Received",            variant: "success" },
   cancelled:          { label: "Cancelled",           variant: "destructive" },
 }
@@ -54,7 +54,6 @@ export type ImpromptuForm = {
   sku_code: string
   mfg_id: string
   qty: string
-  unit_price: string
   expected_on: string
   destination: string
   reason: string
@@ -71,7 +70,7 @@ export type EditData = {
 }
 
 export const EMPTY_FORM: ImpromptuForm = {
-  sku_code: "", mfg_id: "", qty: "", unit_price: "", expected_on: "", destination: "", reason: "",
+  sku_code: "", mfg_id: "", qty: "", expected_on: "", destination: "", reason: "",
 }
 
 export type SplitRow = { destination: string; qty: string }

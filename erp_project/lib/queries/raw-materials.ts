@@ -113,7 +113,7 @@ export const rawMaterials = {
   selectVendorPaginated: `
     SELECT
       r.hsn_code, r.inci_name, r.make, r.name, r.rm_code, r.status, r.type,
-      rmv.id AS vrm_id, rmv.status AS vrm_status,
+      rmv.rm_id, rmv.id AS vrm_id, rmv.status AS vrm_status,
       rmv.curr_rate, rmv.effective_from, rmv.effective_to,
       rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id
     FROM rm_vrm_dynamic AS rmv
@@ -138,7 +138,7 @@ export const rawMaterials = {
   selectVendorAllFiltered: `
     SELECT
       r.hsn_code, r.inci_name, r.make, r.name, r.rm_code, r.status, r.type,
-      rmv.id AS vrm_id, rmv.status AS vrm_status,
+      rmv.rm_id, rmv.id AS vrm_id, rmv.status AS vrm_status,
       rmv.curr_rate, rmv.effective_from, rmv.effective_to,
       rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id
     FROM rm_vrm_dynamic AS rmv

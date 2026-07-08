@@ -202,7 +202,7 @@ export default function MaterialMasterClient({
           <option value="discontinued">Discontinued</option>
         </select>
 
-        {makes.length > 0 && (
+        {/* {makes.length > 0 && (
           <select
             value={draftMake || "all"}
             onChange={(e) => setDraftMake(e.target.value === "all" ? "" : e.target.value)}
@@ -211,7 +211,7 @@ export default function MaterialMasterClient({
             <option value="all">All Makes</option>
             {makes.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
-        )}
+        )} */}
 
         {types.length > 0 && (
           <select

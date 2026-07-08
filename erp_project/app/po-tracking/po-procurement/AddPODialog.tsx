@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { ImpromptuForm, MfgOption, SkuOption, WarehouseOption } from "./po-types"
 import { EMPTY_FORM } from "./po-types"
+import { useQuotedRate } from "./useQuotedRate"
 
 type PoType = "normal" | "impromptu"
 
@@ -31,6 +32,7 @@ export default function AddPODialog({
 
   const today = new Date().toISOString().slice(0, 10)
   const defaultDest = warehouseOptions.find((w) => w.type === "MWH")?.name ?? ""
+  const { rate: computedRate, loading: rateLoading, error: rateError } = useQuotedRate(form.sku_code, form.mfg_id)
 
   useEffect(() => {
     if (open) {
@@ -64,10 +66,15 @@ export default function AddPODialog({
     const e = validate()
     if (Object.keys(e).length > 0) { setErrors(e); return }
 
+    if (computedRate == null) {
+      setApiError(rateError || "Rate could not be computed for this SKU/Manufacturer combination.")
+      return
+    }
+
     setSubmitting(true)
     try {
-      const unitPrice  = form.unit_price ? Number(form.unit_price) : undefined
-      const totalAmt   = unitPrice && Number(form.qty) ? unitPrice * Number(form.qty) : undefined
+      const unitPrice  = computedRate
+      const totalAmt   = Number(form.qty) ? unitPrice * Number(form.qty) : undefined
       const res = await fetch("/api/purchase-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -158,12 +165,15 @@ export default function AddPODialog({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="apo-rate">Rate per Unit (₹)</Label>
-              <Input
-                id="apo-rate" type="number" min={0} step="0.0001" placeholder="e.g. 12.50"
-                value={form.unit_price} onChange={(e) => set("unit_price", e.target.value)}
-              />
+              <div id="apo-rate" className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
+                {rateLoading ? "Calculating…" : computedRate != null ? `₹${computedRate.toFixed(2)}` : "—"}
+              </div>
+              <p className="text-[11px] text-muted-foreground">Auto-calculated from Manufacturing → Final Costing.</p>
             </div>
           </div>
+          {rateError && !rateLoading && (
+            <p className="text-xs text-destructive -mt-2">{rateError}</p>
+          )}
 
           {/* Expected Dispatch — no backdating */}
           <div className="grid gap-1.5">

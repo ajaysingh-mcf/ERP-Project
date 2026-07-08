@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import logger from "@/lib/logger"
+import { query } from "@/lib/db"
 import { getRmDistinctMakes, getRmDistinctInciNames } from "@/lib/cached-reference-data"
+import { bom as bomSql } from "@/lib/queries/bom"
 import {
   rmCreate, rmCheckDuplicate, rmCheckVendor,
   rmCreateFull, rmAddRates, rmBulk, rmS3Bulk,
@@ -32,6 +34,14 @@ export async function POST(req: NextRequest) {
   if (action === "get-inci-names") {
     const rows = await getRmDistinctInciNames()
     return NextResponse.json({ inciNames: rows.map((r) => r.inci_name) })
+  }
+
+  if (action === "material-impact") {
+    const { rm_id, scope, mfg_id } = body
+    const rows = scope === "mfg" && mfg_id
+      ? await query<{ sku_code: string; name: string }>(bomSql.selectActiveSkusUsingMaterialForMfg, [mfg_id, "rm", rm_id])
+      : await query<{ sku_code: string; name: string }>(bomSql.selectActiveSkusUsingMaterial, ["rm", rm_id])
+    return NextResponse.json({ count: rows.length, skus: rows })
   }
 
   return NextResponse.json({ error: "Invalid action" }, { status: 400 })

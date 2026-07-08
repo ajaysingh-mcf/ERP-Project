@@ -7,11 +7,24 @@
  *          po_type, email_sent_at, attachment_key, csv_source_key, destination
  */
 
+// Overrides the stored status with a computed "partially_received" whenever
+// some (but not all) of the ordered qty has come in — terminal/manual states
+// (cancelled, short_closed, received) always win over the quantity math.
+const EFFECTIVE_STATUS_EXPR = `
+  CASE
+    WHEN po.status IN ('cancelled', 'short_closed', 'received') THEN po.status
+    WHEN po.received_qty > 0 AND po.received_qty < po.qty THEN 'partially_received'
+    ELSE po.status
+  END
+`
+
 // ── Shared WHERE fragment (all filters) ──────────────────────────────────────
-// Params (20): [like×6, status×2, mfgCode×2, poType×2, dateFrom×2, dateTo×2, sku×2, destination×2]
+// Params (21): [like×6, status×3, mfgCode×2, poType×2, dateFrom×2, dateTo×2, sku×2, destination×2]
+// The status filter matches an IN-list rather than a single value so the
+// "received" tab can also pull in short-closed POs — see statusMatchValues().
 const FULL_WHERE = `
   WHERE (? IS NULL OR po.po_no LIKE ? OR m.code LIKE ? OR m.name LIKE ? OR po.sku_code LIKE ? OR sk.name LIKE ?)
-    AND (? IS NULL OR po.status      = ?)
+    AND (? IS NULL OR ${EFFECTIVE_STATUS_EXPR} IN (?, ?))
     AND (? IS NULL OR m.code         = ?)
     AND (? IS NULL OR po.po_type     = ?)
     AND (? IS NULL OR po.date       >= ?)
@@ -42,7 +55,7 @@ const SELECT_COLS = `
   SELECT
     po.id, po.po_no, po.date, po.sku_code, po.qty, po.unit_price,
     po.total_amount, po.expected_on, po.received_qty, po.invoice_no,
-    po.destination, po.status, po.po_type, po.attachment_key,
+    po.destination, ${EFFECTIVE_STATUS_EXPR} AS status, po.po_type, po.attachment_key,
     po.csv_source_key, po.email_sent_at,
     m.id   AS mfg_id, m.code AS mfg_code, m.name AS mfg_name,
     sk.name   AS sku_name, sk.status AS sku_status,
@@ -59,7 +72,7 @@ const SAFE_SORT_COLS: Record<string, string> = {
   unit_price:   "po.unit_price",
   total_amount: "po.total_amount",
   expected_on:  "po.expected_on",
-  status:       "po.status",
+  status:       `(${EFFECTIVE_STATUS_EXPR})`,
 }
 
 export const purchaseOrdersSql = {
@@ -73,7 +86,7 @@ export const purchaseOrdersSql = {
   /**
    * Paginated PO list with all filters.
    * Use buildSelectPaginated(sortBy, sortDir) to get the sorted variant.
-   * Params: buildFilterParams(...) + [LIMIT, OFFSET]  (20 + 2 = 22 total)
+   * Params: buildFilterParams(...) + [LIMIT, OFFSET]  (21 + 2 = 23 total)
    */
   buildSelectPaginated(sortBy = "date", sortDir: "asc" | "desc" = "desc"): string {
     const col = SAFE_SORT_COLS[sortBy] ?? "po.date"
@@ -87,7 +100,7 @@ export const purchaseOrdersSql = {
     `
   },
 
-  /** COUNT matching the full WHERE. Params: buildFilterParams(...)  (20 total) */
+  /** COUNT matching the full WHERE. Params: buildFilterParams(...)  (21 total) */
   countPaginated: `
     SELECT COUNT(*) AS total
     ${FROM_JOINS}
@@ -96,19 +109,19 @@ export const purchaseOrdersSql = {
 
   /** Per-status counts for tab badges (ignores status param). Params: buildStatusCountParams(...)  (18 total) */
   statusCounts: `
-    SELECT po.status, COUNT(*) AS cnt
+    SELECT ${EFFECTIVE_STATUS_EXPR} AS status, COUNT(*) AS cnt
     ${FROM_JOINS}
     ${SUMMARY_WHERE}
-    GROUP BY po.status
+    GROUP BY ${EFFECTIVE_STATUS_EXPR}
   `,
 
   /** Summary stats for the cards (ignores status param). Params: buildStatusCountParams(...)  (14 total) */
   summaryStats: `
     SELECT
       COUNT(*) AS total,
-      SUM(po.status = 'raised')             AS raised,
-      SUM(po.status = 'punched')            AS punched,
-      SUM(po.status = 'partially_received') AS partially_received,
+      SUM(${EFFECTIVE_STATUS_EXPR} = 'raised')             AS raised,
+      SUM(${EFFECTIVE_STATUS_EXPR} = 'punched')            AS punched,
+      SUM(${EFFECTIVE_STATUS_EXPR} = 'partially_received') AS partially_received,
       SUM(CASE WHEN po.status NOT IN ('received','cancelled')
                THEN COALESCE(po.total_amount, 0) ELSE 0 END) AS open_value
     ${FROM_JOINS}
@@ -257,7 +270,17 @@ export const purchaseOrdersSql = {
 // ── Filter parameter helpers ──────────────────────────────────────────────────
 
 /**
- * Build the 20-element param array for selectPaginated / countPaginated.
+ * The "received" tab also pulls in short-closed POs, since short-closing is
+ * just an early/manual way of finishing a PO. Every other status filters
+ * on its own exact value (the IN-list just repeats it twice).
+ */
+function statusMatchValues(status: string | null): [unknown, unknown] {
+  if (status === "received") return ["received", "short_closed"]
+  return [status, status]
+}
+
+/**
+ * Build the 21-element param array for selectPaginated / countPaginated.
  * All-null values disable the corresponding filter.
  */
 export function buildFilterParams(
@@ -271,9 +294,10 @@ export function buildFilterParams(
   destination: string | null,
 ): unknown[] {
   const like = search ? `%${search}%` : null
+  const [statusA, statusB] = statusMatchValues(status)
   return [
-    like, like, like, like, like, like, // search ×6
-    status,      status,                // status ×2
+    like, like, like, like, like, like,     // search ×6
+    status,      statusA,      statusB,     // status ×3 (IS NULL check + IN-list pair)
     mfgCode,     mfgCode,               // mfgCode ×2
     poType,      poType,                // poType ×2
     dateFrom,    dateFrom,              // dateFrom ×2

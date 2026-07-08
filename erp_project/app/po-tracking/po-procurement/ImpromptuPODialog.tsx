@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { EditData, ImpromptuForm, MfgOption, SkuOption, WarehouseOption } from "./po-types"
 import { EMPTY_FORM } from "./po-types"
+import { useQuotedRate } from "./useQuotedRate"
 
 export default function ImpromptuPODialog({
   open, onClose, skuOptions, mfgOptions, warehouseOptions, onCreated, editData,
@@ -33,6 +34,7 @@ export default function ImpromptuPODialog({
 
   // Default destination to the first Mother Warehouse (MWH).
   const defaultDest = warehouseOptions.find((w) => w.type === "MWH")?.name ?? ""
+  const { rate: computedRate, loading: rateLoading, error: rateError } = useQuotedRate(form.sku_code, form.mfg_id)
 
   useEffect(() => {
     if (!open) return
@@ -41,7 +43,6 @@ export default function ImpromptuPODialog({
         sku_code:   editData.sku_code ?? "",
         mfg_id:     String(editData.mfg_id),
         qty:        String(editData.qty),
-        unit_price: editData.unit_price != null ? String(editData.unit_price) : "",
         expected_on: editData.expected_on
           ? new Date(editData.expected_on).toISOString().slice(0, 10)
           : "",
@@ -77,10 +78,15 @@ export default function ImpromptuPODialog({
     const e = validate()
     if (Object.keys(e).length > 0) { setErrors(e); return }
 
+    if (computedRate == null) {
+      setApiError(rateError || "Rate could not be computed for this SKU/Manufacturer combination.")
+      return
+    }
+
     setSubmitting(true)
     try {
-      const unitPrice  = form.unit_price ? Number(form.unit_price) : undefined
-      const totalAmt   = unitPrice && Number(form.qty) ? unitPrice * Number(form.qty) : undefined
+      const unitPrice  = computedRate
+      const totalAmt   = Number(form.qty) ? unitPrice * Number(form.qty) : undefined
       const payload = {
         mfg_id:       Number(form.mfg_id),
         sku_code:     form.sku_code,
@@ -178,12 +184,15 @@ export default function ImpromptuPODialog({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="ipo-rate">Rate per Unit (₹)</Label>
-              <Input
-                id="ipo-rate" type="number" min={0} step="0.0001" placeholder="e.g. 12.50"
-                value={form.unit_price} onChange={(e) => set("unit_price", e.target.value)}
-              />
+              <div id="ipo-rate" className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
+                {rateLoading ? "Calculating…" : computedRate != null ? `₹${computedRate.toFixed(2)}` : "—"}
+              </div>
+              <p className="text-[11px] text-muted-foreground">Auto-calculated from Manufacturing → Final Costing.</p>
             </div>
           </div>
+          {rateError && !rateLoading && (
+            <p className="text-xs text-destructive -mt-2">{rateError}</p>
+          )}
 
           {/* Expected Dispatch — no backdating */}
           <div className="grid gap-1.5">

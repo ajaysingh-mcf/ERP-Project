@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { CostImpactAlert } from "@/components/masters/CostImpactAlert"
 import type { RM } from "@/types/masters"
 
 type RejectionInfo = {
@@ -131,6 +132,13 @@ export function EditRmVendorRateDialog({
 
         <div className="grid gap-4 py-2">
           <div className="text-xs text-muted-foreground">Vendor: {row.vendor_code}</div>
+
+          <CostImpactAlert
+            endpoint="/api/masters/raw-materials"
+            materialIdField="rm_id"
+            materialId={row.rm_id}
+            scope="vendor"
+          />
 
           {/* Rejection banner — shown for draft rows */}
           {isDraft && !loadingInfo && rejection && (

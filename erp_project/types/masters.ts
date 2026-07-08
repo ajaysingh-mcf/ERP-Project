@@ -77,6 +77,8 @@ export type Vendor = {
     rmv.moq , rmv.uom , rmv.vendor_code , rmv.vendor_id
 */
 export type RM = {
+  /** Primary key of master_rm — for cost-impact lookups (details_bom.mtrl_id). */
+  rm_id: number
   rm_code: string | null
   name: string
   make: string | null

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import logger from "@/lib/logger"
+import { query } from "@/lib/db"
+import { bom as bomSql } from "@/lib/queries/bom"
 import {
   pmCreate, pmCheckDuplicate, pmCheckVendor,
   pmCreateFull, pmAddRates, pmBulk, pmS3Bulk,
@@ -23,6 +25,14 @@ export async function POST(req: NextRequest) {
   if (action === "add-rates") return pmAddRates(body, userId, ctx)
   if (action === "bulk") return pmBulk(body, userId, ctx)
   if (action === "bulk_from_s3") return pmS3Bulk(body, userId, ctx)
+
+  if (action === "material-impact") {
+    const { pm_id, scope, mfg_id } = body
+    const rows = scope === "mfg" && mfg_id
+      ? await query<{ sku_code: string; name: string }>(bomSql.selectActiveSkusUsingMaterialForMfg, [mfg_id, "pm", pm_id])
+      : await query<{ sku_code: string; name: string }>(bomSql.selectActiveSkusUsingMaterial, ["pm", pm_id])
+    return NextResponse.json({ count: rows.length, skus: rows })
+  }
 
   return NextResponse.json({ error: "Invalid action" }, { status: 400 })
 }

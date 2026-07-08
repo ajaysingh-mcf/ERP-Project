@@ -57,6 +57,9 @@ export default async function PoProcurementPage({
   const statusCounts: Record<string, number> = {}
   for (const r of statusCountRows) statusCounts[r.status] = Number(r.cnt)
   statusCounts.all = Object.values(statusCounts).reduce((sum, n) => sum + n, 0)
+  // "Received" tab also covers short-closed POs (see buildFilterParams' statusMatchValues) —
+  // its displayed count needs to include them too. "Short Closed" keeps its own separate count.
+  statusCounts.received = (statusCounts.received ?? 0) + (statusCounts.short_closed ?? 0)
 
   const s = summaryRows[0] ?? {}
   const summary = {
