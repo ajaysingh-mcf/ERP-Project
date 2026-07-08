@@ -168,7 +168,7 @@ export default function AddPODialog({
               <div id="apo-rate" className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
                 {rateLoading ? "Calculating…" : computedRate != null ? `₹${computedRate.toFixed(2)}` : "—"}
               </div>
-              <p className="text-[11px] text-muted-foreground">Auto-calculated from Manufacturing → Final Costing.</p>
+              {/* <p className="text-[11px] text-muted-foreground">Auto-calculated from Manufacturing → Final Costing.</p> */}
             </div>
           </div>
           {rateError && !rateLoading && (

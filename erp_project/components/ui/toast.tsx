@@ -47,14 +47,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={t.id}
             className={cn(
-              "pointer-events-auto flex items-start gap-3 rounded-lg border px-4 py-3 shadow-lg text-sm max-w-sm w-full",
+              "pointer-events-auto flex items-start gap-3 rounded-lg border px-4 py-3 shadow-xl text-sm max-w-sm w-full",
               "animate-in slide-in-from-bottom-2 fade-in duration-200",
               t.variant === "success" &&
-                "bg-teal-50 border-teal-200 text-teal-900 dark:bg-teal-950/30 dark:border-teal-800 dark:text-teal-100",
+                "bg-teal-50 border-teal-200 text-teal-900 dark:bg-teal-900 dark:border-teal-700 dark:text-teal-50",
               t.variant === "error" &&
-                "bg-red-50 border-red-200 text-red-900 dark:bg-red-950/30 dark:border-red-800 dark:text-red-100",
+                "bg-red-50 border-red-200 text-red-900 dark:bg-red-900 dark:border-red-700 dark:text-red-50",
               t.variant === "info" &&
-                "bg-blue-50 border-blue-200 text-blue-900 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-100"
+                "bg-blue-50 border-blue-200 text-blue-900 dark:bg-blue-900 dark:border-blue-700 dark:text-blue-50"
             )}
           >
             {t.variant === "success" && (

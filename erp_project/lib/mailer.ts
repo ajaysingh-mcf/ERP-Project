@@ -2,7 +2,7 @@ import nodemailer from "nodemailer"
 import { GMAIL_USER, GMAIL_APP_PASSWORD } from "@/lib/env"
 import { query, execute } from "@/lib/db"
 import { generatePoPdf, type PoEmailData } from "@/lib/pdf/po-document"
-import { uploadFile } from "@/lib/s3"
+import { uploadFile, getFileBuffer } from "@/lib/s3"
 import { s3FilesSql } from "@/lib/queries/s3-files"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
@@ -154,5 +154,86 @@ export async function sendPoEmail(
     mfg_email: data.mfg_email,
     s3PdfKey:  s3Key,
   })
+  return true
+}
+
+/**
+ * Notify the manufacturer that a PO has been cancelled. Re-attaches the
+ * original PO PDF (already stored at attachment_key from when the PO was
+ * raised/emailed) instead of regenerating one — download failure never
+ * blocks the email, same as sendPoEmail's non-blocking S3 store.
+ *
+ * Returns true if the email was sent, false if the manufacturer has no
+ * email on file. Throws on actual send failures.
+ */
+export async function sendPoCancellationEmail(poId: number, reason?: string): Promise<boolean> {
+  const data = await fetchPoData(poId)
+
+  if (!data) {
+    logger.warn({ ...ctx, poId, message: "sendPoCancellationEmail: PO not found" })
+    console.warn(`[mailer] sendPoCancellationEmail: PO id=${poId} not found`)
+    return false
+  }
+  if (!data.mfg_email) {
+    logger.warn({ ...ctx, poId, message: "sendPoCancellationEmail - manufacturer has no email on file, skipping" })
+    console.warn(`[mailer] sendPoCancellationEmail: PO id=${poId} — manufacturer has no email on file, skipping`)
+    return false
+  }
+
+  const eventId = `po-cancel-email-${poId}-${Date.now()}`
+  recordRawEvent("PO_EMAIL", eventId, {
+    poId,
+    po_no:     data.po_no,
+    mfg_name:  data.mfg_name,
+    mfg_email: data.mfg_email,
+    trigger:   "cancellation",
+  })
+
+  let pdfBuffer: Buffer | null = null
+  const attachmentRows = await query<{ attachment_key: string | null }>(s3FilesSql.getPoAttachment, [poId])
+  const attachmentKey = attachmentRows[0]?.attachment_key
+  if (attachmentKey) {
+    try {
+      pdfBuffer = await getFileBuffer(attachmentKey)
+    } catch (err: any) {
+      console.error(`[mailer] Could not fetch original PO PDF for cancellation email (poId=${poId}):`, err)
+    }
+  }
+
+  try {
+    await transporter.sendMail({
+      from: `mcaffeine ERP <${GMAIL_USER}>`,
+      to: data.mfg_email,
+      subject: `CANCELLED - Purchase Order ${data.po_no}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:auto;color:#111">
+          <h2 style="margin-bottom:4px;color:#b91c1c">Purchase Order Cancelled: ${data.po_no}</h2>
+          <p style="color:#555;margin-top:0">This purchase order has been cancelled and should not be fulfilled.</p>
+          <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px">
+            <tr style="background:#f5f5f5">
+              <td style="padding:8px 12px;font-weight:600">SKU</td>
+              <td style="padding:8px 12px">${data.sku_code} — ${data.sku_name ?? ""}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px;font-weight:600">Originally Raised Quantity</td>
+              <td style="padding:8px 12px">${Number(data.qty).toLocaleString("en-IN")}</td>
+            </tr>
+          </table>
+          ${reason?.trim() ? `<blockquote style="margin:16px 0;padding:8px 12px;border-left:3px solid #b91c1c;color:#555;font-size:13px">${reason.trim()}</blockquote>` : ""}
+          <p style="font-size:12px;color:#888">
+            This is an auto-generated email from the mcaffeine ERP system.
+          </p>
+        </div>
+      `,
+      attachments: pdfBuffer ? [{ filename: `PO-${data.po_no}.pdf`, content: pdfBuffer }] : undefined,
+    })
+  } catch (sendErr: any) {
+    logger.error({ ...ctx, err: sendErr.message, stack: sendErr.stack, message: "PO cancellation email send failed" })
+    recordFailedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no }, sendErr.message)
+    throw sendErr
+  }
+
+  logger.info({ ...ctx, poId, po_no: data.po_no, mfg_email: data.mfg_email, message: "PO cancellation email sent successfully" })
+  recordProcessedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no, mfg_email: data.mfg_email })
   return true
 }

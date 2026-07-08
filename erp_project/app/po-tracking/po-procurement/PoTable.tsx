@@ -2,7 +2,7 @@
 
 import {
   AlertTriangle, ArrowDown, ArrowUp, Ban, ChevronsUpDown,
-  Download, FileText, Loader2, Mail, MoreVertical, Pencil, Scissors,
+  Download, FileText, Loader2, Mail, MoreVertical, Pencil, Scissors, XCircle,
 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -14,6 +14,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
+import { useToast } from "@/components/ui/toast"
 import type { BadgeVariant, PoRow } from "./po-types"
 import { STATUS_CONFIG } from "./po-types"
 import { fmtDate, fmtInt, fmtMoney, fmtRate, isImpromptu, num } from "./po-utils"
@@ -48,12 +49,17 @@ function ShortCloseDialog({
   onDone: () => void
 }) {
   const [loading, setLoading] = useState(false)
+  const { toast } = useToast()
 
   async function handleConfirm() {
     setLoading(true)
     try {
       const res = await fetch(`/api/purchase-orders/${poId}/close`, { method: "POST" })
-      if (res.ok) { onDone(); onClose() }
+      if (res.ok) {
+        toast({ title: "PO short closed", variant: "success" })
+        onDone()
+        onClose()
+      }
     } finally {
       setLoading(false)
     }
@@ -85,6 +91,162 @@ function ShortCloseDialog({
             className="inline-flex items-center gap-1.5 justify-center rounded-md bg-amber-600 px-3 py-1.5 text-sm text-white hover:bg-amber-700 transition-colors disabled:opacity-50"
           >
             {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Closing…</> : "Confirm Short Close"}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Cancel PO confirmation dialog ────────────────────────────────────────────
+function CancelPoDialog({
+  open, poId, onClose, onDone,
+}: {
+  open: boolean
+  poId: number
+  onClose: () => void
+  onDone: (emailed: boolean) => void
+}) {
+  const [loading, setLoading] = useState(false)
+  const [reason, setReason] = useState("")
+  const { toast } = useToast()
+
+  async function handleConfirm() {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/purchase-orders/${poId}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason.trim() || undefined }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        toast({
+          title: "PO cancelled",
+          description: data.emailed
+            ? "Manufacturer notified by email."
+            : "No email sent — manufacturer has no email on file.",
+          variant: "success",
+        })
+        onDone(!!data.emailed)
+        onClose()
+        setReason("")
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !loading) { onClose(); setReason("") } }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-destructive">
+            <XCircle className="h-4 w-4" /> Cancel PO?
+          </DialogTitle>
+          <DialogDescription className="pt-1 text-sm text-foreground">
+            This will mark the PO as <strong>Cancelled</strong> and email the manufacturer a
+            cancellation notice referencing the originally raised quantity. This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-1.5">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Reason (optional — included in the email)
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            disabled={loading}
+            className="flex w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+          />
+        </div>
+        <DialogFooter>
+          <button
+            onClick={() => { onClose(); setReason("") }}
+            disabled={loading}
+            className="inline-flex items-center justify-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+          >
+            Back
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 justify-center rounded-md bg-destructive px-3 py-1.5 text-sm text-white hover:bg-destructive/90 transition-colors disabled:opacity-50"
+          >
+            {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Cancelling…</> : "Confirm Cancellation"}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Send/Resend PO email confirmation dialog ─────────────────────────────────
+function SendEmailDialog({
+  open, poId, poNo, isResend, onClose, onDone,
+}: {
+  open: boolean
+  poId: number
+  poNo: string
+  isResend: boolean
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState<string | null>(null)
+  const { toast } = useToast()
+
+  async function handleConfirm() {
+    setLoading(true)
+    setError(null)
+    try {
+      const res  = await fetch(`/api/purchase-orders/${poId}/send-email`, { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        toast({
+          title: isResend ? "Email resent" : "Email sent",
+          description: `PO ${poNo} emailed to the manufacturer.`,
+          variant: "success",
+        })
+        onDone()
+        onClose()
+      } else {
+        setError(data.error ?? "Failed to send email.")
+      }
+    } catch {
+      setError("Network error. Please try again.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !loading) { onClose(); setError(null) } }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Mail className="h-4 w-4" /> {isResend ? "Resend PO Email?" : "Send PO Email?"}
+          </DialogTitle>
+          <DialogDescription className="pt-1 text-sm text-foreground">
+            This will email PO <strong>{poNo}</strong> (with the PO PDF attached) to the manufacturer on file.
+          </DialogDescription>
+        </DialogHeader>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <DialogFooter>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="inline-flex items-center justify-center rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 justify-center rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Sending…</> : (isResend ? "Confirm Resend" : "Confirm Send")}
           </button>
         </DialogFooter>
       </DialogContent>
@@ -213,6 +375,8 @@ export default function PoTable({
 }) {
   const router                                      = useRouter()
   const [shortCloseTarget, setShortCloseTarget]     = useState<number | null>(null)
+  const [cancelTarget, setCancelTarget]             = useState<number | null>(null)
+  const [emailTarget, setEmailTarget]               = useState<{ id: number; po_no: string; isResend: boolean } | null>(null)
   const sh = { sortBy, sortDir, onSort }
 
   return (
@@ -261,6 +425,7 @@ export default function PoTable({
                     const remaining     = originalQty - receivedQty
                     const tolerance     = poTolerance(originalQty)
                     const canShortClose = ["raised", "punched", "partially_received"].includes(status) && remaining > tolerance
+                    const canCancel     = ["raised", "punched", "partially_received"].includes(status)
                     const canSendEmail  = status === "raised"
                     const hasEmail      = !!r.mfg_email
                     const isSent        = !!r.email_sent_at
@@ -274,10 +439,7 @@ export default function PoTable({
                         icon:     <Mail className="h-3.5 w-3.5" />,
                         disabled: !hasEmail,
                         disabledReason: "No email address on file for this manufacturer",
-                        onClick: async () => {
-                          await fetch(`/api/purchase-orders/${r.id}/send-email`, { method: "POST" })
-                          router.refresh()
-                        },
+                        onClick: () => setEmailTarget({ id: r.id, po_no: r.po_no, isResend: isSent }),
                       })
                     }
 
@@ -299,6 +461,15 @@ export default function PoTable({
                         icon:    <Ban className="h-3.5 w-3.5" />,
                         variant: "warning",
                         onClick: () => setShortCloseTarget(r.id),
+                      })
+                    }
+
+                    if (canCancel) {
+                      menuActions.push({
+                        label:   "Cancel PO",
+                        icon:    <XCircle className="h-3.5 w-3.5" />,
+                        variant: "destructive",
+                        onClick: () => setCancelTarget(r.id),
                       })
                     }
 
@@ -401,6 +572,24 @@ export default function PoTable({
         open={shortCloseTarget !== null}
         poId={shortCloseTarget ?? 0}
         onClose={() => setShortCloseTarget(null)}
+        onDone={() => router.refresh()}
+      />
+
+      {/* Cancel PO confirmation — rendered outside table to avoid z-index issues */}
+      <CancelPoDialog
+        open={cancelTarget !== null}
+        poId={cancelTarget ?? 0}
+        onClose={() => setCancelTarget(null)}
+        onDone={() => router.refresh()}
+      />
+
+      {/* Send/Resend PO email confirmation — rendered outside table to avoid z-index issues */}
+      <SendEmailDialog
+        open={emailTarget !== null}
+        poId={emailTarget?.id ?? 0}
+        poNo={emailTarget?.po_no ?? ""}
+        isResend={emailTarget?.isResend ?? false}
+        onClose={() => setEmailTarget(null)}
         onDone={() => router.refresh()}
       />
     </>

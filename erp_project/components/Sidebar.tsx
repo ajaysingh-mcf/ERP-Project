@@ -43,6 +43,7 @@ const NAV: NavItem[] = [
   {
     label: "Production Tracking", icon: Activity,
     children: [
+      { label: "MFG Overview",       href: "/manufacturing" },
       { label: "FG POs Tracking",    href: "/po-tracking/po-procurement" },
       { label: "RM/PM Procurement", href: "/po-tracking/rm-pm-procurement" },
       { label: "Dispatch Calendar", href: "/po-tracking/dispatch-calendar" },
@@ -85,7 +86,6 @@ export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
     {
       label: "MFG Cost Manager", icon: Factory,
       children: [
-        { label: "Overview", href: "/manufacturing" },
         ...mfgs.map(m => ({ label: m.name, href: `/manufacturing/${m.id}` })),
       ],
     },
