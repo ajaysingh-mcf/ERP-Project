@@ -25,7 +25,6 @@ export const RM_BASE_EXPORT_COLUMNS: ExportColumn[] = [
   { key: "make",      label: "Make",      type: "text" },
   { key: "type",      label: "Type",      type: "text" },
   { key: "uom",       label: "UOM",       type: "text" },
-  { key: "hsn_code",  label: "HSN Code",  type: "text" }, // text: preserve leading zeros
   { key: "inci_name", label: "INCI Name", type: "text" },
   { key: "status",    label: "Status",    type: "text" },
 ]
@@ -37,7 +36,6 @@ export const PM_BASE_EXPORT_COLUMNS: ExportColumn[] = [
   { key: "name",     label: "Name",     type: "text" },
   { key: "type",     label: "Type",     type: "text" },
   { key: "uom",      label: "UOM",      type: "text" },
-  { key: "hsn_code", label: "HSN Code", type: "text" }, // text: preserve leading zeros
   { key: "status",   label: "Status",   type: "text" },
 ]
 
@@ -61,7 +59,6 @@ export const RM_VENDOR_EXPORT_COLUMNS: ExportColumn[] = [
   { key: "make",           label: "Make",           type: "text"   },
   { key: "type",           label: "Type",           type: "text"   },
   { key: "uom",            label: "UOM",            type: "text"   },
-  { key: "hsn_code",       label: "HSN Code",       type: "text"   }, // text: preserve leading zeros
   { key: "status",         label: "Status",         type: "text"   },
   { key: "vendor_code",    label: "Vendor Code",    type: "text"   },
   { key: "curr_rate",      label: "Current Rate",   type: "number" },
@@ -78,7 +75,6 @@ export const RM_MFG_EXPORT_COLUMNS: ExportColumn[] = [
   { key: "make",                  label: "Make",                 type: "text"   },
   { key: "type",                  label: "Type",                 type: "text"   },
   { key: "uom",                   label: "UOM",                  type: "text"   },
-  { key: "hsn_code",              label: "HSN Code",             type: "text"   },
   { key: "status",                label: "Status",               type: "text"   },
   { key: "mfg_code",              label: "Mfg Code",             type: "text"   },
   { key: "approved_vendor_code",  label: "Approved Vendor Code", type: "text"   },
@@ -93,7 +89,6 @@ export const PM_VENDOR_EXPORT_COLUMNS: ExportColumn[] = [
   { key: "name",           label: "Name",           type: "text"   },
   { key: "type",           label: "Type",           type: "text"   },
   { key: "uom",            label: "UOM",            type: "text"   },
-  { key: "hsn_code",       label: "HSN Code",       type: "text"   },
   { key: "status",         label: "Status",         type: "text"   },
   { key: "vendor_code",    label: "Vendor Code",    type: "text"   },
   { key: "curr_rate",      label: "Current Rate",   type: "number" },
@@ -109,7 +104,6 @@ export const PM_MFG_EXPORT_COLUMNS: ExportColumn[] = [
   { key: "name",           label: "Name",         type: "text"   },
   { key: "type",           label: "Type",         type: "text"   },
   { key: "uom",            label: "UOM",          type: "text"   },
-  { key: "hsn_code",       label: "HSN Code",     type: "text"   },
   { key: "status",         label: "Status",       type: "text"   },
   { key: "mfg_code",       label: "Mfg Code",     type: "text"   },
   { key: "curr_rate",      label: "Current Rate", type: "number" },

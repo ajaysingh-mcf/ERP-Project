@@ -16,6 +16,7 @@ import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
 import { rawMaterials } from "@/lib/queries/raw-materials"
 import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
+import { fuzzyRank } from "@/lib/fuzzy-search"
 import { getRmDistinctMakes, getRmDistinctTypes, getPmDistinctTypes } from "@/lib/cached-reference-data"
 import { MaterialToggle } from "./MaterialToggle"
 import MaterialMasterClient from "./MaterialMasterClient"
@@ -57,22 +58,43 @@ export default async function MaterialMasterPage({
   // RM: [like×4, status×2, make×2, type×2, LIMIT, OFFSET]
   const rmParams    = [like, like, like, like, status, status, make, make, type, type]
   const pmParams    = [like, like, like, like, status, status, type, type]
+  const rmParamsNoSearch = [null, null, null, null, status, status, make, make, type, type]
+  const pmParamsNoSearch = [null, null, null, null, status, status, type, type]
 
-  const [rows, countRows, makeRows, typeRows] = await Promise.all([
-    timedQuery<AnyRow>(
-      isPm ? PMMaterials.selectPaginated : rawMaterials.selectPaginated,
-      isPm ? [...pmParams, size, offset] : [...rmParams, size, offset],
-      { label: "selectPaginated" }
-    ),
-    timedQuery<{ total: number }>(
-      isPm ? PMMaterials.countAll : rawMaterials.countAll,
-      isPm ? pmParams : rmParams,
-      { label: "countAll" }
-    ),
+  let rows: AnyRow[]
+  let total: number
+
+  const [makeRows, typeRows] = await Promise.all([
     isPm ? getPmDistinctTypes() : getRmDistinctMakes(),
     isPm ? Promise.resolve([] as { type: string }[]) : getRmDistinctTypes(),
   ])
-  const total = Number(countRows[0]?.total ?? 0)
+
+  if (search) {
+    const allMatching = await timedQuery<AnyRow>(
+      isPm ? PMMaterials.selectBaseAllFiltered : rawMaterials.selectBaseAllFiltered,
+      isPm ? pmParamsNoSearch : rmParamsNoSearch,
+      { label: "selectBaseAllFiltered" }
+    )
+    const fuzzyKeys = isPm ? ["pm_code", "name", "type"] : ["rm_code", "name", "make"]
+    const ranked = fuzzyRank(allMatching, search, fuzzyKeys)
+    total = ranked.length
+    rows = ranked.slice(offset, offset + size)
+  } else {
+    const [dbRows, countRows] = await Promise.all([
+      timedQuery<AnyRow>(
+        isPm ? PMMaterials.selectPaginated : rawMaterials.selectPaginated,
+        isPm ? [...pmParams, size, offset] : [...rmParams, size, offset],
+        { label: "selectPaginated" }
+      ),
+      timedQuery<{ total: number }>(
+        isPm ? PMMaterials.countAll : rawMaterials.countAll,
+        isPm ? pmParams : rmParams,
+        { label: "countAll" }
+      ),
+    ])
+    rows = dbRows
+    total = Number(countRows[0]?.total ?? 0)
+  }
   const makes = (makeRows as { make: string }[]).map((r) => r.make)
   const types = isPm ? makes : (typeRows as { type: string }[]).map((r) => r.type)
   const makesForFilter = isPm ? [] : makes

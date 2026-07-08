@@ -15,6 +15,7 @@ import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
 import { bom } from "@/lib/queries/bom"
+import { fuzzyRank } from "@/lib/fuzzy-search"
 import type { BomListItem } from "@/types/masters"
 import BomHistoryClient from "./BomHistoryClient"
 
@@ -37,11 +38,24 @@ export default async function BOMHistoryPage({
   const pageStart = performance.now()
   console.log(`[AUDIT] BOM History load - page=${page}, size=${size}, search=${search || "none"}`)
 
-  const [rows, countRows] = await Promise.all([
-    timedQuery<BomListItem>(bom.selectHistoryPaginatedGrouped, [like, like, like, size, offset], { label: "selectHistoryPaginatedGrouped" }),
-    timedQuery<{ total: number }>(bom.countHistoryGrouped, [like, like, like], { label: "countHistoryGrouped" }),
-  ])
-  const total = Number(countRows[0]?.total ?? 0)
+  let rows: BomListItem[]
+  let total: number
+
+  if (search) {
+    const allMatching = await timedQuery<BomListItem>(
+      bom.selectAllFilteredHistoryGrouped, [null, null, null], { label: "selectAllFilteredHistoryGrouped" }
+    )
+    const ranked = fuzzyRank(allMatching, search, ["bom_code", "sku_code"])
+    total = ranked.length
+    rows = ranked.slice(offset, offset + size)
+  } else {
+    const [dbRows, countRows] = await Promise.all([
+      timedQuery<BomListItem>(bom.selectHistoryPaginatedGrouped, [like, like, like, size, offset], { label: "selectHistoryPaginatedGrouped" }),
+      timedQuery<{ total: number }>(bom.countHistoryGrouped, [like, like, like], { label: "countHistoryGrouped" }),
+    ])
+    rows = dbRows
+    total = Number(countRows[0]?.total ?? 0)
+  }
   console.log(`[AUDIT] BOM History complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
   return (

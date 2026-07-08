@@ -165,24 +165,34 @@ export function RmRateTable({
     return () => document.removeEventListener("mousedown", onMouseDown)
   }, [showFilters])
 
-  // Local state for debounced vendor filter inputs.
+  // Draft filter state — every filter control below only updates these
+  // locally; the actual server refetch fires only when "Apply" is clicked.
   const [localVendorCode, setLocalVendorCode] = useState(currentVendorCode ?? "")
   const [localRateMin, setLocalRateMin]       = useState(currentRateMin ?? "")
   const [localRateMax, setLocalRateMax]       = useState(currentRateMax ?? "")
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const [draftStatus, setDraftStatus]         = useState(currentStatus ?? "")
+  const [draftType, setDraftType]             = useState(currentType ?? "")
+  const [draftMake, setDraftMake]             = useState(currentMake ?? "")
+  const [draftEffectiveFrom, setDraftEffectiveFrom] = useState(currentEffectiveFrom ?? "")
 
-  // Sync local state when URL-driven prop changes (e.g. Clear filters).
+  // Sync draft state when URL-driven prop changes (e.g. Clear filters).
   useEffect(() => { setLocalVendorCode(currentVendorCode ?? "") }, [currentVendorCode])
   useEffect(() => { setLocalRateMin(currentRateMin ?? "") }, [currentRateMin])
   useEffect(() => { setLocalRateMax(currentRateMax ?? "") }, [currentRateMax])
+  useEffect(() => { setDraftStatus(currentStatus ?? "") }, [currentStatus])
+  useEffect(() => { setDraftType(currentType ?? "") }, [currentType])
+  useEffect(() => { setDraftMake(currentMake ?? "") }, [currentMake])
+  useEffect(() => { setDraftEffectiveFrom(currentEffectiveFrom ?? "") }, [currentEffectiveFrom])
 
-  // Local state for debounced mfg filter inputs.
+  // Draft state for mfg filter inputs.
   const [localMfgCode, setLocalMfgCode]       = useState(currentMfgCode ?? "")
   const [localMfgRateMin, setLocalMfgRateMin] = useState(currentMfgRateMin ?? "")
   const [localMfgRateMax, setLocalMfgRateMax] = useState(currentMfgRateMax ?? "")
+  const [draftMfgEffectiveFrom, setDraftMfgEffectiveFrom] = useState(currentMfgEffectiveFrom ?? "")
   useEffect(() => { setLocalMfgCode(currentMfgCode ?? "") }, [currentMfgCode])
   useEffect(() => { setLocalMfgRateMin(currentMfgRateMin ?? "") }, [currentMfgRateMin])
   useEffect(() => { setLocalMfgRateMax(currentMfgRateMax ?? "") }, [currentMfgRateMax])
+  useEffect(() => { setDraftMfgEffectiveFrom(currentMfgEffectiveFrom ?? "") }, [currentMfgEffectiveFrom])
 
   // Click a header: same column → flip direction; new column → sort ascending.
   const toggleSort = (key: string) => {
@@ -240,10 +250,38 @@ export function RmRateTable({
     || currentMfgCode || currentMfgRateMin || currentMfgRateMax || currentMfgEffectiveFrom
   const refresh    = () => router.refresh()
 
-  // Debounced navigate for text/number filter inputs.
-  function navigateDebounced(key: string, value: string) {
-    clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => navigate({ [key]: value }), 350)
+  // Commits every draft filter value to the URL in one navigation.
+  function applyFilters() {
+    navigate({
+      status: draftStatus,
+      type: draftType,
+      make: draftMake,
+      vendor_code: localVendorCode,
+      rate_min: localRateMin,
+      rate_max: localRateMax,
+      effective_from: draftEffectiveFrom,
+      mfg_code: localMfgCode,
+      mfg_rate_min: localMfgRateMin,
+      mfg_rate_max: localMfgRateMax,
+      mfg_effective_from: draftMfgEffectiveFrom,
+    })
+    setShowFilters(false)
+  }
+
+  function clearAllFilters() {
+    setDraftStatus("")
+    setDraftType("")
+    setDraftMake("")
+    setLocalVendorCode("")
+    setLocalRateMin("")
+    setLocalRateMax("")
+    setDraftEffectiveFrom("")
+    setLocalMfgCode("")
+    setLocalMfgRateMin("")
+    setLocalMfgRateMax("")
+    setDraftMfgEffectiveFrom("")
+    navigate({ status: "", type: "", make: "", vendor_code: "", rate_min: "", rate_max: "", effective_from: "", mfg_code: "", mfg_rate_min: "", mfg_rate_max: "", mfg_effective_from: "" })
+    setShowFilters(false)
   }
 
   // Count of active non-search filters (drives badge on Filters button).
@@ -300,7 +338,7 @@ export function RmRateTable({
                 <div className="flex items-center gap-2">
                   {activeFilterCount > 0 && (
                     <button
-                      onClick={() => navigate({ status: "", type: "", make: "", vendor_code: "", rate_min: "", rate_max: "", effective_from: "", mfg_code: "", mfg_rate_min: "", mfg_rate_max: "", mfg_effective_from: "" })}
+                      onClick={clearAllFilters}
                       className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       Clear all
@@ -317,8 +355,8 @@ export function RmRateTable({
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</label>
                   <select
-                    value={currentStatus || "all"}
-                    onChange={(e) => navigate({ status: e.target.value === "all" ? "" : e.target.value })}
+                    value={draftStatus || "all"}
+                    onChange={(e) => setDraftStatus(e.target.value === "all" ? "" : e.target.value)}
                     className={selectCls}
                   >
                     <option value="all">All Status</option>
@@ -332,8 +370,8 @@ export function RmRateTable({
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Type</label>
                     <select
-                      value={currentType || "all"}
-                      onChange={(e) => navigate({ type: e.target.value === "all" ? "" : e.target.value })}
+                      value={draftType || "all"}
+                      onChange={(e) => setDraftType(e.target.value === "all" ? "" : e.target.value)}
                       className={selectCls}
                     >
                       <option value="all">All Types</option>
@@ -350,8 +388,8 @@ export function RmRateTable({
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Make</label>
                       <select
-                        value={currentMake || "all"}
-                        onChange={(e) => navigate({ make: e.target.value === "all" ? "" : e.target.value })}
+                        value={draftMake || "all"}
+                        onChange={(e) => setDraftMake(e.target.value === "all" ? "" : e.target.value)}
                         className={selectCls}
                       >
                         <option value="all">All Makes</option>
@@ -367,10 +405,7 @@ export function RmRateTable({
                         type="text"
                         value={localVendorCode}
                         placeholder="e.g. VEN-001"
-                        onChange={(e) => {
-                          setLocalVendorCode(e.target.value)
-                          navigateDebounced("vendor_code", e.target.value)
-                        }}
+                        onChange={(e) => setLocalVendorCode(e.target.value)}
                         className={inputCls}
                       />
                     </div>
@@ -383,10 +418,7 @@ export function RmRateTable({
                           value={localRateMin}
                           placeholder="Min"
                           min={0}
-                          onChange={(e) => {
-                            setLocalRateMin(e.target.value)
-                            navigateDebounced("rate_min", e.target.value)
-                          }}
+                          onChange={(e) => setLocalRateMin(e.target.value)}
                           className={inputCls}
                         />
                         <span className="text-muted-foreground text-sm">–</span>
@@ -395,10 +427,7 @@ export function RmRateTable({
                           value={localRateMax}
                           placeholder="Max"
                           min={0}
-                          onChange={(e) => {
-                            setLocalRateMax(e.target.value)
-                            navigateDebounced("rate_max", e.target.value)
-                          }}
+                          onChange={(e) => setLocalRateMax(e.target.value)}
                           className={inputCls}
                         />
                       </div>
@@ -408,8 +437,8 @@ export function RmRateTable({
                       <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Effective From</label>
                       <input
                         type="date"
-                        value={currentEffectiveFrom || ""}
-                        onChange={(e) => navigate({ effective_from: e.target.value })}
+                        value={draftEffectiveFrom}
+                        onChange={(e) => setDraftEffectiveFrom(e.target.value)}
                         className={inputCls}
                       />
                     </div>
@@ -425,10 +454,7 @@ export function RmRateTable({
                         type="text"
                         value={localMfgCode}
                         placeholder="e.g. MFG-001"
-                        onChange={(e) => {
-                          setLocalMfgCode(e.target.value)
-                          navigateDebounced("mfg_code", e.target.value)
-                        }}
+                        onChange={(e) => setLocalMfgCode(e.target.value)}
                         className={inputCls}
                       />
                     </div>
@@ -441,10 +467,7 @@ export function RmRateTable({
                           value={localMfgRateMin}
                           placeholder="Min"
                           min={0}
-                          onChange={(e) => {
-                            setLocalMfgRateMin(e.target.value)
-                            navigateDebounced("mfg_rate_min", e.target.value)
-                          }}
+                          onChange={(e) => setLocalMfgRateMin(e.target.value)}
                           className={inputCls}
                         />
                         <span className="text-muted-foreground text-sm">–</span>
@@ -453,10 +476,7 @@ export function RmRateTable({
                           value={localMfgRateMax}
                           placeholder="Max"
                           min={0}
-                          onChange={(e) => {
-                            setLocalMfgRateMax(e.target.value)
-                            navigateDebounced("mfg_rate_max", e.target.value)
-                          }}
+                          onChange={(e) => setLocalMfgRateMax(e.target.value)}
                           className={inputCls}
                         />
                       </div>
@@ -466,13 +486,29 @@ export function RmRateTable({
                       <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Effective From</label>
                       <input
                         type="date"
-                        value={currentMfgEffectiveFrom || ""}
-                        onChange={(e) => navigate({ mfg_effective_from: e.target.value })}
+                        value={draftMfgEffectiveFrom}
+                        onChange={(e) => setDraftMfgEffectiveFrom(e.target.value)}
                         className={inputCls}
                       />
                     </div>
                   </>
                 )}
+              </div>
+
+              {/* Panel footer */}
+              <div className="flex justify-end gap-2 px-4 py-3 border-t border-border">
+                <button
+                  onClick={() => setShowFilters(false)}
+                  className="inline-flex h-8 items-center gap-1 rounded-md border border-input px-3 text-xs hover:bg-accent transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={applyFilters}
+                  className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  Apply
+                </button>
               </div>
             </div>
           )}

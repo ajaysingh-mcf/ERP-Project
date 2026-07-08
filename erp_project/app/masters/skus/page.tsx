@@ -14,6 +14,7 @@ import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
 import { skus as skuSql } from "@/lib/queries/skus"
+import { fuzzyRank } from "@/lib/fuzzy-search"
 import type { Sku } from "@/types/masters"
 import SkusClient from "./SkusClient"
 
@@ -43,12 +44,27 @@ export default async function SkusPage({
   const pageStart = performance.now()
   console.log(`[AUDIT] SKUs load - page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
 
-  const [rows, countRows] = await Promise.all([
-    timedQuery<Sku>(skuSql.selectPaginated, [like, like, like, like, status, status, size, offset], { label: "selectPaginated" }),
-    timedQuery<{ total: number }>(skuSql.countAll, [like, like, like, like, status, status], { label: "countAll" }),
-  ])
+  let rows: Sku[]
+  let total: number
 
-  const total = Number(countRows[0]?.total ?? 0)
+  if (search) {
+    // Fuzzy path: fetch every SKU matching the status filter, rank by typo-tolerant
+    // relevance against the search term, then slice the requested page in memory.
+    const allMatching = await timedQuery<Sku>(
+      skuSql.selectAllFiltered, [null, null, null, null, status, status], { label: "selectAllFiltered" }
+    )
+    const ranked = fuzzyRank(allMatching, search, ["sku_code", "name", "brand"])
+    total = ranked.length
+    rows = ranked.slice(offset, offset + size)
+  } else {
+    const [dbRows, countRows] = await Promise.all([
+      timedQuery<Sku>(skuSql.selectPaginated, [like, like, like, like, status, status, size, offset], { label: "selectPaginated" }),
+      timedQuery<{ total: number }>(skuSql.countAll, [like, like, like, like, status, status], { label: "countAll" }),
+    ])
+    rows = dbRows
+    total = Number(countRows[0]?.total ?? 0)
+  }
+
   console.log(`[AUDIT] SKUs complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
   return (

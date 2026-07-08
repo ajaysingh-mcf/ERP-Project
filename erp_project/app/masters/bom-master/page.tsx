@@ -12,6 +12,7 @@ import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
 import { bom } from "@/lib/queries/bom"
+import { fuzzyRank } from "@/lib/fuzzy-search"
 import {
   getActiveSkuList,
   getActiveRmMaterialOptions,
@@ -48,14 +49,30 @@ export default async function BOMMasterPage({
   const pageStart = performance.now()
   console.log(`[AUDIT] BOM Master load - page=${page}, size=${size}, search=${search || "none"}, status=${status || "all"}`)
 
-  const [rows, countRows, skuRows, rmRows, pmRows] = await Promise.all([
-    timedQuery<BomListItem>(bom.selectPaginatedGrouped, [like, like, like, status, status, size, offset], { label: "selectPaginatedGrouped" }),
-    timedQuery<{ total: number }>(bom.countGrouped, [like, like, like, status, status], { label: "countGrouped" }),
+  const [skuRows, rmRows, pmRows] = await Promise.all([
     getActiveSkuList(),
     getActiveRmMaterialOptions(),
     getActivePmMaterialOptions(),
   ])
-  const total = Number(countRows[0]?.total ?? 0)
+
+  let rows: BomListItem[]
+  let total: number
+
+  if (search) {
+    const allMatching = await timedQuery<BomListItem>(
+      bom.selectAllFilteredGrouped, [null, null, null, status, status], { label: "selectAllFilteredGrouped" }
+    )
+    const ranked = fuzzyRank(allMatching, search, ["bom_code", "sku_code"])
+    total = ranked.length
+    rows = ranked.slice(offset, offset + size)
+  } else {
+    const [dbRows, countRows] = await Promise.all([
+      timedQuery<BomListItem>(bom.selectPaginatedGrouped, [like, like, like, status, status, size, offset], { label: "selectPaginatedGrouped" }),
+      timedQuery<{ total: number }>(bom.countGrouped, [like, like, like, status, status], { label: "countGrouped" }),
+    ])
+    rows = dbRows
+    total = Number(countRows[0]?.total ?? 0)
+  }
   console.log(`[AUDIT] BOM Master complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
   const rmMaterials: BomMaterialOption[] = rmRows.map((r) => ({ id: r.id, code: r.rm_code, name: r.name, uom: r.uom }))

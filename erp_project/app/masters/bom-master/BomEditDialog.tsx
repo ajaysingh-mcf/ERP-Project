@@ -7,6 +7,7 @@
  * BomLineEditorTable for a denser view of many RM/PM lines at once.
  */
 
+import { AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { BomLineEditorTable } from "./BomLineEditorTable"
@@ -49,8 +50,9 @@ export function BomEditDialog({
         </DialogHeader>
 
         {saveError && (
-          <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive shrink-0">
-            {saveError}
+          <div className="flex items-start gap-2 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2.5 text-sm font-medium text-destructive shrink-0">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>{saveError}</span>
           </div>
         )}
 
@@ -65,7 +67,10 @@ export function BomEditDialog({
           />
         </div>
 
-        <div className="flex justify-end gap-2 pt-2 border-t shrink-0">
+        <div className="flex items-center justify-end gap-2 pt-2 border-t shrink-0">
+          {saveError && (
+            <span className="text-sm text-destructive font-medium mr-auto">{saveError}</span>
+          )}
           <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>

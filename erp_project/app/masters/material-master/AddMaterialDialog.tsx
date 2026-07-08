@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { FuzzySelect } from "@/components/ui/FuzzySelect"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -281,19 +282,14 @@ export default function AddMaterialDialog({
                       >✕</button>
                     </div>
                   ) : (
-                    <select
-                      id="mat-make"
+                    <FuzzySelect
+                      options={makeOptions}
                       value={rmExtra.make}
-                      onChange={(e) => {
-                        if (e.target.value === "__new__") { setMakeIsNew(true); setRmField("make", "") }
-                        else setRmField("make", e.target.value)
-                      }}
-                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    >
-                      <option value="">Select make…</option>
-                      {makeOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-                      <option value="__new__">+ Add new…</option>
-                    </select>
+                      onChange={(v) => setRmField("make", v)}
+                      onAddNew={() => { setMakeIsNew(true); setRmField("make", "") }}
+                      placeholder="Select make…"
+                      className="h-9"
+                    />
                   )}
                 </div>
 
@@ -318,19 +314,14 @@ export default function AddMaterialDialog({
                       >✕</button>
                     </div>
                   ) : (
-                    <select
-                      id="mat-inci"
+                    <FuzzySelect
+                      options={inciOptions}
                       value={rmExtra.inci_name}
-                      onChange={(e) => {
-                        if (e.target.value === "__new__") { setInciIsNew(true); setRmField("inci_name", "") }
-                        else setRmField("inci_name", e.target.value)
-                      }}
-                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    >
-                      <option value="">Select INCI name…</option>
-                      {inciOptions.map((n) => <option key={n} value={n}>{n}</option>)}
-                      <option value="__new__">+ Add new…</option>
-                    </select>
+                      onChange={(v) => setRmField("inci_name", v)}
+                      onAddNew={() => { setInciIsNew(true); setRmField("inci_name", "") }}
+                      placeholder="Select INCI name…"
+                      className="h-9"
+                    />
                   )}
                 </div>
               </>

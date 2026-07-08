@@ -18,7 +18,8 @@ import { rmTotal, type BomLineRow, type BomMaterialOption } from "./BomLineEdito
 import { parseBomCsv } from "./bom-csv"
 import type { Sku } from "@/types/masters"
 
-export type WizardStep = 1 | 2 | 3 | 4 | 5
+export type WizardStep = 0 | 1 | 2 | 3 | 4 | 5
+export type WizardMode = "create" | "modify"
 export type EntryMethod = "manual" | "csv"
 
 export function useBomWizard({
@@ -36,7 +37,8 @@ export function useBomWizard({
 }) {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
-  const [step, setStep] = useState<WizardStep>(1)
+  const [step, setStep] = useState<WizardStep>(0)
+  const [mode, setMode] = useState<WizardMode | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
@@ -54,7 +56,8 @@ export function useBomWizard({
   const isDirty = skuId != null || rmRows.length > 0 || pmRows.length > 0
 
   function resetAll() {
-    setStep(1)
+    setStep(0)
+    setMode(null)
     setError(null)
     setShowCloseConfirm(false)
     setSkuId(null)
@@ -92,6 +95,17 @@ export function useBomWizard({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to check existing BOMs")
+
+      if (mode === "modify") {
+        if (data.hasActive) {
+          onEditExisting(data.bom_id)
+          closeWizard()
+        } else {
+          setError(`${sku ? sku.sku_code : "This SKU"} has no active BOM to modify. Use "Create New BOM" instead.`)
+        }
+        return
+      }
+
       if (data.hasActive) {
         setExistingBomId(data.bom_id)
         setExistingBomCode(data.bom_code)
@@ -105,6 +119,12 @@ export function useBomWizard({
     } finally {
       setLoading(false)
     }
+  }
+
+  function chooseMode(m: WizardMode) {
+    setMode(m)
+    setError(null)
+    setStep(1)
   }
 
   function handleUpdateExisting() {
@@ -145,6 +165,7 @@ export function useBomWizard({
     // active BOM, so existingBomId is still null) — otherwise every other
     // step just steps back by 1.
     if (step === 3) setStep(existingBomId != null ? 2 : 1)
+    else if (step === 1) setStep(0)
     else setStep((s) => (s - 1) as WizardStep)
   }
 
@@ -209,6 +230,8 @@ export function useBomWizard({
     setOpen,
     step,
     setStep,
+    mode,
+    chooseMode,
     loading,
     error,
     showCloseConfirm,

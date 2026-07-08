@@ -9,8 +9,35 @@
 import { Button } from "@/components/ui/button"
 import { BomLineEditorGrid, rmTotal, type BomLineRow, type BomMaterialOption } from "./BomLineEditorGrid"
 import { CSV_HEADER } from "./bom-csv"
-import type { EntryMethod } from "./useBomWizard"
+import type { EntryMethod, WizardMode } from "./useBomWizard"
 import type { Sku } from "@/types/masters"
+
+export function Step0ModeSelect({ onChoose }: { onChoose: (mode: WizardMode) => void }) {
+  return (
+    <div className="flex flex-col gap-3 py-2">
+      <button
+        type="button"
+        onClick={() => onChoose("create")}
+        className="rounded-lg border border-border p-4 text-left hover:border-primary transition-colors"
+      >
+        <p className="font-medium text-sm">Create New BOM</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Build a brand new BOM from scratch, either manually or via CSV upload.
+        </p>
+      </button>
+      <button
+        type="button"
+        onClick={() => onChoose("modify")}
+        className="rounded-lg border border-border p-4 text-left hover:border-primary transition-colors"
+      >
+        <p className="font-medium text-sm">Modify Existing BOM</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Pick a SKU with an active BOM and edit its line items directly — faster for small changes.
+        </p>
+      </button>
+    </div>
+  )
+}
 
 export function Step1SkuSelect({
   skus,

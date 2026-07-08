@@ -19,9 +19,8 @@ function StatBlock({ label, value }: { label: string; value: string | number }) 
   )
 }
 
-function MfgCard({ row, totalPlan }: { row: MfgOverviewRow; totalPlan: number }) {
+function MfgCard({ row }: { row: MfgOverviewRow }) {
   const utilised = fillRate(row.this_month_plan, row.capacity)
-  const share = totalPlan > 0 ? Math.round((row.this_month_plan / totalPlan) * 100) : 0
 
   return (
     <Link href={`/manufacturing/${row.id}`}>
@@ -42,18 +41,6 @@ function MfgCard({ row, totalPlan }: { row: MfgOverviewRow; totalPlan: number })
             <StatBlock label="This Month Plan" value={fmtInt(row.this_month_plan)} />
             <StatBlock label="Active SKUs" value={fmtInt(row.active_skus)} />
             <StatBlock label="Open POs" value={fmtInt(row.open_pos)} />
-          </div>
-
-          <StatBlock label="Total Open PO Value" value={fmtMoney(row.open_value)} />
-
-          <div>
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>Production share</span>
-              <span className="font-medium text-foreground">{share}%</span>
-            </div>
-            <div className="mt-1 h-1.5 w-full rounded-full bg-muted overflow-hidden">
-              <div className="h-full rounded-full bg-foreground" style={{ width: `${share}%` }} />
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -90,7 +77,7 @@ export default function ManufacturingOverviewClient({ rows }: { rows: MfgOvervie
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {visibleCards.map((row) => (
-            <MfgCard key={row.id} row={row} totalPlan={totalPlan} />
+            <MfgCard key={row.id} row={row} />
           ))}
         </div>
         {overflowCount > 0 && (

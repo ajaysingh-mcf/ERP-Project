@@ -177,8 +177,39 @@ export function useBomDetailPanel() {
   }
 
   async function saveEdit() {
-    if (!detail || detail.bom_id == null || detail.sku_id == null) return
     setSaveError(null)
+
+    // detail normally arrives well before the user finishes editing, but for
+    // a BOM that was never pre-viewed (direct per-row Edit click, or the
+    // wizard's Update/Modify Existing flows) a fast edit can beat the async
+    // fetch. Await the same in-flight/cached request instead of failing —
+    // it resolves almost immediately since the fetch was already kicked off
+    // by openEditMode's effect.
+    let bomId = detail?.bom_id ?? null
+    let skuId = detail?.sku_id ?? null
+    let bomCode = detail?.bom_code ?? null
+    if (bomId == null || skuId == null) {
+      if (selectedBomId == null) {
+        setSaveError("No BOM selected.")
+        return
+      }
+      let fresh: BomDetailResponse
+      try {
+        fresh = await fetchDetail(selectedBomId)
+      } catch (e: any) {
+        setSaveError(e.message || "Failed to load BOM details. Please try again.")
+        return
+      }
+      setDetail(fresh)
+      bomId = fresh.bom_id
+      skuId = fresh.sku_id
+      bomCode = fresh.bom_code
+      if (bomId == null || skuId == null) {
+        setSaveError("This BOM is missing its SKU link and cannot be submitted for approval.")
+        return
+      }
+    }
+
     if (editRmRows.length === 0) {
       setSaveError("At least one RM line is required.")
       return
@@ -210,8 +241,8 @@ export function useBomDetailPanel() {
         body: JSON.stringify({
           action: "create-full",
           mode: "update-existing",
-          sku_id: detail.sku_id,
-          bom_id: detail.bom_id,
+          sku_id: skuId,
+          bom_id: bomId,
           source: "manual",
           rm_lines: editRmRows.map(toLine),
           pm_lines: editPmRows.map(toLine),
@@ -221,11 +252,13 @@ export function useBomDetailPanel() {
       if (!res.ok) throw new Error(data.error || "Failed to submit BOM update")
       setEditMode(false)
       setEditSeededFor(null)
-      fetchDetail(detail.bom_id, { skipCache: true }).then(setDetail).catch(() => {})
-      toast({ title: "BOM update submitted for approval", description: detail.bom_code ?? undefined, variant: "success" })
+      fetchDetail(bomId, { skipCache: true }).then(setDetail).catch(() => {})
+      toast({ title: "BOM update submitted for approval", description: bomCode ?? undefined, variant: "success" })
       router.refresh()
     } catch (e: any) {
-      setSaveError(e.message || "An error occurred")
+      const message = e.message || "An error occurred"
+      setSaveError(message)
+      toast({ title: "Failed to submit BOM update", description: message, variant: "error" })
     } finally {
       setSaving(false)
     }

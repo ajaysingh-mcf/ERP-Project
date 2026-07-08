@@ -15,7 +15,7 @@
  * only within the current page.
  */
 
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -65,7 +65,6 @@ const RM_COLUMNS: ColumnDef[] = [
   { key: "make",      label: "Make",      sortAs: "text" },
   { key: "type",      label: "Type",      sortAs: "text" },
   { key: "uom",       label: "UOM",       sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
-  { key: "hsn_code",  label: "HSN Code",  sortAs: "text" },
   { key: "inci_name", label: "INCI Name", sortAs: "text" },
   { key: "status",    label: "Status",    sortAs: "text", render: statusBadge },
 ]
@@ -75,7 +74,6 @@ const PM_COLUMNS: ColumnDef[] = [
   { key: "name",          label: "Name",         sortAs: "text", className: "font-medium" },
   { key: "type",          label: "Type",         sortAs: "text" },
   { key: "uom",           label: "UOM",          sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
-  { key: "hsn_code",      label: "HSN Code",     sortAs: "text" },
   { key: "pantone_color", label: "Pantone Color", sortAs: "text" },
   { key: "status",        label: "Status",       sortAs: "text", render: statusBadge },
 ]
@@ -111,6 +109,19 @@ export default function MaterialMasterClient({
 
   // Edit dialog state — which row is being edited (null = closed).
   const [editRow, setEditRow] = useState<AnyRow | null>(null)
+
+  // Draft filter state — selects only update these locally; the actual
+  // server refetch fires only when "Apply" is clicked.
+  const [draftStatus, setDraftStatus] = useState(currentStatus)
+  const [draftMake,   setDraftMake]   = useState(currentMake)
+  const [draftType,   setDraftType]   = useState(currentType)
+
+  useEffect(() => setDraftStatus(currentStatus), [currentStatus])
+  useEffect(() => setDraftMake(currentMake), [currentMake])
+  useEffect(() => setDraftType(currentType), [currentType])
+
+  const draftDirty =
+    draftStatus !== currentStatus || draftMake !== currentMake || draftType !== currentType
 
   // Client-side sort state (sorts within the current DB page only).
   const [sortKey, setSortKey] = useState<string | null>(null)
@@ -180,9 +191,9 @@ export default function MaterialMasterClient({
         />
 
         <select
-          value={currentStatus || "all"}
+          value={draftStatus || "all"}
           onChange={(e) =>
-            navigate({ status: e.target.value === "all" ? "" : e.target.value })
+            setDraftStatus(e.target.value === "all" ? "" : e.target.value)
           }
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
@@ -193,8 +204,8 @@ export default function MaterialMasterClient({
 
         {makes.length > 0 && (
           <select
-            value={currentMake || "all"}
-            onChange={(e) => navigate({ make: e.target.value === "all" ? "" : e.target.value })}
+            value={draftMake || "all"}
+            onChange={(e) => setDraftMake(e.target.value === "all" ? "" : e.target.value)}
             className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <option value="all">All Makes</option>
@@ -204,14 +215,28 @@ export default function MaterialMasterClient({
 
         {types.length > 0 && (
           <select
-            value={currentType || "all"}
-            onChange={(e) => navigate({ [material === "pm" ? "make" : "type"]: e.target.value === "all" ? "" : e.target.value })}
+            value={draftType || "all"}
+            onChange={(e) => setDraftType(e.target.value === "all" ? "" : e.target.value)}
             className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <option value="all">All Types</option>
             {types.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         )}
+
+        <button
+          onClick={() =>
+            navigate({
+              status: draftStatus,
+              make: draftMake,
+              [material === "pm" ? "make" : "type"]: draftType,
+            })
+          }
+          disabled={!draftDirty}
+          className="h-9 rounded-lg border border-input bg-background px-3 text-sm font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Apply
+        </button>
 
         <MasterToolbarActions>
           <DownloadButton
@@ -229,7 +254,12 @@ export default function MaterialMasterClient({
             {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => navigate({ search: "", status: "", make: "", type: "" })}
+                onClick={() => {
+                  setDraftStatus("")
+                  setDraftMake("")
+                  setDraftType("")
+                  navigate({ search: "", status: "", make: "", type: "" })
+                }}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters

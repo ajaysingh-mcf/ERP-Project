@@ -168,6 +168,28 @@ export const bom = {
   `,
 
   /**
+   * Fetch ALL matching BOM headers, grouped (no LIMIT/OFFSET) — feeds the
+   * fuzzy-search ranking path (lib/fuzzy-search.ts) when a search term is
+   * present. Same shape/WHERE as selectPaginatedGrouped.
+   * Params: [like, like, like, status, status]
+   */
+  selectAllFilteredGrouped: `
+    SELECT
+      b.id AS bom_id, b.bom_code, s.sku_code, s.name AS sku_name,
+      b.created_at,
+      MIN(bd.effective_from) AS effective_from,
+      MAX(bd.effective_till) AS effective_till,
+      b.status AS status
+    FROM master_bom AS b
+    LEFT JOIN details_bom AS bd ON bd.bom_id = b.id
+    LEFT JOIN master_skus AS s ON s.id = b.sku_id
+    WHERE (? IS NULL OR b.bom_code LIKE ? OR s.sku_code LIKE ?)
+      AND (? IS NULL OR b.status = ?)
+    GROUP BY b.id, b.bom_code, s.sku_code, s.name, b.created_at, b.status
+    ORDER BY b.bom_code ASC
+  `,
+
+  /**
    * Matching COUNT for selectPaginatedGrouped (one BOM header = one row).
    * Params: [like, like, like, status, status]
    */
@@ -315,6 +337,27 @@ export const bom = {
     GROUP BY b.id, b.bom_code, s.sku_code, s.name, b.created_at, b.status
     ORDER BY MAX(h.last_updated) DESC
     LIMIT ? OFFSET ?
+  `,
+
+  /**
+   * Fetch ALL matching BOM history headers, grouped (no LIMIT/OFFSET) — feeds
+   * the fuzzy-search ranking path (lib/fuzzy-search.ts) when a search term is
+   * present. Same shape/WHERE as selectHistoryPaginatedGrouped.
+   * Params: [like, like, like]
+   */
+  selectAllFilteredHistoryGrouped: `
+    SELECT
+      b.id AS bom_id, b.bom_code, s.sku_code, s.name AS sku_name,
+      b.created_at,
+      MIN(h.effective_from) AS effective_from,
+      MAX(h.effective_till) AS effective_till,
+      b.status AS status
+    FROM history_bom AS h
+    INNER JOIN master_bom AS b ON b.id = h.bom_id
+    LEFT JOIN master_skus AS s ON s.id = b.sku_id
+    WHERE (? IS NULL OR b.bom_code LIKE ? OR s.sku_code LIKE ?)
+    GROUP BY b.id, b.bom_code, s.sku_code, s.name, b.created_at, b.status
+    ORDER BY MAX(h.last_updated) DESC
   `,
 
   /** Matching COUNT for selectHistoryPaginatedGrouped. Params: [like, like, like] */

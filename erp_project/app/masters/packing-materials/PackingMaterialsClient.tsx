@@ -135,7 +135,6 @@ export default function PackingMaterialsClient({
                 <TableHead>PM Code</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
-                <TableHead>HSN Code</TableHead>
                 <TableHead>UOM</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
@@ -144,7 +143,7 @@ export default function PackingMaterialsClient({
               {filtered.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={5}
                     className="text-center text-muted-foreground py-10"
                   >
                     {hasFilters
@@ -161,9 +160,6 @@ export default function PackingMaterialsClient({
                     <TableCell className="font-medium">{row.name}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {row.type ?? "—"}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {row.hsn_code ?? "—"}
                     </TableCell>
                     <TableCell className="text-muted-foreground uppercase text-xs">
                       {row.uom ?? "—"}

@@ -35,7 +35,6 @@ const VENDOR_COLUMNS: ColumnDef[] = [
   { key: "type",           label: "Type",           sortAs: "text" },
   { key: "curr_rate",      label: "Current Rate",   sortAs: "num",  render: (r) => r.curr_rate != null ? Number(r.curr_rate).toFixed(2) : "—" },
   { key: "vendor_code",    label: "Vendor Code",    sortAs: "text" },
-  { key: "hsn_code",       label: "HSN Code",       sortAs: "text" },
   { key: "vrm_status",     label: "Status",         sortAs: "text", render: vrmStatusBadge },
   { key: "moq",            label: "MOQ",            sortAs: "num",  render: (r) => r.moq != null ? String(Math.round(Number(r.moq))) : "—" },
   { key: "uom",            label: "UOM",            sortAs: "text", className: "uppercase text-xs text-muted-foreground" },

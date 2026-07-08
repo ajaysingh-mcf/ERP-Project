@@ -17,6 +17,7 @@ import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
 import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
+import { fuzzyRank } from "@/lib/fuzzy-search"
 import {
   getVendorReferenceList, getManufacturerReferenceList, getPmDistinctTypes,
 } from "@/lib/cached-reference-data"
@@ -73,13 +74,27 @@ export default async function PackingMaterialsPage({
       search || null, statusFilter || null, makeFilter || null,
       mfgCodeFilter || null, mfgRateMinFilter || null, mfgRateMaxFilter || null, mfgEffFromFilter || null
     )
-    const [rows, countRows, typeRows] = await Promise.all([
-      timedQuery<PMByMfg>(PMMaterials.selectMfgPaginated, [...mfp, size, offset], { label: "selectMfgPaginated" }),
-      timedQuery<{ total: number }>(PMMaterials.countMfg, mfp, { label: "countMfg" }),
-      getPmDistinctTypes(),
-    ])
+    let rows: PMByMfg[]
+    const typeRows = await getPmDistinctTypes()
+
+    if (search) {
+      const noSearchMfp = PMMaterials.mfgFilterParams(
+        null, statusFilter || null, makeFilter || null,
+        mfgCodeFilter || null, mfgRateMinFilter || null, mfgRateMaxFilter || null, mfgEffFromFilter || null
+      )
+      const allMatching = await timedQuery<PMByMfg>(PMMaterials.selectMfgAllFiltered, noSearchMfp, { label: "selectMfgAllFiltered" })
+      const ranked = fuzzyRank(allMatching, search, ["pm_code", "name"])
+      finalTotal = ranked.length
+      rows = ranked.slice(offset, offset + size)
+    } else {
+      const [dbRows, countRows] = await Promise.all([
+        timedQuery<PMByMfg>(PMMaterials.selectMfgPaginated, [...mfp, size, offset], { label: "selectMfgPaginated" }),
+        timedQuery<{ total: number }>(PMMaterials.countMfg, mfp, { label: "countMfg" }),
+      ])
+      rows = dbRows
+      finalTotal = Number(countRows[0]?.total ?? 0)
+    }
     finalRowCount = rows.length
-    finalTotal = Number(countRows[0]?.total ?? 0)
     const types = typeRows.map((r) => r.make)
     body = (
       <ManufacturerPackingMaterialsClient
@@ -106,13 +121,28 @@ export default async function PackingMaterialsPage({
       vendorCodeFilter || null, rateMinFilter || null, rateMaxFilter || null,
       effectiveFromFilter || null
     )
-    const [rows, countRows, makeRows] = await Promise.all([
-      timedQuery<PMVendor>(PMMaterials.selectVendorPaginated, [...vfp, size, offset], { label: "selectVendorPaginated" }),
-      timedQuery<{ total: number }>(PMMaterials.countVendor, vfp, { label: "countVendor" }),
-      getPmDistinctTypes(),
-    ])
+    let rows: PMVendor[]
+    const makeRows = await getPmDistinctTypes()
+
+    if (search) {
+      const noSearchVfp = PMMaterials.vendorFilterParams(
+        null, statusFilter || null, makeFilter || null,
+        vendorCodeFilter || null, rateMinFilter || null, rateMaxFilter || null,
+        effectiveFromFilter || null
+      )
+      const allMatching = await timedQuery<PMVendor>(PMMaterials.selectVendorAllFiltered, noSearchVfp, { label: "selectVendorAllFiltered" })
+      const ranked = fuzzyRank(allMatching, search, ["pm_code", "name"])
+      finalTotal = ranked.length
+      rows = ranked.slice(offset, offset + size)
+    } else {
+      const [dbRows, countRows] = await Promise.all([
+        timedQuery<PMVendor>(PMMaterials.selectVendorPaginated, [...vfp, size, offset], { label: "selectVendorPaginated" }),
+        timedQuery<{ total: number }>(PMMaterials.countVendor, vfp, { label: "countVendor" }),
+      ])
+      rows = dbRows
+      finalTotal = Number(countRows[0]?.total ?? 0)
+    }
     finalRowCount = rows.length
-    finalTotal = Number(countRows[0]?.total ?? 0)
     const makes = makeRows.map((r) => r.make)
     body = (
       <VendorPackingMaterialsClient

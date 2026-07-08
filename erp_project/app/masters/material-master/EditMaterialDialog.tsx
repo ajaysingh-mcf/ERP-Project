@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { FuzzySelect } from "@/components/ui/FuzzySelect"
 
 const UOM_OPTIONS = ["kg", "g", "l", "ml", "pcs", "m"]
 
@@ -214,20 +215,15 @@ export default function EditMaterialDialog({
                     >✕</button>
                   </div>
                 ) : (
-                  <select
-                    id="edit-make"
+                  <FuzzySelect
+                    options={makeOptions}
                     value={make}
-                    onChange={(e) => {
-                      if (e.target.value === "__new__") { setMakeIsNew(true); setMake("") }
-                      else setMake(e.target.value)
-                    }}
+                    onChange={setMake}
+                    onAddNew={() => { setMakeIsNew(true); setMake("") }}
+                    placeholder="Select make…"
                     disabled={!canEdit}
-                    className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <option value="">Select make…</option>
-                    {makeOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-                    <option value="__new__">+ Add new…</option>
-                  </select>
+                    className="h-9"
+                  />
                 )}
               </div>
 
@@ -252,20 +248,15 @@ export default function EditMaterialDialog({
                     >✕</button>
                   </div>
                 ) : (
-                  <select
-                    id="edit-inci"
+                  <FuzzySelect
+                    options={inciOptions}
                     value={inci}
-                    onChange={(e) => {
-                      if (e.target.value === "__new__") { setInciIsNew(true); setInci("") }
-                      else setInci(e.target.value)
-                    }}
+                    onChange={setInci}
+                    onAddNew={() => { setInciIsNew(true); setInci("") }}
+                    placeholder="Select INCI name…"
                     disabled={!canEdit}
-                    className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <option value="">Select INCI name…</option>
-                    {inciOptions.map((n) => <option key={n} value={n}>{n}</option>)}
-                    <option value="__new__">+ Add new…</option>
-                  </select>
+                    className="h-9"
+                  />
                 )}
               </div>
             </>

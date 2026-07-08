@@ -10,6 +10,8 @@
  *   material — "pm" | anything else → RM (default)
  *   search   — searches code, name, and make/type
  *   status   — "active" | "discontinued"
+ *   make     — RM only
+ *   type     — RM | PM
  *
  * Responses:
  *   200  — file attachment
@@ -37,12 +39,18 @@ export async function GET(req: NextRequest) {
   const isPm     = sp.get("material") === "pm"
   const search   = sp.get("search")  ?? ""
   const status   = sp.get("status")  ?? ""
+  const make     = sp.get("make")    ?? ""
+  const type     = sp.get("type")    ?? ""
 
   const like        = search ? `%${search}%` : null
   const statusParam = status || null
+  const makeParam   = make   || null
+  const typeParam   = type   || null
 
-  // Params match selectPaginated / countAll: [like×4, status×2]
-  const filterParams = [like, like, like, like, statusParam, statusParam]
+  // RM: [like×4, status×2, make×2, type×2] — PM: [like×4, status×2, type×2]
+  const filterParams = isPm
+    ? [like, like, like, like, statusParam, statusParam, typeParam, typeParam]
+    : [like, like, like, like, statusParam, statusParam, makeParam, makeParam, typeParam, typeParam]
 
   const columns   = isPm ? PM_BASE_EXPORT_COLUMNS  : RM_BASE_EXPORT_COLUMNS
   const countSql  = isPm ? pmSql.countAll           : rmSql.countAll

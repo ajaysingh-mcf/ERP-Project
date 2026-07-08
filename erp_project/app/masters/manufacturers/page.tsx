@@ -12,6 +12,7 @@ import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
 import { manufacturers } from "@/lib/queries/manufacturers"
+import { fuzzyRank } from "@/lib/fuzzy-search"
 import type { Mfg } from "@/types/masters"
 import ManufacturersClient from "./ManufacturersClient"
 
@@ -36,11 +37,22 @@ export default async function ManufacturersPage({
   const pageStart = performance.now()
   console.log(`[AUDIT] Manufacturers load - page=${page}, size=${size}, search=${search || "none"}`)
 
-  const [rows, countRows] = await Promise.all([
-    timedQuery<Mfg>(manufacturers.selectPaginated, [...fp, size, offset], { label: "selectPaginated" }),
-    timedQuery<{ total: number }>(manufacturers.countAll, fp, { label: "countAll" }),
-  ])
-  const total = Number(countRows[0]?.total ?? 0)
+  let rows: Mfg[]
+  let total: number
+
+  if (search) {
+    const allMatching = await timedQuery<Mfg>(manufacturers.selectAllFiltered, manufacturers.filterParams(null), { label: "selectAllFiltered" })
+    const ranked = fuzzyRank(allMatching, search, ["code", "name"])
+    total = ranked.length
+    rows = ranked.slice(offset, offset + size)
+  } else {
+    const [dbRows, countRows] = await Promise.all([
+      timedQuery<Mfg>(manufacturers.selectPaginated, [...fp, size, offset], { label: "selectPaginated" }),
+      timedQuery<{ total: number }>(manufacturers.countAll, fp, { label: "countAll" }),
+    ])
+    rows = dbRows
+    total = Number(countRows[0]?.total ?? 0)
+  }
   console.log(`[AUDIT] Manufacturers complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
   return (

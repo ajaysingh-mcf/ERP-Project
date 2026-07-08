@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { ArrowLeft, History as HistoryIcon } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -55,6 +55,14 @@ export default function ApprovalHistoryClient({
     }
   }
 
+  // Draft filter state — selects only update these locally; the actual
+  // server refetch fires only when "Apply" is clicked.
+  const [draftModule, setDraftModule] = useState(currentModule)
+  const [draftStatus, setDraftStatus] = useState(currentStatus)
+  useEffect(() => setDraftModule(currentModule), [currentModule])
+  useEffect(() => setDraftStatus(currentStatus), [currentStatus])
+  const draftDirty = draftModule !== currentModule || draftStatus !== currentStatus
+
   const hasFilters = Boolean(currentModule || currentStatus)
 
   return (
@@ -79,8 +87,8 @@ export default function ApprovalHistoryClient({
       {/* Filters */}
       <div className="flex items-center gap-2 px-6 mb-4">
         <select
-          value={currentModule || "all"}
-          onChange={(e) => navigate({ module: e.target.value === "all" ? "" : e.target.value })}
+          value={draftModule || "all"}
+          onChange={(e) => setDraftModule(e.target.value === "all" ? "" : e.target.value)}
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="all">All Modules</option>
@@ -90,8 +98,8 @@ export default function ApprovalHistoryClient({
         </select>
 
         <select
-          value={currentStatus || "all"}
-          onChange={(e) => navigate({ status: e.target.value === "all" ? "" : e.target.value })}
+          value={draftStatus || "all"}
+          onChange={(e) => setDraftStatus(e.target.value === "all" ? "" : e.target.value)}
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="all">Approved + Rejected</option>
@@ -99,9 +107,21 @@ export default function ApprovalHistoryClient({
           <option value="rejected">Rejected</option>
         </select>
 
+        <button
+          onClick={() => navigate({ module: draftModule, status: draftStatus })}
+          disabled={!draftDirty}
+          className="h-9 rounded-lg border border-input bg-background px-3 text-sm font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Apply
+        </button>
+
         {hasFilters && (
           <button
-            onClick={() => navigate({ module: "", status: "" })}
+            onClick={() => {
+              setDraftModule("")
+              setDraftStatus("")
+              navigate({ module: "", status: "" })
+            }}
             className="text-xs text-primary hover:underline"
           >
             Clear filters

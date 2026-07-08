@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { CheckCircle2, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { FuzzySelect } from "@/components/ui/FuzzySelect"
 import {
   Dialog,
   DialogContent,
@@ -522,18 +523,13 @@ export function AddRawMaterialWizard({
                           >✕</button>
                         </div>
                       ) : (
-                        <select
-                          className={inputCls}
+                        <FuzzySelect
+                          options={makeOptions}
                           value={rmData.make}
-                          onChange={(e) => {
-                            if (e.target.value === "__new__") { setMakeIsNew(true); setRmData((p) => ({ ...p, make: "" })) }
-                            else setRmData((p) => ({ ...p, make: e.target.value }))
-                          }}
-                        >
-                          <option value="">Select make…</option>
-                          {makeOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-                          <option value="__new__">+ Add new…</option>
-                        </select>
+                          onChange={(v) => setRmData((p) => ({ ...p, make: v }))}
+                          onAddNew={() => { setMakeIsNew(true); setRmData((p) => ({ ...p, make: "" })) }}
+                          placeholder="Select make…"
+                        />
                       )}
                     </Field>
                     <Field label="INCI Name" required className="col-span-2">
@@ -553,18 +549,13 @@ export function AddRawMaterialWizard({
                           >✕</button>
                         </div>
                       ) : (
-                        <select
-                          className={inputCls}
+                        <FuzzySelect
+                          options={inciOptions}
                           value={rmData.inci_name}
-                          onChange={(e) => {
-                            if (e.target.value === "__new__") { setInciIsNew(true); setRmData((p) => ({ ...p, inci_name: "" })) }
-                            else setRmData((p) => ({ ...p, inci_name: e.target.value }))
-                          }}
-                        >
-                          <option value="">Select INCI name…</option>
-                          {inciOptions.map((n) => <option key={n} value={n}>{n}</option>)}
-                          <option value="__new__">+ Add new…</option>
-                        </select>
+                          onChange={(v) => setRmData((p) => ({ ...p, inci_name: v }))}
+                          onAddNew={() => { setInciIsNew(true); setRmData((p) => ({ ...p, inci_name: "" })) }}
+                          placeholder="Select INCI name…"
+                        />
                       )}
                     </Field>
                     <Field label="Type">

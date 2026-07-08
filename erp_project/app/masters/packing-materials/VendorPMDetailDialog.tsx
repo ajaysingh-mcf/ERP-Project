@@ -83,7 +83,6 @@ export function VendorPMDetailDialog({
               <InfoField label="Material Code" value={fmt(row.pm_code)} />
               <InfoField label="Material Name" value={fmt(row.name)} />
               <InfoField label="Type" value={fmt(row.type)} />
-              <InfoField label="HSN Code" value={fmt(row.hsn_code)} />
               <InfoField label="UOM" value={fmt(row.uom)} />
             </div>
 

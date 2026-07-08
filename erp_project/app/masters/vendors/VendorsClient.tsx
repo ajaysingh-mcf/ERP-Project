@@ -40,7 +40,7 @@ import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import { DownloadButton } from "@/components/masters/DownloadButton"
 import type { MasterField } from "@/components/masters/field-config"
 import type { Vendor } from "@/types/masters"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { FileText, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EditVendorDialog } from "./EditVendorDialog"
@@ -86,6 +86,15 @@ export default function VendorsClient({
   const searchParams = useSearchParams()
   const [editVendor, setEditVendor] = useState<Vendor | null>(null)
   const [docsVendor, setDocsVendor] = useState<Vendor | null>(null)
+
+  // Draft filter state — selects only update these locally; the actual
+  // server refetch fires only when "Apply" is clicked.
+  const [draftType, setDraftType] = useState(currentType)
+  const [draftZone, setDraftZone] = useState(currentZone)
+  useEffect(() => setDraftType(currentType), [currentType])
+  useEffect(() => setDraftZone(currentZone), [currentZone])
+  const draftDirty = draftType !== currentType || draftZone !== currentZone
+
   /**
    * Merge one or more key/value overrides into the current URL params,
    * reset page to 1, then navigate. Empty-string values delete the param.
@@ -114,9 +123,9 @@ export default function VendorsClient({
         />
 
         <select
-          value={currentType || "all"}
+          value={draftType || "all"}
           onChange={(e) =>
-            navigate({ type: e.target.value === "all" ? "" : e.target.value })
+            setDraftType(e.target.value === "all" ? "" : e.target.value)
           }
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
@@ -127,9 +136,9 @@ export default function VendorsClient({
         </select>
 
         <select
-          value={currentZone || "all"}
+          value={draftZone || "all"}
           onChange={(e) =>
-            navigate({ zone: e.target.value === "all" ? "" : e.target.value })
+            setDraftZone(e.target.value === "all" ? "" : e.target.value)
           }
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
@@ -138,6 +147,14 @@ export default function VendorsClient({
             <option key={z} value={z}>{z}</option>
           ))}
         </select>
+
+        <button
+          onClick={() => navigate({ type: draftType, zone: draftZone })}
+          disabled={!draftDirty}
+          className="h-9 rounded-lg border border-input bg-background px-3 text-sm font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Apply
+        </button>
 
         <MasterToolbarActions>
           <DownloadButton
@@ -162,7 +179,11 @@ export default function VendorsClient({
             {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => navigate({ search: "", type: "", zone: "" })}
+                onClick={() => {
+                  setDraftType("")
+                  setDraftZone("")
+                  navigate({ search: "", type: "", zone: "" })
+                }}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters

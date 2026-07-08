@@ -37,7 +37,6 @@ const MFG_COLUMNS: ColumnDef[] = [
   { key: "curr_rate",            label: "Current Rate",    sortAs: "num"  },
   { key: "mfg_code",             label: "MFG Code",        sortAs: "text" },
   { key: "approved_vendor_code", label: "Approved Vendor", sortAs: "text" },
-  { key: "hsn_code",             label: "HSN Code",        sortAs: "text" },
   { key: "rate_status",          label: "Status",          sortAs: "text", render: rateStatusBadge },
   { key: "uom",                  label: "UOM",             sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
   { key: "effective_from",       label: "Effective From",  sortAs: "date", render: (r) => fmtDate(r.effective_from) },

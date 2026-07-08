@@ -32,7 +32,6 @@ const MFG_COLUMNS: ColumnDef[] = [
   { key: "pm_code",        label: "PM Code",        sortAs: "text", className: "font-mono text-xs font-medium" },
   { key: "name",           label: "Name",           sortAs: "text", className: "font-medium text-wrap" },
   { key: "type",           label: "Type",           sortAs: "text" },
-  { key: "hsn_code",       label: "HSN Code",       sortAs: "text" },
   { key: "mfg_code",       label: "MFG Code",       sortAs: "text" },
   { key: "mfg_id",         label: "MFG ID",         sortAs: "num"  },
   { key: "curr_rate",      label: "Current Rate",   sortAs: "num"  },

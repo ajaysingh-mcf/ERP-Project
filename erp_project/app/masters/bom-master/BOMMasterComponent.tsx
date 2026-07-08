@@ -13,6 +13,7 @@
  * current page.
  */
 
+import { useEffect, useState } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { History } from "lucide-react"
 import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
@@ -74,6 +75,12 @@ export default function BOMMasterComponent({
   const hasFilters = Boolean(currentSearch || currentStatus)
   const refresh    = () => router.refresh()
 
+  // Draft status — the select only updates this locally; the actual server
+  // refetch fires only when "Apply" is clicked.
+  const [draftStatus, setDraftStatus] = useState(currentStatus)
+  useEffect(() => setDraftStatus(currentStatus), [currentStatus])
+  const draftDirty = draftStatus !== currentStatus
+
   const panel = useBomDetailPanel()
 
   return (
@@ -87,9 +94,9 @@ export default function BOMMasterComponent({
 
         {/* BOM status filter */}
         <select
-          value={currentStatus || "all"}
+          value={draftStatus || "all"}
           onChange={(e) =>
-            navigate({ status: e.target.value === "all" ? "" : e.target.value })
+            setDraftStatus(e.target.value === "all" ? "" : e.target.value)
           }
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
@@ -100,6 +107,14 @@ export default function BOMMasterComponent({
           <option value="in review">In Review</option>
           <option value="discontinued">Discontinued</option>
         </select>
+
+        <button
+          onClick={() => navigate({ status: draftStatus })}
+          disabled={!draftDirty}
+          className="h-9 rounded-lg border border-input bg-background px-3 text-sm font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Apply
+        </button>
 
         <MasterToolbarActions>
           <Button

@@ -13,7 +13,7 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
-import { useMemo , useState } from "react"
+import { useEffect, useMemo , useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -62,6 +62,12 @@ export default function SkusClient({
     router.push(`${pathname}?${params.toString()}`)
   }
   const [brandFilter, setBrandFilter] = useState("all");
+  // Draft status — the select only updates this locally; the actual server
+  // refetch fires only when "Apply" is clicked. Brand filtering happens
+  // entirely client-side already, so it stays instant.
+  const [draftStatus, setDraftStatus] = useState(currentStatus)
+  useEffect(() => setDraftStatus(currentStatus), [currentStatus])
+  const draftDirty = draftStatus !== currentStatus
   const hasFilters = !!currentSearch || !!currentStatus || brandFilter !== "all";
   const filteredRows = useMemo(() => {
   if (brandFilter === "all") return rows
@@ -81,9 +87,9 @@ export default function SkusClient({
         />
         {/* Search Based on Status. */}
         <select
-          value={currentStatus || "all"}
+          value={draftStatus || "all"}
           onChange={(e) =>
-            navigate({ status: e.target.value === "all" ? "" : e.target.value })
+            setDraftStatus(e.target.value === "all" ? "" : e.target.value)
           }
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
@@ -92,6 +98,13 @@ export default function SkusClient({
           <option value="inactive">Inactive</option>
           <option value="discontinued"> Discontinued</option>
         </select>
+        <button
+          onClick={() => navigate({ status: draftStatus })}
+          disabled={!draftDirty}
+          className="h-9 rounded-lg border border-input bg-background px-3 text-sm font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Apply
+        </button>
           {/* Search Based on Brands. */}
         <select
           value={brandFilter}
@@ -119,7 +132,11 @@ export default function SkusClient({
             {total} record{total !== 1 ? "s" : ""}
             {hasFilters && (
               <button
-                onClick={() => navigate({ search: "", status: "" , brand:""})}
+                onClick={() => {
+                  setDraftStatus("")
+                  setBrandFilter("all")
+                  navigate({ search: "", status: "" , brand:""})
+                }}
                 className="ml-2 text-xs text-primary hover:underline"
               >
                 Clear filters

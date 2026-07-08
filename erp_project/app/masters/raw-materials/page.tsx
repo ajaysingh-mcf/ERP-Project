@@ -17,6 +17,7 @@ import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
 import { rawMaterials } from "@/lib/queries/raw-materials"
+import { fuzzyRank } from "@/lib/fuzzy-search"
 import {
   getVendorReferenceList, getManufacturerReferenceList,
   getRmDistinctMakes, getRmDistinctTypes,
@@ -55,7 +56,6 @@ export default async function RawMaterialsPage({
   const mfgRateMaxFilter    = String(sp.mfg_rate_max       ?? "")
   const mfgEffFromFilter    = String(sp.mfg_effective_from ?? "")
 
-  const like   = search       ? `%${search}%` : null
   const status = statusFilter ? statusFilter  : null
 
   const pageStart = performance.now()
@@ -77,12 +77,27 @@ export default async function RawMaterialsPage({
       search || null, statusFilter || null, typeFilter || null,
       mfgCodeFilter || null, mfgRateMinFilter || null, mfgRateMaxFilter || null, mfgEffFromFilter || null
     )
-    const [rows, countRows, typeRows] = await Promise.all([
-      timedQuery<RMByMfg>(rawMaterials.selectMfgPaginated, [...mfp, size, offset], { label: "selectMfgPaginated" }),
-      timedQuery<{ total: number }>(rawMaterials.countMfg, mfp, { label: "countMfg" }),
-      getRmDistinctTypes(),
-    ])
-    const total = Number(countRows[0]?.total ?? 0)
+    let rows: RMByMfg[]
+    let total: number
+    const typeRows = await getRmDistinctTypes()
+
+    if (search) {
+      const noSearchMfp = rawMaterials.mfgFilterParams(
+        null, statusFilter || null, typeFilter || null,
+        mfgCodeFilter || null, mfgRateMinFilter || null, mfgRateMaxFilter || null, mfgEffFromFilter || null
+      )
+      const allMatching = await timedQuery<RMByMfg>(rawMaterials.selectMfgAllFiltered, noSearchMfp, { label: "selectMfgAllFiltered" })
+      const ranked = fuzzyRank(allMatching, search, ["rm_code", "name"])
+      total = ranked.length
+      rows = ranked.slice(offset, offset + size)
+    } else {
+      const [dbRows, countRows] = await Promise.all([
+        timedQuery<RMByMfg>(rawMaterials.selectMfgPaginated, [...mfp, size, offset], { label: "selectMfgPaginated" }),
+        timedQuery<{ total: number }>(rawMaterials.countMfg, mfp, { label: "countMfg" }),
+      ])
+      rows = dbRows
+      total = Number(countRows[0]?.total ?? 0)
+    }
     const types = typeRows.map((r) => r.type)
     body = (
       <ManufacturerRawMaterialsClient
@@ -109,13 +124,28 @@ export default async function RawMaterialsPage({
       vendorCodeFilter || null, rateMinFilter || null, rateMaxFilter || null,
       effectiveFromFilter || null
     )
-    const [rows, countRows, makeRows, typeRows] = await Promise.all([
-      timedQuery<RM>(rawMaterials.selectVendorPaginated, [...vfp, size, offset], { label: "selectVendorPaginated" }),
-      timedQuery<{ total: number }>(rawMaterials.countVendor, vfp, { label: "countVendor" }),
-      getRmDistinctMakes(),
-      getRmDistinctTypes(),
-    ])
-    const total = Number(countRows[0]?.total ?? 0)
+    let rows: RM[]
+    let total: number
+    const [makeRows, typeRows] = await Promise.all([getRmDistinctMakes(), getRmDistinctTypes()])
+
+    if (search) {
+      const noSearchVfp = rawMaterials.vendorFilterParams(
+        null, statusFilter || null, makeFilter || null, typeFilter || null,
+        vendorCodeFilter || null, rateMinFilter || null, rateMaxFilter || null,
+        effectiveFromFilter || null
+      )
+      const allMatching = await timedQuery<RM>(rawMaterials.selectVendorAllFiltered, noSearchVfp, { label: "selectVendorAllFiltered" })
+      const ranked = fuzzyRank(allMatching, search, ["rm_code", "name"])
+      total = ranked.length
+      rows = ranked.slice(offset, offset + size)
+    } else {
+      const [dbRows, countRows] = await Promise.all([
+        timedQuery<RM>(rawMaterials.selectVendorPaginated, [...vfp, size, offset], { label: "selectVendorPaginated" }),
+        timedQuery<{ total: number }>(rawMaterials.countVendor, vfp, { label: "countVendor" }),
+      ])
+      rows = dbRows
+      total = Number(countRows[0]?.total ?? 0)
+    }
     const makes = makeRows.map((r) => r.make)
     const types = typeRows.map((r) => r.type)
     body = (

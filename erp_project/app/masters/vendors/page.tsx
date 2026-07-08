@@ -18,6 +18,7 @@ import { redirect } from "next/navigation"
 import { parsePaginationParams } from "@/lib/pagination"
 import { timedQuery } from "@/lib/query-timing"
 import { vendors } from "@/lib/queries/vendors"
+import { fuzzyRank } from "@/lib/fuzzy-search"
 import type { Vendor } from "@/types/masters"
 import VendorsClient from "./VendorsClient"
 
@@ -45,13 +46,26 @@ export default async function VendorsPage({
   const pageStart = performance.now()
   console.log(`[AUDIT] Vendors load - page=${page}, size=${size}, search=${search || "none"}, type=${typeFilter || "all"}, zone=${zoneFilter || "all"}`)
 
-  const [rows, countRows, zoneRows] = await Promise.all([
-    timedQuery<Vendor>(vendors.selectPaginated, [...fp, size, offset], { label: "selectPaginated" }),
-    timedQuery<{ total: number }>(vendors.countAll, fp, { label: "countAll" }),
-    timedQuery<{ zone: string }>(vendors.selectDistinctZones, [], { label: "selectDistinctZones" }),
-  ])
+  let rows: Vendor[]
+  let total: number
 
-  const total = Number(countRows[0]?.total ?? 0)
+  const zoneRows = await timedQuery<{ zone: string }>(vendors.selectDistinctZones, [], { label: "selectDistinctZones" })
+
+  if (search) {
+    const noSearchFp = vendors.filterParams(null, typeFilter || null, zoneFilter || null)
+    const allMatching = await timedQuery<Vendor>(vendors.selectAllFiltered, noSearchFp, { label: "selectAllFiltered" })
+    const ranked = fuzzyRank(allMatching, search, ["code", "name"])
+    total = ranked.length
+    rows = ranked.slice(offset, offset + size)
+  } else {
+    const [dbRows, countRows] = await Promise.all([
+      timedQuery<Vendor>(vendors.selectPaginated, [...fp, size, offset], { label: "selectPaginated" }),
+      timedQuery<{ total: number }>(vendors.countAll, fp, { label: "countAll" }),
+    ])
+    rows = dbRows
+    total = Number(countRows[0]?.total ?? 0)
+  }
+
   const zones = zoneRows.map((r) => r.zone)
   console.log(`[AUDIT] Vendors complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${rows.length}/${total} rows`)
 
