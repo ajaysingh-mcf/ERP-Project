@@ -64,6 +64,10 @@ export type Vendor = {
   status: string | null
   zone: string | null
   registered_name: string | null
+  gst_number: string | null
+  bank_name: string | null
+  ifsc_number: string | null
+  account_number: string | null
   gst_certificate_key:  string | null
   cancelled_cheque_key: string | null
   pan_card_key:         string | null

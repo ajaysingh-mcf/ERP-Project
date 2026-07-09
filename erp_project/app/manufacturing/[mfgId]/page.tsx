@@ -148,5 +148,5 @@ async function FinalCostingTabContent({ mfgId }: { mfgId: number }) {
     }
   })
 
-  return <FinalCostingTable rows={rows} />
+  return <FinalCostingTable mfgId={mfgId} rows={rows} />
 }

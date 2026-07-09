@@ -161,11 +161,11 @@ export function EditRmVendorRateDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1">
               <Label>Current Rate</Label>
-              <Input type="number" value={form.curr_rate} onChange={(e) => set("curr_rate", e.target.value)} disabled={!canEdit} />
+              <Input type="number" step="0.01" min="0" value={form.curr_rate} onChange={(e) => set("curr_rate", e.target.value)} disabled={!canEdit} />
             </div>
             <div className="grid gap-1">
               <Label>MOQ</Label>
-              <Input type="number" value={form.moq} onChange={(e) => set("moq", e.target.value)} disabled={!canEdit} />
+              <Input type="number" step="1" min="1" value={form.moq} onChange={(e) => set("moq", e.target.value.replace(/[^\d]/g, ""))} disabled={!canEdit} />
             </div>
             <div className="grid gap-1">
               <Label>UOM</Label>

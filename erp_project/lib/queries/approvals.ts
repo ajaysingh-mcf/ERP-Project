@@ -85,11 +85,13 @@ export const approvalsSql = {
   // ── Write ───────────────────────────────────────────────────────────────
 
   /** Create a parent approval record. Caller reads insertId for the new ID.
-   *  Parameters: [raised_by, module, entity_id]
+   *  Parameters: [raised_by, module, entity_id, approval_type]
+   *  approval_type is "create" for a brand-new record/rate, "edit" for a
+   *  change to an existing one — callers must pass the right one explicitly.
    */
   insertApproval: `
     INSERT INTO approvals (raised_by, module, entity_id, approval_type, status)
-    VALUES (?, ?, ?, 'edit', 'pending')
+    VALUES (?, ?, ?, ?, 'pending')
   `,
 
   /** Insert one approval_items row per changed field.

@@ -68,3 +68,14 @@ export const miscCostActionSchema = z.discriminatedUnion("action", [
 export type CreateMiscCost = z.infer<typeof createMiscCostSchema>
 export type UpdateMiscCost = z.infer<typeof updateMiscCostSchema>
 export type MiscCostAction = z.infer<typeof miscCostActionSchema>
+
+// ── Export route params ──────────────────────────────────────────────────────
+
+export const mfgIdParamSchema = z.object({
+  mfgId: z.coerce.number().int().positive("Invalid manufacturer id"),
+})
+
+export const mfgLinesExportParamSchema = z.object({
+  mfgId: z.coerce.number().int().positive("Invalid manufacturer id"),
+  status: mfgLineStatusSchema,
+})

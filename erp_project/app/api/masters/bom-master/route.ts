@@ -86,7 +86,10 @@ export const POST = withGateway({
           currentByKey = new Map((curRows as any[]).map((r) => [`${r.mtrl_type}:${r.mtrl_id}`, r]))
         }
 
-        const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "BOM", bomId])
+        const [approvalResult] = await conn.execute(
+          approvalsSql.insertApproval,
+          [userId, "BOM", bomId, body.mode === "new-version" ? "create" : "edit"]
+        )
         const approvalId = (approvalResult as any).insertId
         await conn.execute(approvalsSql.insertApprovalItem, [approvalId, "__mode__", "", body.mode])
 

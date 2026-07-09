@@ -1,16 +1,17 @@
 import { z } from "zod"
+import { gstNumberField, ifscNumberField, accountNumberField } from "./shared"
 
 // `code` is intentionally absent here — it's auto-generated server-side on create.
 export const mfgCreateSchema = z.object({
   action: z.literal("create"),
   name: z.string().trim().min(1),
   location: z.string().optional(),
-  gst_number: z.string().optional(),
+  gst_number: gstNumberField,
   registered_name: z.string().optional(),
   zone: z.string().optional(),
   bank_name: z.string().optional(),
-  ifsc_number: z.string().optional(),
-  account_number: z.string().optional(),
+  ifsc_number: ifscNumberField,
+  account_number: accountNumberField,
   email: z.string().optional(),
   // Optional doc keys — uploaded client-side before create; bundled into the same approval
   gst_certificate_key: z.string().nullable().optional(),
@@ -29,12 +30,12 @@ export const mfgUpdateSchema = z.object({
   mfg_id: z.union([z.number(), z.string()]),
   name: z.string().trim().min(1),
   location: z.string().optional(),
-  gst_number: z.string().optional(),
+  gst_number: gstNumberField,
   registered_name: z.string().optional(),
   zone: z.string().optional(),
   bank_name: z.string().optional(),
-  ifsc_number: z.string().optional(),
-  account_number: z.string().optional(),
+  ifsc_number: ifscNumberField,
+  account_number: accountNumberField,
   email: z.string().optional(),
   status: z.string().optional(),
 })

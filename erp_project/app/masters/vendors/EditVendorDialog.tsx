@@ -31,6 +31,10 @@ export function EditVendorDialog({
     registered_name: vendor?.registered_name ?? "",
     location: vendor?.location ?? "",
     zone: vendor?.zone ?? "",
+    gst_number: vendor?.gst_number ?? "",
+    bank_name: vendor?.bank_name ?? "",
+    ifsc_number: vendor?.ifsc_number ?? "",
+    account_number: vendor?.account_number ?? "",
     status: vendor?.status ?? "active",
   })
   const [saving, setSaving] = useState(false)
@@ -48,6 +52,10 @@ export function EditVendorDialog({
         registered_name: vendor.registered_name ?? "",
         location: vendor.location ?? "",
         zone: vendor.zone ?? "",
+        gst_number: vendor.gst_number ?? "",
+        bank_name: vendor.bank_name ?? "",
+        ifsc_number: vendor.ifsc_number ?? "",
+        account_number: vendor.account_number ?? "",
         status: vendor.status ?? "active",
       })
       setSubmitted(false)
@@ -172,7 +180,31 @@ export function EditVendorDialog({
             </div>
           </div>
 
-          {/* Row 3: Status (narrow) */}
+          {/* Row 3: GST Number | Bank Name */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1">
+              <Label>GST Number</Label>
+              <Input value={form.gst_number} onChange={(e) => set("gst_number", e.target.value)} disabled={isInReview || !canEdit} />
+            </div>
+            <div className="grid gap-1">
+              <Label>Bank Name</Label>
+              <Input value={form.bank_name} onChange={(e) => set("bank_name", e.target.value)} disabled={isInReview || !canEdit} />
+            </div>
+          </div>
+
+          {/* Row 4: IFSC Number | Account Number */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1">
+              <Label>IFSC Number</Label>
+              <Input value={form.ifsc_number} onChange={(e) => set("ifsc_number", e.target.value)} disabled={isInReview || !canEdit} />
+            </div>
+            <div className="grid gap-1">
+              <Label>Account Number</Label>
+              <Input value={form.account_number} onChange={(e) => set("account_number", e.target.value)} disabled={isInReview || !canEdit} />
+            </div>
+          </div>
+
+          {/* Row 5: Status (narrow) */}
           <div className="grid grid-cols-3 gap-3">
             <div className="grid gap-1">
               <Label>Status</Label>

@@ -2,9 +2,12 @@
 
 /**
  * Dialog for managing a vendor's reference documents — GST certificate,
- * cancelled cheque, PAN card, misc. Files are held client-side until Save;
- * S3 upload happens only when the user confirms. No approval flow — these are
- * reference docs, not audited field edits.
+ * cancelled cheque, PAN card, misc. Each file uploads to S3 as soon as it's
+ * picked (not deferred to Save) so the vendor already exists — no risk of
+ * orphaning S3 objects the way a not-yet-created Add dialog would. Submit for
+ * Approval stays disabled while any file is still mid-upload.
+ * No approval flow on the docs themselves — these are reference docs, not
+ * audited field edits.
  */
 
 import { useEffect, useState } from "react"
@@ -38,6 +41,13 @@ const EMPTY_DOCS: Record<DocKey, null> = {
   misc_document_key:    null,
 }
 
+const EMPTY_UPLOADING: Record<DocKey, boolean> = {
+  gst_certificate_key:  false,
+  cancelled_cheque_key: false,
+  pan_card_key:         false,
+  misc_document_key:    false,
+}
+
 export function VendorDocumentsDialog({
   vendor,
   onClose,
@@ -48,10 +58,12 @@ export function VendorDocumentsDialog({
   onSuccess?: () => void
 }) {
   const [docs, setDocs]               = useState<Record<DocKey, string | null>>(EMPTY_DOCS)
-  const [pendingFiles, setPendingFiles] = useState<Record<DocKey, File | null>>(EMPTY_DOCS)
+  const [uploadingTabs, setUploadingTabs] = useState<Record<DocKey, boolean>>(EMPTY_UPLOADING)
   const [loading, setLoading]         = useState(false)
   const [submitted, setSubmitted]     = useState(false)
   const [error, setError]             = useState("")
+
+  const anyUploading = Object.values(uploadingTabs).some(Boolean)
 
   useEffect(() => {
     if (!vendor) return
@@ -61,7 +73,7 @@ export function VendorDocumentsDialog({
       pan_card_key:         vendor.pan_card_key,
       misc_document_key:    vendor.misc_document_key,
     })
-    setPendingFiles(EMPTY_DOCS)
+    setUploadingTabs(EMPTY_UPLOADING)
     setSubmitted(false)
     setError("")
   }, [vendor])
@@ -73,25 +85,10 @@ export function VendorDocumentsDialog({
     setLoading(true)
     setError("")
     try {
-      // Upload any pending files to S3 now that the user has confirmed
-      const finalDocs = { ...docs }
-      for (const tab of DOC_TABS) {
-        const file = pendingFiles[tab.key]
-        if (!file) continue
-        const form = new FormData()
-        form.append("file",   file)
-        form.append("folder", `vendors/${vendor.vendor_id}`)
-        form.append("field",  tab.field)
-        const up = await fetch("/api/upload", { method: "POST", body: form })
-        const upData = await up.json()
-        if (!up.ok) throw new Error(upData.error || `Failed to upload ${tab.label}`)
-        finalDocs[tab.key] = upData.key
-      }
-
       const res = await fetch("/api/masters/vendors", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update_docs", vendor_id: vendor.vendor_id, ...finalDocs }),
+        body: JSON.stringify({ action: "update_docs", vendor_id: vendor.vendor_id, ...docs }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to save documents")
@@ -105,7 +102,7 @@ export function VendorDocumentsDialog({
   }
 
   return (
-    <Dialog open={!!vendor} onOpenChange={(o) => !loading && !o && onClose()}>
+    <Dialog open={!!vendor} onOpenChange={(o) => !loading && !anyUploading && !o && onClose()}>
       <DialogContent className="w-lg">
         <DialogHeader>
           <DialogTitle>Documents — {vendor.name}</DialogTitle>
@@ -151,10 +148,10 @@ export function VendorDocumentsDialog({
                 label={tab.label}
                 accept="document"
                 disabled={loading || vendor.status === "in_review" || submitted}
-                deferred
-                pendingFile={pendingFiles[tab.key]}
-                onFileSelected={(file) => setPendingFiles((p) => ({ ...p, [tab.key]: file }))}
                 onChange={(key) => setDocs((d) => ({ ...d, [tab.key]: key }))}
+                onUploadingChange={(isUploading) =>
+                  setUploadingTabs((u) => ({ ...u, [tab.key]: isUploading }))
+                }
               />
             </Tabs.Content>
           ))}
@@ -167,12 +164,12 @@ export function VendorDocumentsDialog({
         )}
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading || anyUploading}>
             {submitted ? "Close" : "Cancel"}
           </Button>
           {!submitted && vendor.status !== "in_review" && (
-            <Button type="button" onClick={handleSave} disabled={loading}>
-              {loading ? "Uploading…" : "Submit for Approval"}
+            <Button type="button" onClick={handleSave} disabled={loading || anyUploading}>
+              {anyUploading ? "Uploading document…" : loading ? "Submitting…" : "Submit for Approval"}
             </Button>
           )}
         </DialogFooter>

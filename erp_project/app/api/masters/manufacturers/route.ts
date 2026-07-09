@@ -31,7 +31,7 @@ import logger from "@/lib/logger"
 import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
 import { mfgActionSchema } from "@/lib/validation/manufacturers"
-import { insertApprovalWithItems } from "@/lib/master-routes/material-utils"
+import { insertApprovalWithItems, assertNoDuplicateBankingFields, findDuplicateBankingField } from "@/lib/master-routes/material-utils"
 
 export const POST = withGateway({
   schema: mfgActionSchema,
@@ -52,6 +52,8 @@ export const POST = withGateway({
       const conn = await pool.getConnection()
       await conn.beginTransaction()
       try {
+        await assertNoDuplicateBankingFields(conn, manufacturers, { gst_number, ifsc_number, account_number }, 0)
+
         // Auto-generate code as MFG-<serial>-<XX>, XX = first 2 letters of name.
         // Retry with the next serial on a rare collision (concurrent inserts / gaps from deletions).
         const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
@@ -85,7 +87,7 @@ export const POST = withGateway({
           email?.trim() || null,
         ])
         logger.info({ ...logCtx, mfgId, message: "Creating approval record in database" })
-        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "MFG", mfgId])
+        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "MFG", mfgId, "create"])
         const approvalId = (ar as any).insertId
         const newFields: [string, string][] = [
           ["code", code],
@@ -148,9 +150,20 @@ export const POST = withGateway({
         for (const row of rows) {
           if (!row.name?.trim()) {
             logger.debug({ ...logCtx, name: row.name, message: "Row skipped — missing name" })
+            skipped++
             continue
           }
           const name = row.name.trim()
+
+          const dup = await findDuplicateBankingField(conn, manufacturers, {
+            gst_number: row.gst_number, ifsc_number: row.ifsc_number, account_number: row.account_number,
+          }, 0)
+          if (dup) {
+            logger.warn({ ...logCtx, name, message: `Row skipped — ${dup}` })
+            skipped++
+            continue
+          }
+
           const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
           let code = ""
           let mfgId: number
@@ -245,7 +258,7 @@ export const POST = withGateway({
           return NextResponse.json({ ok: true, message: "No changes detected" })
         }
 
-        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "MFG", mfg_id])
+        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "MFG", mfg_id, "edit"])
         const approvalId = (ar as any).insertId
         for (const [field, newVal] of diff) {
           await conn.execute(approvalsSql.insertApprovalItem, [
@@ -301,6 +314,8 @@ export const POST = withGateway({
           throw new ApiError(404, "not_found", "Manufacturer not found")
         }
 
+        await assertNoDuplicateBankingFields(conn, manufacturers, { gst_number, ifsc_number, account_number }, Number(mfg_id))
+
         const proposed: Record<string, string> = {
           name: name.trim(),
           location: location?.trim() || "",
@@ -324,7 +339,7 @@ export const POST = withGateway({
           await conn.rollback()
           return NextResponse.json({ ok: true, message: "No changes detected" })
         }
-        const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "MFG", mfg_id])
+        const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "MFG", mfg_id, "edit"])
         const approvalId = (approvalResult as any).insertId
         const itemsToRecord = isDraftResubmit
           ? Object.entries(proposed).filter(([, v]) => v !== "")
@@ -389,8 +404,19 @@ export const POST = withGateway({
           const name = row["name"]?.trim()
           if (!name) {
             logger.debug({ ...logCtx, name: row.name, message: "Row Skipped - Missing Name" })
+            skipped++
             continue
           }
+
+          const dup = await findDuplicateBankingField(conn, manufacturers, {
+            gst_number: row["gst_number"], ifsc_number: row["ifsc_number"], account_number: row["account_number"],
+          }, 0)
+          if (dup) {
+            logger.warn({ ...logCtx, name, message: `Row skipped — ${dup}` })
+            skipped++
+            continue
+          }
+
           const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
           let code = ""
           let mfgId: number

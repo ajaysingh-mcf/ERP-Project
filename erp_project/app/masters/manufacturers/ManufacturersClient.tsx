@@ -46,6 +46,7 @@ const MFG_COMMON_FIELDS: MasterField[] = [
   { key: "bank_name",       label: "Bank Name",       placeholder: "e.g. HDFC Bank",               sample: "HDFC Bank" },
   { key: "ifsc_number",     label: "IFSC Number",     placeholder: "e.g. HDFC0001234",             sample: "HDFC0001234" },
   { key: "account_number",  label: "Account Number",  placeholder: "e.g. 12345678901234",          sample: "12345678901234" },
+  { key: "email",           label: "Email Address",   placeholder: "e.g. vendor@manufacturer.com", sample: "vendor@manufacturer.com" },
 ]
 
 const MFG_CSV_FIELDS: MasterField[] = MFG_COMMON_FIELDS

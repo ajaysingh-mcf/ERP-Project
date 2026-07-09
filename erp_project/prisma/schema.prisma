@@ -288,6 +288,10 @@ model details_vendor {
   status               details_vendor_status? @default(active)
   zone                 String?                @db.VarChar(50)
   registered_name      String?                @db.VarChar(100)
+  gst_number           String?                @db.VarChar(20)
+  bank_name            String?                @db.VarChar(255)
+  ifsc_number          String?                @db.VarChar(11)
+  account_number       String?                @db.VarChar(50)
   gst_certificate_key  String?                @db.Text
   cancelled_cheque_key String?                @db.Text
   pan_card_key         String?                @db.Text

@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { gstNumberField, ifscNumberField, accountNumberField } from "./shared"
 
 // `code` is intentionally absent here — it's auto-generated server-side on create.
 export const vendorCreateSchema = z.object({
@@ -8,6 +9,10 @@ export const vendorCreateSchema = z.object({
   location: z.string().optional(),
   zone: z.string().optional(),
   registered_name: z.string().optional(),
+  gst_number: gstNumberField,
+  bank_name: z.string().optional(),
+  ifsc_number: ifscNumberField,
+  account_number: accountNumberField,
   gst_certificate_key:  z.string().nullable().optional(),
   cancelled_cheque_key: z.string().nullable().optional(),
   pan_card_key:         z.string().nullable().optional(),
@@ -27,6 +32,10 @@ export const vendorUpdateSchema = z.object({
   location: z.string().optional(),
   zone: z.string().optional(),
   registered_name: z.string().optional(),
+  gst_number: gstNumberField,
+  bank_name: z.string().optional(),
+  ifsc_number: ifscNumberField,
+  account_number: accountNumberField,
   status: z.string().optional(),
 })
 

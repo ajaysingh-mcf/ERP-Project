@@ -4,7 +4,8 @@
  *
  * Note: Vendors span two tables linked only by ID (no DB foreign key):
  *   vendors(id, code, name, type)
- *   details_vendor(vendor_id → vendors.id, location, status, zone, registered_name)
+ *   details_vendor(vendor_id → vendors.id, location, status, zone, registered_name,
+ *     gst_number, bank_name, ifsc_number, account_number)
  */
 
 export const vendors = {
@@ -17,7 +18,8 @@ export const vendors = {
   selectAll: `
     SELECT
       vd.vendor_id, vd.location, vd.status,
-      vd.zone, vd.registered_name, v.code, v.name, v.type
+      vd.zone, vd.registered_name, v.code, v.name, v.type,
+      vd.gst_number, vd.bank_name, vd.ifsc_number, vd.account_number
     FROM details_vendor vd
     JOIN master_vendors v ON vd.vendor_id = v.id
   `,
@@ -42,6 +44,7 @@ export const vendors = {
     SELECT
       vd.vendor_id, vd.location, vd.status,
       vd.zone, vd.registered_name, v.code, v.name, v.type,
+      vd.gst_number, vd.bank_name, vd.ifsc_number, vd.account_number,
       vd.gst_certificate_key, vd.cancelled_cheque_key, vd.pan_card_key, vd.misc_document_key
     FROM details_vendor vd
     JOIN master_vendors v ON vd.vendor_id = v.id
@@ -59,7 +62,8 @@ export const vendors = {
   selectAllFiltered: `
     SELECT
       vd.vendor_id, vd.location, vd.status,
-      vd.zone, vd.registered_name, v.code, v.name, v.type
+      vd.zone, vd.registered_name, v.code, v.name, v.type,
+      vd.gst_number, vd.bank_name, vd.ifsc_number, vd.account_number
     FROM details_vendor vd
     JOIN master_vendors v ON vd.vendor_id = v.id
     WHERE (? IS NULL OR v.code LIKE ? OR v.name LIKE ?)
@@ -104,11 +108,13 @@ export const vendors = {
 
   /**
    * Insert vendor details record
-   * Parameters: [vendor_id, location, status, zone, registered_name]
+   * Parameters: [vendor_id, location, status, zone, registered_name, gst_number, bank_name, ifsc_number, account_number]
    * Must be called after insertVendor with the insertId
    */
   insertVendorDetails: `
-    INSERT INTO details_vendor (vendor_id, location, status, zone, registered_name) VALUES (?, ?, ?, ?, ?)
+    INSERT INTO details_vendor
+      (vendor_id, location, status, zone, registered_name, gst_number, bank_name, ifsc_number, account_number)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   // ============ UPDATE QUERIES ============
@@ -118,9 +124,14 @@ export const vendors = {
     UPDATE master_vendors SET name = ?, type = ? WHERE id = ?
   `,
 
-  /** Update vendor details record. Parameters: [location, status, zone, registered_name, vendor_id] */
+  /** Update vendor details record.
+   *  Parameters: [location, status, zone, registered_name, gst_number, bank_name, ifsc_number, account_number, vendor_id]
+   */
   updateVendorDetails: `
-    UPDATE details_vendor SET location = ?, status = ?, zone = ?, registered_name = ? WHERE vendor_id = ?
+    UPDATE details_vendor
+    SET location = ?, status = ?, zone = ?, registered_name = ?,
+        gst_number = ?, bank_name = ?, ifsc_number = ?, account_number = ?
+    WHERE vendor_id = ?
   `,
 
   // ── Approval-flow helpers ────────────────────────────────────────────────
@@ -132,6 +143,7 @@ export const vendors = {
     SELECT
       vd.vendor_id, vd.location, vd.status,
       vd.zone, vd.registered_name, v.code, v.name, v.type,
+      vd.gst_number, vd.bank_name, vd.ifsc_number, vd.account_number,
       vd.gst_certificate_key, vd.cancelled_cheque_key, vd.pan_card_key, vd.misc_document_key
     FROM details_vendor vd
     JOIN master_vendors v ON vd.vendor_id = v.id
@@ -152,6 +164,31 @@ export const vendors = {
    *  Parameters: [status, vendor_id]
    */
   setStatus: `UPDATE details_vendor SET status = ? WHERE vendor_id = ?`,
+
+  // ── Duplicate checks (banking/tax fields must be unique across vendors) ──────
+  // `excludeVendorId` is 0 on create (no self to exclude) or the current
+  // vendor_id on update, so the vendor being edited never flags itself.
+
+  /** Parameters: [gst_number, excludeVendorId] */
+  checkDuplicateGst: `
+    SELECT v.code FROM details_vendor d
+    JOIN master_vendors v ON v.id = d.vendor_id
+    WHERE d.gst_number = ? AND d.vendor_id != ? LIMIT 1
+  `,
+
+  /** Parameters: [ifsc_number, excludeVendorId] */
+  checkDuplicateIfsc: `
+    SELECT v.code FROM details_vendor d
+    JOIN master_vendors v ON v.id = d.vendor_id
+    WHERE d.ifsc_number = ? AND d.vendor_id != ? LIMIT 1
+  `,
+
+  /** Parameters: [account_number, excludeVendorId] */
+  checkDuplicateAccountNumber: `
+    SELECT v.code FROM details_vendor d
+    JOIN master_vendors v ON v.id = d.vendor_id
+    WHERE d.account_number = ? AND d.vendor_id != ? LIMIT 1
+  `,
 
   /**
    * Build the filter parameter array for selectPaginated, selectAllFiltered, and countAll.

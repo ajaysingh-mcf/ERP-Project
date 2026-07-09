@@ -60,6 +60,10 @@ const VENDOR_CSV_FIELDS: MasterField[] = [
   { key: "registered_name", label: "Registered Name", placeholder: "Legal registered name", sample: "Acme Pvt Ltd" },
   { key: "location",        label: "Location",        placeholder: "e.g. Mumbai",           sample: "Mumbai" },
   { key: "zone",            label: "Zone",            placeholder: "e.g. West",             sample: "West" },
+  { key: "gst_number",      label: "GST Number",      placeholder: "e.g. 27AAEPM1234C1Z5",  sample: "27AAEPM1234C1Z5" },
+  { key: "bank_name",       label: "Bank Name",       placeholder: "e.g. HDFC Bank",        sample: "HDFC Bank" },
+  { key: "ifsc_number",     label: "IFSC Number",     placeholder: "e.g. HDFC0001234",      sample: "HDFC0001234" },
+  { key: "account_number",  label: "Account Number",  placeholder: "e.g. 12345678901234",   sample: "12345678901234" },
 ]
 
 export default function VendorsClient({
@@ -201,6 +205,8 @@ export default function VendorsClient({
                 <TableHead>Type</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Zone</TableHead>
+                <TableHead>GST Number</TableHead>
+                <TableHead>Bank</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-20">Actions</TableHead>
               </TableRow>
@@ -208,7 +214,7 @@ export default function VendorsClient({
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-10">
                     {hasFilters ? "No vendors match your filters." : "No records found."}
                   </TableCell>
                 </TableRow>
@@ -223,6 +229,8 @@ export default function VendorsClient({
                     </TableCell>
                     <TableCell>{row.location ?? "—"}</TableCell>
                     <TableCell>{row.zone ?? "—"}</TableCell>
+                    <TableCell>{row.gst_number ?? "—"}</TableCell>
+                    <TableCell>{row.bank_name ?? "—"}</TableCell>
                     <TableCell>
                       {row.status === "in_review" ? (
                         <Badge variant="warning" className="capitalize">In Review</Badge>

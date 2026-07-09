@@ -24,6 +24,7 @@ import { bom as bomSql } from "@/lib/queries/bom"
 import { getFileBuffer } from "@/lib/s3"
 import { recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import { STATUS } from "@/lib/constants"
+import { roundToWholeNumber, roundToTwoDecimals } from "@/lib/numeric"
 import logger from "@/lib/logger"
 
 export type DiffItem = { field_name: string; old_value: string; new_value: string }
@@ -87,7 +88,7 @@ const rmRateHandler: ModuleHandler = {
       cur.status === STATUS.ACTIVE ? 1 : 0,
     ])
     await conn.execute(rmSql.updateMfgRate, [
-      fieldMap.curr_rate      !== undefined ? Number(fieldMap.curr_rate) : cur.curr_rate,
+      fieldMap.curr_rate      !== undefined ? roundToTwoDecimals(fieldMap.curr_rate) : cur.curr_rate,
       fieldMap.uom            ?? cur.uom,
       fieldMap.effective_from ?? cur.effective_from,
       entityId,
@@ -117,7 +118,7 @@ const pmRateHandler: ModuleHandler = {
       cur.status === STATUS.ACTIVE ? 1 : 0,
     ])
     await conn.execute(pmSql.updateMfgRate, [
-      fieldMap.curr_rate      !== undefined ? Number(fieldMap.curr_rate) : cur.curr_rate,
+      fieldMap.curr_rate      !== undefined ? roundToTwoDecimals(fieldMap.curr_rate) : cur.curr_rate,
       fieldMap.uom            ?? cur.uom,
       fieldMap.effective_from ?? cur.effective_from,
       entityId,
@@ -143,8 +144,8 @@ const rmVrmHandler: ModuleHandler = {
       cur.curr_rate, cur.effective_from, cur.effective_to, cur.status,
     ])
     await conn.execute(rmSql.updateVendorRate, [
-      fieldMap.curr_rate      !== undefined ? Number(fieldMap.curr_rate) : cur.curr_rate,
-      fieldMap.moq            !== undefined ? Number(fieldMap.moq)       : cur.moq,
+      fieldMap.curr_rate      !== undefined ? roundToTwoDecimals(fieldMap.curr_rate) : cur.curr_rate,
+      fieldMap.moq            !== undefined ? roundToWholeNumber(fieldMap.moq)       : cur.moq,
       fieldMap.uom            ?? cur.uom,
       fieldMap.effective_from ?? cur.effective_from,
       entityId,
@@ -170,8 +171,8 @@ const pmVrmHandler: ModuleHandler = {
       cur.curr_rate, cur.effective_from, cur.effective_to, cur.status,
     ])
     await conn.execute(pmSql.updateVendorRate, [
-      fieldMap.curr_rate      !== undefined ? Number(fieldMap.curr_rate) : cur.curr_rate,
-      fieldMap.moq            !== undefined ? Number(fieldMap.moq)       : cur.moq,
+      fieldMap.curr_rate      !== undefined ? roundToTwoDecimals(fieldMap.curr_rate) : cur.curr_rate,
+      fieldMap.moq            !== undefined ? roundToWholeNumber(fieldMap.moq)       : cur.moq,
       fieldMap.uom            ?? cur.uom,
       STATUS.ACTIVE,
       fieldMap.effective_from ?? cur.effective_from,
@@ -259,6 +260,10 @@ const vendorHandler: ModuleHandler = {
         STATUS.ACTIVE,
         fieldMap.zone            ?? cur.zone            ?? null,
         fieldMap.registered_name ?? cur.registered_name ?? null,
+        fieldMap.gst_number      ?? cur.gst_number      ?? null,
+        fieldMap.bank_name       ?? cur.bank_name       ?? null,
+        fieldMap.ifsc_number     ?? cur.ifsc_number     ?? null,
+        fieldMap.account_number  ?? cur.account_number  ?? null,
         entityId,
       ])
     }

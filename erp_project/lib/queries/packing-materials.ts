@@ -297,6 +297,9 @@ export const packingMaterials = {
     SELECT id, pm_code FROM master_pm WHERE name = ? AND type = ? LIMIT 1
   `,
 
+  /** Total PM count — used to auto-generate the next pm_code (PM<serial>). */
+  countTotal: `SELECT COUNT(*) AS total FROM master_pm`,
+
   /** Check if a vendor rate exists for this pm + vendor. Parameters: [pm_id, vendor_id] */
   checkVendorRate: `
     SELECT id, vendor_id, curr_rate, moq, uom, status, effective_from, effective_to

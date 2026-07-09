@@ -8,6 +8,7 @@ import { recordRawEvent, recordFailedEvent, recordProcessedEvent, makeEventId } 
 import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
 import { materialMasterCreateSchema, materialMasterUpdateSchema } from "@/lib/validation/material-master"
+import { generateMaterialCode } from "@/lib/master-routes/material-utils"
 
 // ─── POST: create a base material record (no vendor / manufacturer rates) ────
 // Body: { action: "create", material: "rm" | "pm", ...fields }
@@ -37,8 +38,9 @@ export const POST = withGateway({
       const conn = await pool.getConnection()
       await conn.beginTransaction()
       try {
+        const rmCode = await generateMaterialCode(conn, rawMaterials.countTotal, "RM")
         const [rmResult] = await conn.execute(rawMaterials.insert, [
-          null,
+          rmCode,
           name,
           make,
           type?.trim() || null,
@@ -48,9 +50,10 @@ export const POST = withGateway({
           inci_name,
         ])
         const rmId = (rmResult as any).insertId
-        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", rmId])
+        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", rmId, "create"])
         const approvalId = (ar as any).insertId
         const newFields: [string, string][] = [
+          ["rm_code", rmCode],
           ["name", name],
           ["make", make],
           ["inci_name", inci_name],
@@ -102,8 +105,9 @@ export const POST = withGateway({
       await conn.beginTransaction()
 
       try {
+        const pmCode = await generateMaterialCode(conn, PMMaterials.countTotal, "PM")
         const [pmResult] = await conn.execute(PMMaterials.insert, [
-          null,
+          pmCode,
           name,
           type,
           hsn_code?.trim() || null,
@@ -114,11 +118,12 @@ export const POST = withGateway({
 
         const pmId = (pmResult as any).insertId
 
-        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PM_MAT", pmId])
+        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PM_MAT", pmId, "create"])
 
         const approvalId = (ar as any).insertId
 
         const newFields: [string, string][] = [
+          ["pm_code", pmCode],
           ["name", name],
           ["type", type],
           ["uom", uom?.trim() || ""],
@@ -215,7 +220,7 @@ export const PUT = withGateway({
       const conn = await pool.getConnection()
       await conn.beginTransaction()
       try {
-        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", id])
+        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "RM_MAT", id, "edit"])
         const approvalId = (ar as any).insertId
         for (const [field, newVal] of diff) {
           await conn.execute(approvalsSql.insertApprovalItem, [approvalId, field, String(cur[field] ?? ""), String(newVal ?? "")])
@@ -288,7 +293,7 @@ export const PUT = withGateway({
       await conn.beginTransaction()
 
       try {
-        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PM_MAT", id])
+        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PM_MAT", id, "edit"])
         const approvalId = (ar as any).insertId
         for (const [field, newVal] of diff) {
           await conn.execute(approvalsSql.insertApprovalItem, [

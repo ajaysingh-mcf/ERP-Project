@@ -35,7 +35,7 @@ const MFG_COLUMNS: ColumnDef[] = [
   { key: "inci_name",            label: "INCI Name",       sortAs: "text", className: "font-medium text-wrap" },
   { key: "make",                 label: "Make",            sortAs: "text" },
   { key: "type",                 label: "Type",            sortAs: "text" },
-  { key: "curr_rate",            label: "Current Rate",    sortAs: "num"  },
+  { key: "curr_rate",            label: "Current Rate",    sortAs: "num",  render: (r) => r.curr_rate != null ? Number(r.curr_rate).toFixed(2) : "—" },
   { key: "mfg_code",             label: "MFG Code",        sortAs: "text" },
   { key: "approved_vendor_code", label: "Approved Vendor", sortAs: "text" },
   { key: "rate_status",          label: "Status",          sortAs: "text", render: rateStatusBadge },

@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
+import { DownloadButton } from "@/components/masters/DownloadButton"
 import type { MfgLine, MfgLineStatus } from "@/types/masters"
 import { fmtDate } from "../mfg-utils"
 import LineDialog, { type BomOption } from "./LineDialog"
@@ -54,12 +55,18 @@ export default function ManufacturingLinesClient({
           className="flex h-9 w-full sm:max-w-xs rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
         />
         {currentTab === "active" && (
-          <button
-            onClick={() => setDialogTarget("new")}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors sm:ml-auto"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add Line
-          </button>
+          <div className="flex items-center gap-2 sm:ml-auto">
+            <DownloadButton
+              endpoint={`/api/manufacturing/${mfgId}/lines/active/export`}
+              label="Active Manufacturing"
+            />
+            <button
+              onClick={() => setDialogTarget("new")}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add Line
+            </button>
+          </div>
         )}
       </div>
 

@@ -142,6 +142,31 @@ export const manufacturers = {
   /** Lightweight fetch of code + name — used when building readable approval diffs. Parameters: [id] */
   selectNameById: `SELECT code, name FROM master_mfgs WHERE id = ? LIMIT 1`,
 
+  // ── Duplicate checks (banking/tax fields must be unique across manufacturers) ─
+  // `excludeMfgId` is 0 on create (no self to exclude) or the current mfg_id on
+  // update, so the manufacturer being edited never flags itself as a duplicate.
+
+  /** Parameters: [gst_number, excludeMfgId] */
+  checkDuplicateGst: `
+    SELECT mfg.code FROM details_mfg d
+    JOIN master_mfgs mfg ON mfg.id = d.mfg_id
+    WHERE d.gst_number = ? AND d.mfg_id != ? LIMIT 1
+  `,
+
+  /** Parameters: [ifsc_number, excludeMfgId] */
+  checkDuplicateIfsc: `
+    SELECT mfg.code FROM details_mfg d
+    JOIN master_mfgs mfg ON mfg.id = d.mfg_id
+    WHERE d.ifsc_number = ? AND d.mfg_id != ? LIMIT 1
+  `,
+
+  /** Parameters: [account_number, excludeMfgId] */
+  checkDuplicateAccountNumber: `
+    SELECT mfg.code FROM details_mfg d
+    JOIN master_mfgs mfg ON mfg.id = d.mfg_id
+    WHERE d.account_number = ? AND d.mfg_id != ? LIMIT 1
+  `,
+
   /**
    * Build the filter parameter array for selectPaginated, selectAllFiltered, and countAll.
    * Centralises the repeated-param pattern so callers never have to count repetitions.

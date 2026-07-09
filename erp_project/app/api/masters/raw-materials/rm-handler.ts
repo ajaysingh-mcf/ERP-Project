@@ -5,11 +5,13 @@ import { approvalsSql } from "@/lib/queries/approvals"
 import { parseS3Import } from "@/lib/import-s3"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
-import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval } from "../../../../lib/master-routes/material-utils"
+import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval, generateMaterialCode } from "../../../../lib/master-routes/material-utils"
+import { roundToWholeNumber, roundToTwoDecimals } from "@/lib/numeric"
+import type { PoolConnection } from "mysql2/promise"
 
-function toRmParams(r: any, status = "in_review"): any[] {
+async function toRmParams(conn: PoolConnection, r: any, status = "in_review"): Promise<any[]> {
   return [
-    r.rm_code?.trim() || null, r.name.trim(),
+    r.rm_code?.trim() || await generateMaterialCode(conn, rawMaterials.countTotal, "RM"), r.name.trim(),
     r.make?.trim() || null, r.type?.trim() || null,
     r.uom?.trim() || null, status,
     r.hsn_code?.trim() || null, r.inci_name?.trim() || null,
@@ -20,8 +22,8 @@ function toRmVendorRateParams(rmId: number, r: any, today: string): any[] {
   return [
     rmId, r.vendor_id ? Number(r.vendor_id) : null,
     r.vendor_code?.trim() || null,
-    r.curr_rate ? Number(r.curr_rate) : 0,
-    r.moq ? Number(r.moq) : null,
+    r.curr_rate ? roundToTwoDecimals(r.curr_rate) : 0,
+    r.moq ? roundToWholeNumber(r.moq) : null,
     r.rate_uom?.trim() || null,
     r.effective_from?.trim() || today, null, "in_review",
   ]
@@ -31,7 +33,7 @@ function toRmMfgRateParams(rmId: number, m: any, today: string): any[] {
   return [
     rmId, m.mfg_id ? Number(m.mfg_id) : null,
     m.mfg_code?.trim() || null,
-    m.curr_rate ? Number(m.curr_rate) : 0,
+    m.curr_rate ? roundToTwoDecimals(m.curr_rate) : 0,
     m.rate_uom?.trim() || null,
     m.approved_vendor_id ? Number(m.approved_vendor_id) : null,
     m.approved_vendor_code?.trim() || null,
@@ -50,7 +52,7 @@ export async function rmCreate(body: any, userId: number, ctx: object): Promise<
   const conn = await pool.getConnection()
   await conn.beginTransaction()
   try {
-    const [rmResult] = await conn.execute(rawMaterials.insert, toRmParams(body))
+    const [rmResult] = await conn.execute(rawMaterials.insert, await toRmParams(conn, body))
     const rmId = (rmResult as any).insertId
 
     await insertApprovalWithItems(conn, userId, "RM_MAT", rmId, [
@@ -148,7 +150,7 @@ export async function rmCreateFull(body: any, userId: number, ctx: object): Prom
   const conn = await pool.getConnection()
   await conn.beginTransaction()
   try {
-    const [rmResult] = await conn.execute(rawMaterials.insert, toRmParams(rm))
+    const [rmResult] = await conn.execute(rawMaterials.insert, await toRmParams(conn, rm))
     const rmId = (rmResult as any).insertId
 
     await insertApprovalWithItems(conn, userId, "RM_MAT", rmId, [
@@ -301,7 +303,7 @@ export async function rmBulk(body: any, userId: number, ctx: object): Promise<Ne
     for (const row of rows) {
       if (!row.name?.trim()) continue
       try {
-        const [rmResult] = await conn.execute(rawMaterials.insert, toRmParams(row))
+        const [rmResult] = await conn.execute(rawMaterials.insert, await toRmParams(conn, row))
         const rmId = (rmResult as any).insertId
         await insertApprovalWithItems(conn, userId, "RM_MAT", rmId, [
           ["name", row.name.trim()],
@@ -360,7 +362,7 @@ export async function rmS3Bulk(body: any, userId: number, ctx: object): Promise<
     for (const row of rawRows) {
       if (!row["name"]?.trim()) continue
       try {
-        const [rmResult] = await conn.execute(rawMaterials.insert, toRmParams(row))
+        const [rmResult] = await conn.execute(rawMaterials.insert, await toRmParams(conn, row))
         const rmId = (rmResult as any).insertId
         await insertApprovalWithItems(conn, userId, "RM_MAT", rmId, [
           ["name", row["name"].trim()],

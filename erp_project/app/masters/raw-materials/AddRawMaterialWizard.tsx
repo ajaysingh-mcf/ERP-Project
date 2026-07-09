@@ -657,6 +657,8 @@ export function AddRawMaterialWizard({
                             <Field label="Rate (₹)" required>
                               <input
                                 type="number"
+                                step="0.01"
+                                min="0"
                                 className={inputCls}
                                 placeholder="0.00"
                                 value={entry.curr_rate}
@@ -666,10 +668,12 @@ export function AddRawMaterialWizard({
                             <Field label="MOQ" required>
                               <input
                                 type="number"
+                                step="1"
+                                min="1"
                                 className={inputCls}
                                 placeholder="Min qty"
                                 value={entry.moq}
-                                onChange={(e) => updateVendorEntry(i, "moq", e.target.value)}
+                                onChange={(e) => updateVendorEntry(i, "moq", e.target.value.replace(/[^\d]/g, ""))}
                               />
                             </Field>
                             <Field label="Rate UOM">
@@ -765,6 +769,8 @@ export function AddRawMaterialWizard({
                           <Field label="Rate (₹)" required>
                             <input
                               type="number"
+                              step="0.01"
+                              min="0"
                               className={inputCls}
                               placeholder="0.00"
                               value={entry.curr_rate}

@@ -347,6 +347,9 @@ export const rawMaterials = {
     WHERE LOWER(name) = LOWER(?) AND LOWER(IFNULL(make,'')) = LOWER(?) AND LOWER(IFNULL(inci_name,'')) = LOWER(?)
   `,
 
+  /** Total RM count — used to auto-generate the next rm_code (RM<serial>). */
+  countTotal: `SELECT COUNT(*) AS total FROM master_rm`,
+
   /**
    * Insert a minimal manufacturer approval row (no rate data yet)
    * Parameters: [rm_id, mfg_id, mfg_code]

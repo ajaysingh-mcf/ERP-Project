@@ -4,11 +4,13 @@ import { packingMaterials } from "@/lib/queries/packing-materials"
 import { parseS3Import } from "@/lib/import-s3"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
-import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval } from "@/lib/master-routes/material-utils"
+import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval, generateMaterialCode } from "@/lib/master-routes/material-utils"
+import { roundToWholeNumber, roundToTwoDecimals } from "@/lib/numeric"
+import type { PoolConnection } from "mysql2/promise"
 
-function toPmParams(r: any, status = "in_review"): any[] {
+async function toPmParams(conn: PoolConnection, r: any, status = "in_review"): Promise<any[]> {
   return [
-    r.pm_code?.trim() || null, r.name.trim(),
+    r.pm_code?.trim() || await generateMaterialCode(conn, packingMaterials.countTotal, "PM"), r.name.trim(),
     r.type?.trim() || null, r.hsn_code?.trim() || null,
     r.uom?.trim() || null, status,
     r.pantone_color?.trim() || null,
@@ -19,7 +21,7 @@ function toPmMfgRateParams(pmId: number, m: any, today: string): any[] {
   return [
     pmId, m.mfg_id ? Number(m.mfg_id) : null,
     m.mfg_code?.trim() || null,
-    m.curr_rate ? Number(m.curr_rate) : 0,
+    m.curr_rate ? roundToTwoDecimals(m.curr_rate) : 0,
     m.rate_uom?.trim() || null, "in_review",
     m.effective_from?.trim() || today,
   ]
@@ -43,7 +45,7 @@ export async function pmCreate(body: any, userId: number, ctx: object): Promise<
     const conn = await pool.getConnection()
     await conn.beginTransaction()
     try {
-      const [pmResult] = await conn.execute(packingMaterials.insert, toPmParams(body))
+      const [pmResult] = await conn.execute(packingMaterials.insert, await toPmParams(conn, body))
       const pmId = (pmResult as any).insertId
       await insertApprovalWithItems(conn, userId, "PM_MAT", pmId, [
         ["name", body.name.trim()],
@@ -55,8 +57,8 @@ export async function pmCreate(body: any, userId: number, ctx: object): Promise<
         await conn.execute(packingMaterials.insertVendorRate, [
           pmId, body.vendor_id ? Number(body.vendor_id) : null,
           body.vendor_code?.trim() || null,
-          body.curr_rate ? Number(body.curr_rate) : null,
-          body.moq ? Number(body.moq) : null,
+          body.curr_rate ? roundToTwoDecimals(body.curr_rate) : null,
+          body.moq ? roundToWholeNumber(body.moq) : null,
           body.rate_uom?.trim() || null,
           body.rate_status || "active",
           body.effective_from?.trim() || null,
@@ -67,7 +69,7 @@ export async function pmCreate(body: any, userId: number, ctx: object): Promise<
         await conn.execute(packingMaterials.insertMfgRate, [
           pmId, body.mfg_id ? Number(body.mfg_id) : null,
           body.mfg_code?.trim() || null,
-          body.curr_rate ? Number(body.curr_rate) : null,
+          body.curr_rate ? roundToTwoDecimals(body.curr_rate) : null,
           body.rate_uom?.trim() || null,
           body.rate_status || "active",
           body.effective_from?.trim() || null,
@@ -91,7 +93,7 @@ export async function pmCreate(body: any, userId: number, ctx: object): Promise<
   const conn = await pool.getConnection()
   await conn.beginTransaction()
   try {
-    const [pmResult] = await conn.execute(packingMaterials.insert, toPmParams(body))
+    const [pmResult] = await conn.execute(packingMaterials.insert, await toPmParams(conn, body))
     const pmId = (pmResult as any).insertId
     await insertApprovalWithItems(conn, userId, "PM_MAT", pmId, [
       ["name", body.name.trim()],
@@ -175,7 +177,8 @@ export async function pmCreateFull(body: any, userId: number, ctx: object): Prom
   await conn.beginTransaction()
   try {
     const [pmResult] = await conn.execute(packingMaterials.insert, [
-      null, pm.name.trim(), pm.type?.trim() || null,
+      pm.pm_code?.trim() || await generateMaterialCode(conn, packingMaterials.countTotal, "PM"),
+      pm.name.trim(), pm.type?.trim() || null,
       pm.hsn_code?.trim() || null, pm.uom?.trim() || null, "in_review",
       pm.pantone_color?.trim() || null,
     ])
@@ -198,16 +201,16 @@ export async function pmCreateFull(body: any, userId: number, ctx: object): Prom
           existing.uom, existing.effective_from, existing.effective_to, existing.status,
         ])
         await conn.execute(packingMaterials.updateVendorRate, [
-          v.curr_rate ? Number(v.curr_rate) : null,
-          v.moq ? Number(v.moq) : null,
+          v.curr_rate ? roundToTwoDecimals(v.curr_rate) : null,
+          v.moq ? roundToWholeNumber(v.moq) : null,
           v.rate_uom?.trim() || null, "active", today, existing.id,
         ])
         logger.info({ ...logCtx, message: "create-full: vendor rate archived + updated", pmId, vendor_id: vendorId })
       } else {
         await conn.execute(packingMaterials.insertVendorRate, [
           pmId, vendorId, v.vendor_code?.trim() || null,
-          v.curr_rate ? Number(v.curr_rate) : null,
-          v.moq ? Number(v.moq) : null,
+          v.curr_rate ? roundToTwoDecimals(v.curr_rate) : null,
+          v.moq ? roundToWholeNumber(v.moq) : null,
           v.rate_uom?.trim() || null, "active", today, null,
         ])
         logger.info({ ...logCtx, message: "create-full: vendor rate inserted", pmId, vendor_id: vendorId })
@@ -292,8 +295,8 @@ export async function pmAddRates(body: any, userId: number, ctx: object): Promis
         } else {
           await conn.execute(packingMaterials.insertVendorRate, [
             pmId, vendorId, v.vendor_code?.trim() || null,
-            v.curr_rate ? Number(v.curr_rate) : null,
-            v.moq ? Number(v.moq) : null,
+            v.curr_rate ? roundToTwoDecimals(v.curr_rate) : null,
+            v.moq ? roundToWholeNumber(v.moq) : null,
             v.rate_uom?.trim() || null, "active", today, null,
           ])
           logger.info({ ...logCtx, message: "vendor rate inserted (new)", pmId, vendor_id: vendorId })
@@ -360,7 +363,7 @@ export async function pmBulk(body: any, userId: number, ctx: object): Promise<Ne
         continue
       }
       try {
-        const [pmResult] = await conn.execute(packingMaterials.insert, toPmParams(row))
+        const [pmResult] = await conn.execute(packingMaterials.insert, await toPmParams(conn, row))
         const pmId = (pmResult as any).insertId
         await insertApprovalWithItems(conn, userId, "PM_MAT", pmId, [
           ["name", row.name.trim()],
@@ -430,7 +433,7 @@ export async function pmS3Bulk(body: any, userId: number, ctx: object): Promise<
         continue
       }
       try {
-        const [pmResult] = await conn.execute(packingMaterials.insert, toPmParams(row))
+        const [pmResult] = await conn.execute(packingMaterials.insert, await toPmParams(conn, row))
         const pmId = (pmResult as any).insertId
         await insertApprovalWithItems(conn, userId, "PM_MAT", pmId, [
           ["name", row["name"].trim()],

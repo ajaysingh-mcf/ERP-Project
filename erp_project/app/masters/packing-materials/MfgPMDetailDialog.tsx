@@ -114,7 +114,7 @@ export function MfgPMDetailDialog({
                           <TableCell>
                             <div className="flex items-center gap-1.5">
                               <span className={cn("text-sm font-medium", isBest && "text-emerald-600")}>
-                                {mr.curr_rate != null ? `₹${mr.curr_rate}` : "—"}
+                                {mr.curr_rate != null ? `₹${Number(mr.curr_rate).toFixed(2)}` : "—"}
                               </span>
                               {isBest && (
                                 <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] px-1.5 py-0">
@@ -150,7 +150,7 @@ export function MfgPMDetailDialog({
               <div className="grid grid-cols-1 gap-3">
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
                   <p className="text-xs text-emerald-700 font-medium mb-1">Best Rate</p>
-                  <p className="text-2xl font-bold text-emerald-600">₹{bestRateRow.curr_rate}</p>
+                  <p className="text-2xl font-bold text-emerald-600">₹{Number(bestRateRow.curr_rate).toFixed(2)}</p>
                   <p className="text-xs text-emerald-700 mt-0.5">{fmt(bestRateRow.mfg_code)}</p>
                 </div>
               </div>

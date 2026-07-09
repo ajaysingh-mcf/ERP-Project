@@ -97,7 +97,7 @@ export async function PUT(
     const mfg = (mfgRows as any[])[0] ?? { code: mfg_id, name: String(mfg_id) }
 
     // Insert new approval record
-    const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PO", poId])
+    const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PO", poId, "edit"])
     const approvalId = (ar as any).insertId
 
     // Insert approval_items so the approver sees the full request

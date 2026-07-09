@@ -32,7 +32,7 @@ import logger from "@/lib/logger"
 import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
 import { vendorActionSchema } from "@/lib/validation/vendors"
-import { insertApprovalWithItems } from "@/lib/master-routes/material-utils"
+import { insertApprovalWithItems, assertNoDuplicateBankingFields, findDuplicateBankingField } from "@/lib/master-routes/material-utils"
 
 export const POST = withGateway({
   schema: vendorActionSchema,
@@ -43,7 +43,8 @@ export const POST = withGateway({
     if (body.action === "create") {
       const name = body.name.trim()
       const type = body.type.trim()
-      const { location, zone, registered_name, gst_certificate_key, cancelled_cheque_key, pan_card_key, misc_document_key } = body
+      const { location, zone, registered_name, gst_number, bank_name, ifsc_number, account_number,
+              gst_certificate_key, cancelled_cheque_key, pan_card_key, misc_document_key } = body
 
       const eventId = makeEventId("VENDOR", "create")
       const logCtx = { ...ctx, eventId, module: "VEN_Create" }
@@ -53,6 +54,8 @@ export const POST = withGateway({
       const conn = await pool.getConnection()
       await conn.beginTransaction()
       try {
+        await assertNoDuplicateBankingFields(conn, vendors, { gst_number, ifsc_number, account_number }, 0)
+
         // Auto-generate code as VEN-<serial>-<XX>, XX = first 2 letters of name.
         // Retry with the next serial on a rare collision (concurrent inserts / gaps from deletions).
         const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
@@ -78,9 +81,13 @@ export const POST = withGateway({
           "in_review",
           zone?.trim() || null,
           registered_name?.trim() || null,
+          gst_number?.trim() || null,
+          bank_name?.trim() || null,
+          ifsc_number?.trim() || null,
+          account_number?.trim() || null,
         ])
         logger.info({ ...logCtx, vendorId, message: "Created approval record in the Database." })
-        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "VENDOR", vendorId])
+        const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "VENDOR", vendorId, "create"])
         const approvalId = (ar as any).insertId
 
         const newFields: [string, string][] = [
@@ -90,6 +97,10 @@ export const POST = withGateway({
           ["location", location?.trim() || ""],
           ["zone", zone?.trim() || ""],
           ["registered_name", registered_name?.trim() || ""],
+          ["gst_number", gst_number?.trim() || ""],
+          ["bank_name", bank_name?.trim() || ""],
+          ["ifsc_number", ifsc_number?.trim() || ""],
+          ["account_number", account_number?.trim() || ""],
           ["gst_certificate_key",  gst_certificate_key  ?? ""],
           ["cancelled_cheque_key", cancelled_cheque_key ?? ""],
           ["pan_card_key",         pan_card_key         ?? ""],
@@ -139,10 +150,21 @@ export const POST = withGateway({
         for (const row of rows) {
           if (!row.name?.trim() || !row.type?.trim()) {
             logger.warn({ ...logCtx, name: row.name, type: row.type, message: "Row Skipped - missing name or type" })
+            skipped++
             continue
           }
           const name = row.name.trim()
           const type = row.type.trim()
+
+          const dup = await findDuplicateBankingField(conn, vendors, {
+            gst_number: row.gst_number, ifsc_number: row.ifsc_number, account_number: row.account_number,
+          }, 0)
+          if (dup) {
+            logger.warn({ ...logCtx, name, message: `Row skipped - ${dup}` })
+            skipped++
+            continue
+          }
+
           const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
           let code = ""
           let vendorId: number
@@ -163,6 +185,10 @@ export const POST = withGateway({
             "in_review",
             row.zone?.trim() || null,
             row.registered_name?.trim() || null,
+            row.gst_number?.trim() || null,
+            row.bank_name?.trim() || null,
+            row.ifsc_number?.trim() || null,
+            row.account_number?.trim() || null,
           ])
           const approvalId = await insertApprovalWithItems(conn, userId, "VENDOR", vendorId, [
             ["code", code],
@@ -171,6 +197,10 @@ export const POST = withGateway({
             ["location", row.location?.trim() || ""],
             ["zone", row.zone?.trim() || ""],
             ["registered_name", row.registered_name?.trim() || ""],
+            ["gst_number", row.gst_number?.trim() || ""],
+            ["bank_name", row.bank_name?.trim() || ""],
+            ["ifsc_number", row.ifsc_number?.trim() || ""],
+            ["account_number", row.account_number?.trim() || ""],
           ])
           logger.debug({ ...logCtx, vendorId, code, approvalId, message: "Row inserted, submitted for approval" })
           inserted++
@@ -193,7 +223,8 @@ export const POST = withGateway({
 
     // ── update (approval flow) ───────────────────────────────────────────────────
     if (body.action === "update") {
-      const { vendor_id, name, type, location, status, zone, registered_name } = body
+      const { vendor_id, name, type, location, status, zone, registered_name,
+              gst_number, bank_name, ifsc_number, account_number } = body
 
       const eventId = makeEventId("VENDOR_UPDATE", "update", vendor_id)
       const logCtx = { ...ctx, eventId, module: "VENDOR_UPDATE" }
@@ -221,12 +252,18 @@ export const POST = withGateway({
           throw new ApiError(404, "not_found", "Vendor not found")
         }
 
+        await assertNoDuplicateBankingFields(conn, vendors, { gst_number, ifsc_number, account_number }, Number(vendor_id))
+
         const proposed: Record<string, string> = {
           name: name.trim(),
           type: type.trim(),
           location: location?.trim() || "",
           zone: zone?.trim() || "",
           registered_name: registered_name?.trim() || "",
+          gst_number: gst_number?.trim() || "",
+          bank_name: bank_name?.trim() || "",
+          ifsc_number: ifsc_number?.trim() || "",
+          account_number: account_number?.trim() || "",
           status: status || "active",
         }
         const diff = Object.entries(proposed).filter(
@@ -239,7 +276,7 @@ export const POST = withGateway({
           return NextResponse.json({ ok: true, message: "No changes detected" })
         }
 
-        const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "VENDOR", vendor_id])
+        const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "VENDOR", vendor_id, "edit"])
         const approvalId = (approvalResult as any).insertId
 
         const itemsToRecord = isDraftResubmit
@@ -308,8 +345,19 @@ export const POST = withGateway({
           const type = row["type"]?.trim()
           if (!name || !type) {
             logger.debug({ ...logCtx, name, message: "Row Skipped - Missing Name or Type" })
+            skipped++
             continue
           }
+
+          const dup = await findDuplicateBankingField(conn, vendors, {
+            gst_number: row["gst_number"], ifsc_number: row["ifsc_number"], account_number: row["account_number"],
+          }, 0)
+          if (dup) {
+            logger.warn({ ...logCtx, name, message: `Row skipped - ${dup}` })
+            skipped++
+            continue
+          }
+
           const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
           let code = ""
           let vendorId: number
@@ -330,6 +378,10 @@ export const POST = withGateway({
             "in_review",
             row["zone"]?.trim() || null,
             row["registered_name"]?.trim() || null,
+            row["gst_number"]?.trim() || null,
+            row["bank_name"]?.trim() || null,
+            row["ifsc_number"]?.trim() || null,
+            row["account_number"]?.trim() || null,
           ])
           const approvalId = await insertApprovalWithItems(conn, userId, "VENDOR", vendorId, [
             ["code", code],
@@ -338,6 +390,10 @@ export const POST = withGateway({
             ["location", row["location"]?.trim() || ""],
             ["zone", row["zone"]?.trim() || ""],
             ["registered_name", row["registered_name"]?.trim() || ""],
+            ["gst_number", row["gst_number"]?.trim() || ""],
+            ["bank_name", row["bank_name"]?.trim() || ""],
+            ["ifsc_number", row["ifsc_number"]?.trim() || ""],
+            ["account_number", row["account_number"]?.trim() || ""],
           ])
           logger.debug({ ...logCtx, vendorId, code, approvalId, message: "Row inserted, submitted for approval" })
           inserted++
@@ -407,7 +463,7 @@ export const POST = withGateway({
           return NextResponse.json({ ok: true, message: "No changes detected" })
         }
 
-        const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "VENDOR", vendorId])
+        const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "VENDOR", vendorId, "edit"])
         const approvalId = (approvalResult as any).insertId
 
         for (const [field, newVal] of diff) {

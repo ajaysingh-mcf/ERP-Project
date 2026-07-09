@@ -325,7 +325,7 @@ export function AddPackingMaterialWizard({
         Add Packing Material
       </Button>
 
-      <QuickCreateVendorModal
+      {/* <QuickCreateVendorModal
         open={quickVendorOpen}
         defaultType="pm"
         onClose={() => setQuickVendorOpen(false)}
@@ -338,9 +338,9 @@ export function AddPackingMaterialWizard({
           })
           setQuickVendorOpen(false)
         }}
-      />
+      /> */}
 
-      <QuickCreateManufacturerModal
+      {/* <QuickCreateManufacturerModal
         open={quickMfgOpen}
         onClose={() => setQuickMfgOpen(false)}
         onSuccess={(m) => {
@@ -352,7 +352,7 @@ export function AddPackingMaterialWizard({
           })
           setQuickMfgOpen(false)
         }}
-      />
+      /> */}
 
       <Dialog open={open} onOpenChange={(v) => { if (!v) requestClose() }}>
         <DialogContent className="max-w-2xl">
@@ -506,14 +506,14 @@ export function AddPackingMaterialWizard({
                   )}
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">Add vendor pricing (optional).</p>
-                    <button
+                    {/* <button
                       type="button"
                       onClick={() => setQuickVendorOpen(true)}
                       className="text-xs text-primary hover:underline flex items-center gap-1"
                     >
                       <Plus className="h-3 w-3" />
                       New Vendor
-                    </button>
+                    </button> */}
                   </div>
 
                   {pmVendors.length === 0 ? (
@@ -562,6 +562,8 @@ export function AddPackingMaterialWizard({
                             <Field label="Rate (₹)" required>
                               <input
                                 type="number"
+                                step="0.01"
+                                min="0"
                                 className={inputCls}
                                 placeholder="0.00"
                                 value={entry.curr_rate}
@@ -571,10 +573,12 @@ export function AddPackingMaterialWizard({
                             <Field label="MOQ" required>
                               <input
                                 type="number"
+                                step="1"
+                                min="1"
                                 className={inputCls}
                                 placeholder="Min qty"
                                 value={entry.moq}
-                                onChange={(e) => updateVendorEntry(i, "moq", e.target.value)}
+                                onChange={(e) => updateVendorEntry(i, "moq", e.target.value.replace(/[^\d]/g, ""))}
                               />
                             </Field>
                             <Field label="Rate UOM">
@@ -616,14 +620,14 @@ export function AddPackingMaterialWizard({
                     <p className="text-sm text-muted-foreground">
                       Add approved manufacturers with vendor and rate (optional).
                     </p>
-                    <button
+                    {/* <button
                       type="button"
                       onClick={() => setQuickMfgOpen(true)}
                       className="text-xs text-primary hover:underline flex items-center gap-1"
                     >
                       <Plus className="h-3 w-3" />
                       New Manufacturer
-                    </button>
+                    </button> */}
                   </div>
                   <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                     {mfgEntries.map((entry, i) => (
@@ -663,6 +667,8 @@ export function AddPackingMaterialWizard({
                           <Field label="Rate (₹)" required>
                             <input
                               type="number"
+                              step="0.01"
+                              min="0"
                               className={inputCls}
                               placeholder="0.00"
                               value={entry.curr_rate}

@@ -79,7 +79,7 @@ export const POST = withGateway({
 
         // If parent was draft, each child needs its own approval record
         if (isParentDraft) {
-          const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PO", childId])
+          const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PO", childId, "create"])
           const approvalId = (ar as any).insertId
           const items: [string, string, string][] = [
             ["po_no",        "", childPoNo],

@@ -35,7 +35,7 @@ const MFG_COLUMNS: ColumnDef[] = [
   { key: "type",           label: "Type",           sortAs: "text" },
   { key: "mfg_code",       label: "MFG Code",       sortAs: "text" },
   { key: "mfg_id",         label: "MFG ID",         sortAs: "num"  },
-  { key: "curr_rate",      label: "Current Rate",   sortAs: "num"  },
+  { key: "curr_rate",      label: "Current Rate",   sortAs: "num",  render: (r) => r.curr_rate != null ? Number(r.curr_rate).toFixed(2) : "—" },
   { key: "uom",            label: "UOM",            sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
   { key: "status",         label: "Status",         sortAs: "text", render: rateStatusBadge },
   { key: "effective_from", label: "Effective From", sortAs: "date", render: (r) => fmtDate(r.effective_from) },

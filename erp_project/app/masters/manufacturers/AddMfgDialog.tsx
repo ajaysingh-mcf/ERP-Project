@@ -43,6 +43,7 @@ const DETAIL_FIELDS = [
   { key: "bank_name",       label: "Bank Name",       required: false, colSpan: 1, placeholder: "e.g. HDFC Bank" },
   { key: "ifsc_number",     label: "IFSC Number",     required: false, colSpan: 1, placeholder: "e.g. HDFC0001234" },
   { key: "account_number",  label: "Account Number",  required: false, colSpan: 1, placeholder: "e.g. 12345678901234" },
+  { key: "email",           label: "Email Address",   required: false, colSpan: 1, placeholder: "e.g. vendor@manufacturer.com", type: "email" },
 ] as const
 
 type Step = "details" | "documents"
@@ -161,6 +162,7 @@ export function AddMfgDialog({ onSuccess }: { onSuccess?: () => void }) {
                   </Label>
                   <Input
                     id={f.key}
+                    type={"type" in f ? f.type : "text"}
                     placeholder={f.placeholder}
                     value={form[f.key] ?? ""}
                     onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}

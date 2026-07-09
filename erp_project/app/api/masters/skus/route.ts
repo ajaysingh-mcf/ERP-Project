@@ -144,7 +144,7 @@ export const POST = withGateway({
           return NextResponse.json({ ok: true, message: "No changes detected" })
         }
 
-        const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "SKU", id])
+        const [approvalResult] = await conn.execute(approvalsSql.insertApproval, [userId, "SKU", id, "edit"])
         const approvalId = (approvalResult as any).insertId
 
         for (const [field, newVal] of diff) {

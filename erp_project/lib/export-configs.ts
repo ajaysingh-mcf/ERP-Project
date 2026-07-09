@@ -119,6 +119,10 @@ export const VENDOR_EXPORT_COLUMNS: ExportColumn[] = [
   { key: "type",            label: "Type",           type: "text" },
   { key: "location",        label: "Location",       type: "text" },
   { key: "zone",            label: "Zone",           type: "text" },
+  { key: "gst_number",      label: "GST Number",     type: "text" }, // text: preserve format
+  { key: "bank_name",       label: "Bank Name",      type: "text" },
+  { key: "ifsc_number",     label: "IFSC Number",    type: "text" },
+  { key: "account_number",  label: "Account Number", type: "text" },
   { key: "status",          label: "Status",         type: "text" },
 ]
 
@@ -148,4 +152,32 @@ export const BOM_EXPORT_COLUMNS: ExportColumn[] = [
   { key: "material_status", label: "Material Status", type: "text"   },
   { key: "bom_status",      label: "BOM Status",      type: "text"   },
   { key: "effective_from",  label: "Effective From",  type: "date"   },
+]
+
+// ── Manufacturing — Manufacturing lines (Active / On Hold / Tech Transfer) ────
+
+export const MFG_LINES_EXPORT_COLUMNS: ExportColumn[] = [
+  { key: "sku_code",        label: "SKU",             type: "text" },
+  { key: "bom_code",        label: "BOM Code",        type: "text" },
+  { key: "sku_name",        label: "SKU Name",        type: "text" },
+  { key: "effective_from",  label: "Effective From",  type: "date" },
+  { key: "effective_to",    label: "Effective To",    type: "date" },
+  { key: "filling",         label: "Filling",         type: "number" },
+  { key: "filling_uom",     label: "Filling UOM",     type: "text" },
+  { key: "monthly_capacity", label: "Monthly Capacity", type: "number" },
+  { key: "this_month_plan", label: "This Month Plan", type: "number" },
+]
+
+// ── Manufacturing — Agreed Final Costing ──────────────────────────────────────
+
+export const FINAL_COSTING_EXPORT_COLUMNS: ExportColumn[] = [
+  { key: "sku_code", label: "SKU",             type: "text"   },
+  { key: "sku_name", label: "SKU Name",        type: "text"   },
+  { key: "rm_cost",  label: "RM Cost",         type: "number" },
+  { key: "pm_cost",  label: "PM Cost",         type: "number" },
+  { key: "jw",       label: "JWW",             type: "number" },
+  { key: "shrink",   label: "Shrinkage",       type: "number" },
+  { key: "shipper",  label: "Shipper",         type: "number" },
+  { key: "wastage",  label: "Wastage (10%)",   type: "number" },
+  { key: "total",    label: "Total Costing",   type: "number" },
 ]

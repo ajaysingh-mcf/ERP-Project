@@ -4,15 +4,22 @@ import { Card, CardContent } from "@/components/ui/card"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
+import { DownloadButton } from "@/components/masters/DownloadButton"
 import type { FinalCostingRow } from "@/types/masters"
 import { fmtMoney } from "../mfg-utils"
 
-export default function FinalCostingTable({ rows }: { rows: FinalCostingRow[] }) {
+export default function FinalCostingTable({ mfgId, rows }: { mfgId: number; rows: FinalCostingRow[] }) {
   return (
     <div className="space-y-2 text-xs">
-      <p className="text-[11px] text-muted-foreground">
-        Total = (RM + PM) × 1.10 (10% wastage tolerance on materials) + JW + Shrink Wrap + Shipper.
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[11px] text-muted-foreground">
+          Total = (RM + PM) × 1.10 (10% wastage tolerance on materials) + JW + Shrink Wrap + Shipper.
+        </p>
+        <DownloadButton
+          endpoint={`/api/manufacturing/${mfgId}/final-costing/export`}
+          label="Final Costing"
+        />
+      </div>
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">

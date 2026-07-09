@@ -40,6 +40,10 @@ const DETAIL_FIELDS = [
   { key: "registered_name", label: "Registered Name", required: true, colSpan: 1, placeholder: "Legal registered name" },
   { key: "location",        label: "Location",        required: false, colSpan: 1, placeholder: "e.g. Mumbai" },
   { key: "zone",            label: "Zone",            required: false, colSpan: 1, placeholder: "e.g. West" },
+  { key: "gst_number",      label: "GST Number",      required: false, colSpan: 1, placeholder: "e.g. 27AAEPM1234C1Z5" },
+  { key: "bank_name",       label: "Bank Name",       required: false, colSpan: 1, placeholder: "e.g. HDFC Bank" },
+  { key: "ifsc_number",     label: "IFSC Number",     required: false, colSpan: 1, placeholder: "e.g. HDFC0001234" },
+  { key: "account_number",  label: "Account Number",  required: false, colSpan: 1, placeholder: "e.g. 12345678901234" },
 ] as const
 
 type Step = "details" | "documents"

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { query, pool } from "@/lib/db"
+import { query, pool, execute } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { skus as skusSql } from "@/lib/queries/skus"
 import { manufacturers as mfgsSql } from "@/lib/queries/manufacturers"
 import { getFileBuffer } from "@/lib/s3"
+import { sendPoEmail } from "@/lib/mailer"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import type { PoolConnection } from "mysql2/promise"
 import logger from "@/lib/logger"
@@ -194,6 +195,30 @@ export const POST = withGateway({
       await conn.commit()
       logger.info({ ...ctx, eventId, poId, po_no, message: "Normal PO created" })
       recordProcessedEvent("PO", eventId, { poId, po_no })
+
+      // ── Auto-send PO email right after a normal PO is created ─────────────
+      // Normal POs skip the approval flow entirely, so this is the only auto-send
+      // trigger for them (impromptu POs auto-send on approval instead — see
+      // app/api/approvals/[id]/route.ts). Fire-and-forget: never block the
+      // create response on email/PDF generation.
+      const mailEventId = makeEventId("PO_NORMAL_MAIL", "send", poId)
+      ;(async () => {
+        try {
+          const sent = await sendPoEmail(poId, "auto_approval")
+          if (sent) {
+            await execute(purchaseOrdersSql.setEmailSentAt, [poId])
+            logger.info({ ...ctx, eventId: mailEventId, poId, po_no, message: "Auto-sent normal PO email" })
+            recordProcessedEvent("PO_NORMAL_MAIL", mailEventId, { poId, po_no })
+          } else {
+            logger.warn({ ...ctx, eventId: mailEventId, poId, po_no, message: "Normal PO created but manufacturer has no email — skipped auto-send" })
+            recordFailedEvent("PO_NORMAL_MAIL", mailEventId, { poId, po_no }, "Manufacturer has no email address on file")
+          }
+        } catch (err: any) {
+          logger.error({ ...ctx, eventId: mailEventId, poId, po_no, error: err.message, message: "Auto-send normal PO email failed" })
+          recordFailedEvent("PO_NORMAL_MAIL", mailEventId, { poId, po_no }, err.message)
+        }
+      })()
+
       return NextResponse.json({ ok: true, po_no })
     } catch (err: any) {
       await conn.rollback()
@@ -220,7 +245,7 @@ export const POST = withGateway({
     const [mfgRows] = await conn.execute(mfgsSql.selectNameById, [Number(mfg_id)])
     const mfg = (mfgRows as any[])[0] ?? { code: mfg_id, name: mfg_id }
 
-    const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PO", poId])
+    const [ar] = await conn.execute(approvalsSql.insertApproval, [userId, "PO", poId, "create"])
     const approvalId = (ar as any).insertId
 
     const diffItems: [string, string, string][] = [

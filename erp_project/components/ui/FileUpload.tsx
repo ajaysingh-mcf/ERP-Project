@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 
 const ACCEPT_MAP = {
   image:    "image/jpeg,image/png,image/webp",
-  document: "application/pdf,.xlsx,.csv",
+  document: "application/pdf,image/png,image/jpeg",
   any:      "image/jpeg,image/png,image/webp,application/pdf,.xlsx,.csv",
 }
 
@@ -26,11 +26,14 @@ type FileUploadProps = {
   pendingFile?:    File | null
   /** Called in deferred mode when user picks or removes a file. */
   onFileSelected?: (file: File | null) => void
+  /** Fires true when a live (non-deferred) upload starts, false when it settles.
+   *  Parents use this to keep a submit button disabled mid-upload. */
+  onUploadingChange?: (uploading: boolean) => void
 }
 
 export function FileUpload({
   currentKey, folder, field, label, accept, disabled, onChange,
-  deferred, pendingFile, onFileSelected,
+  deferred, pendingFile, onFileSelected, onUploadingChange,
 }: FileUploadProps) {
   const inputRef               = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -69,10 +72,11 @@ export function FileUpload({
       if (ev.lengthComputable) setProgress(Math.round((ev.loaded / ev.total) * 100))
     }
 
-    xhr.onloadstart = () => { setUploading(true); setProgress(0) }
+    xhr.onloadstart = () => { setUploading(true); setProgress(0); onUploadingChange?.(true) }
 
     xhr.onload = () => {
       setUploading(false)
+      onUploadingChange?.(false)
       if (xhr.status >= 200 && xhr.status < 300) {
         const data = JSON.parse(xhr.responseText)
         setLocalKey(data.key)
@@ -83,7 +87,11 @@ export function FileUpload({
       }
     }
 
-    xhr.onerror = () => { setUploading(false); setError("Upload failed — check your connection") }
+    xhr.onerror = () => {
+      setUploading(false)
+      onUploadingChange?.(false)
+      setError("Upload failed — check your connection")
+    }
 
     xhr.send(form)
   }
