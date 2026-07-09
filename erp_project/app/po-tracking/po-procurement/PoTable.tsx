@@ -126,7 +126,7 @@ function CancelPoDialog({
           description: data.emailed
             ? "Manufacturer notified by email."
             : "No email sent — manufacturer has no email on file.",
-          variant: "success",
+          variant: "error",
         })
         onDone(!!data.emailed)
         onClose()
