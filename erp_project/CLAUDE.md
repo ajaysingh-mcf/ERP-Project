@@ -193,7 +193,7 @@ Dialogs for entities that go through the approval flow must handle three states:
 |---|---|---|
 | Normal | `active` / `inactive` / etc. | Fields editable, button says "Submit for Approval" |
 | Locked | `in_review` | Blue banner shown, all fields disabled, Save button hidden |
-| Rejected | `draft` | Amber banner with rejection reason (fetched from `/api/approvals/entity?module=X&entity_id=Y`), fields editable only by original submitter |
+| Rejected | `rejected` | Amber banner with rejection reason (fetched from `/api/approvals/entity?module=X&entity_id=Y`), fields editable only by original submitter |
 
 Reference implementations: `app/masters/vendors/EditVendorDialog.tsx`, `app/masters/manufacturers/EditMfgDialog.tsx`.
 

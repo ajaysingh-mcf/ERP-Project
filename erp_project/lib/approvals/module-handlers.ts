@@ -6,7 +6,7 @@
  * handler never changes.
  *
  * Interface:
- *   setStatus       — called on reject: reverts entity to "draft"
+ *   setStatus       — called on reject: marks entity as "rejected"
  *   applyAndArchive — called on approve: archives old snapshot, applies diff
  *
  * All methods run inside the caller's open transaction. They must NOT call
@@ -22,7 +22,7 @@ import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { bom as bomSql } from "@/lib/queries/bom"
 import { getFileBuffer } from "@/lib/s3"
-import { recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import { STATUS } from "@/lib/constants"
 import logger from "@/lib/logger"
 
@@ -336,7 +336,7 @@ const mfgHandler: ModuleHandler = {
 
 // ── PO (Impromptu purchase order — creation approval) ─────────────────────────
 // The PO is inserted as 'draft' before approval is submitted.
-// approve → set status to 'raised'   reject → keep as 'draft'
+// approve → set status to 'raised'   reject → set status to 'rejected'
 
 const poHandler: ModuleHandler = {
   async setStatus(conn, entityId, status) {
@@ -420,7 +420,7 @@ const poBulkHandler: ModuleHandler = {
     console.log(`[PO_BULK] ${rows.length} valid rows to insert`)
 
     // ── DB work: count, look up MFG IDs, insert POs ───────────────────────
-    const eventId = `po-bulk-apply-${Date.now()}`
+    const eventId = makeEventId("PO_BULK", "apply")
     const year = new Date().getFullYear()
     const [cntRows] = await conn.execute(
       `SELECT COUNT(*) AS cnt FROM purchase_orders WHERE po_no LIKE 'PO-%'`, []
@@ -553,8 +553,9 @@ const bomHandler: ModuleHandler = {
     // 3. Activate this BOM and deactivate any other active BOM for the same
     //    sku_id — enforces "only one active BOM per SKU" at approval time.
     await conn.execute(bomSql.setBomStatusWithUpdater, [STATUS.ACTIVE, approverId, entityId])
-    logger.info({ module: "BOM", bomId: entityId, skuId: header.sku_id, approverId, message: "BOM activated" })
-    recordProcessedEvent("BOM", `bom-activated-${entityId}-${Date.now()}`, { bomId: entityId, skuId: header.sku_id, approverId })
+    const bomActivateEventId = makeEventId("BOM", "activate", entityId)
+    logger.info({ module: "BOM", eventId: bomActivateEventId, bomId: entityId, skuId: header.sku_id, approverId, message: "BOM activated" })
+    recordProcessedEvent("BOM", bomActivateEventId, { bomId: entityId, skuId: header.sku_id, approverId })
 
     if (header.sku_id) {
       // Read the sibling ids BEFORE deactivating — MariaDB's UPDATE has no
@@ -567,8 +568,9 @@ const bomHandler: ModuleHandler = {
       if (siblingIds.length > 0) {
         await conn.execute(bomSql.deactivateOtherActiveBomsForSku, [header.sku_id, entityId])
         for (const siblingId of siblingIds) {
-          logger.info({ module: "BOM", bomId: siblingId, skuId: header.sku_id, supersededBy: entityId, message: "BOM deactivated (superseded)" })
-          recordProcessedEvent("BOM", `bom-deactivated-${siblingId}-${Date.now()}`, { bomId: siblingId, skuId: header.sku_id, supersededBy: entityId })
+          const bomDeactivateEventId = makeEventId("BOM", "deactivate", siblingId)
+          logger.info({ module: "BOM", eventId: bomDeactivateEventId, bomId: siblingId, skuId: header.sku_id, supersededBy: entityId, message: "BOM deactivated (superseded)" })
+          recordProcessedEvent("BOM", bomDeactivateEventId, { bomId: siblingId, skuId: header.sku_id, supersededBy: entityId })
         }
       }
     }

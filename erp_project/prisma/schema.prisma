@@ -69,8 +69,8 @@ model purchase_orders {
   invoice_no     String?                 @db.VarChar(100)
   destination    String?                 @db.VarChar(100)
   status         purchase_orders_status? @default(draft)
-  po_type        purchase_orders_type?   @default(impromptu)
   attachment_key String?                 @db.Text
+  po_type        purchase_orders_type?   @default(impromptu)
   csv_source_key String?                 @db.VarChar(500)
   email_sent_at  DateTime?               @db.DateTime(0)
   mfgs           master_mfgs             @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "purchase_orders_ibfk_1")
@@ -237,22 +237,22 @@ model details_cost_ext_fixed {
 }
 
 model details_mfg {
-  id              Int                 @id @default(autoincrement())
-  mfg_id          Int
-  location        String?             @db.VarChar(200)
-  gst_number      String?             @db.VarChar(20)
-  status          details_mfg_status? @default(active)
-  registered_name String?             @db.VarChar(255)
-  zone            String?             @db.VarChar(100)
-  bank_name       String?             @db.VarChar(255)
-  ifsc_number     String?             @db.VarChar(11)
-  account_number  String?             @db.VarChar(50)
-  email           String?             @db.VarChar(255)
-  gst_certificate_key  String?        @db.Text
-  cancelled_cheque_key String?        @db.Text
-  pan_card_key         String?        @db.Text
-  misc_document_key    String?        @db.Text
-  master_mfgs     master_mfgs         @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "details_mfg_ibfk_1")
+  id                   Int                 @id @default(autoincrement())
+  mfg_id               Int
+  location             String?             @db.VarChar(200)
+  gst_number           String?             @db.VarChar(20)
+  status               details_mfg_status? @default(active)
+  registered_name      String?             @db.VarChar(255)
+  zone                 String?             @db.VarChar(100)
+  bank_name            String?             @db.VarChar(255)
+  ifsc_number          String?             @db.VarChar(11)
+  account_number       String?             @db.VarChar(50)
+  email                String?             @db.VarChar(255)
+  gst_certificate_key  String?             @db.Text
+  cancelled_cheque_key String?             @db.Text
+  pan_card_key         String?             @db.Text
+  misc_document_key    String?             @db.Text
+  master_mfgs          master_mfgs         @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "details_mfg_ibfk_1")
 
   @@index([mfg_id], map: "mfg_id")
 }
@@ -374,12 +374,12 @@ model master_bom_mfg {
   status           String      @db.VarChar(50)
   effective_from   DateTime    @db.Date
   effective_to     DateTime?   @db.Date
+  created_on       DateTime?   @default(now()) @db.DateTime(0)
+  created_by       Int?
   monthly_capacity Int?
   this_month_plan  Int?
   last_batch_date  DateTime?   @db.Date
   remarks          String?     @db.VarChar(255)
-  created_on       DateTime?   @default(now()) @db.DateTime(0)
-  created_by       Int?
   master_bom       master_bom  @relation(fields: [bom_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bomfg_bom")
   users            users?      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bomfg_creator")
   master_mfgs      master_mfgs @relation(fields: [mfg_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_bomfg_mfg")
@@ -463,10 +463,10 @@ model master_pm {
   name           String            @db.VarChar(200)
   type           String?           @db.VarChar(200)
   hsn_code       String?           @db.VarChar(20)
+  pantone_color  String?           @db.VarChar(50)
   uom            String?           @db.VarChar(20)
   status         master_pm_status?
   pm_code        String?           @db.VarChar(50)
-  pantone_color  String?           @db.VarChar(50)
   pm_mrm_fixed   pm_mrm_fixed[]
   pm_vrm_dynamic pm_vrm_dynamic[]
 
@@ -678,13 +678,13 @@ enum purchase_orders_status {
   partially_received
   received
   cancelled
+  rejected
 }
 
 enum purchase_orders_type {
   normal
   impromptu
 }
-
 
 enum page_permissions_access {
   none
@@ -729,6 +729,7 @@ enum details_vendor_status {
   inactive
   in_review
   draft
+  rejected
 }
 
 enum master_vendors_type {
@@ -742,6 +743,7 @@ enum details_mfg_status {
   inactive
   in_review
   draft
+  rejected
 }
 
 enum master_bom_status {
@@ -750,6 +752,7 @@ enum master_bom_status {
   inactive
   in_review    @map("in review")
   discontinued
+  rejected
 }
 
 enum master_warehouse_type {
@@ -768,6 +771,7 @@ enum master_pm_status {
   discontinued
   in_review
   draft
+  rejected
 }
 
 enum master_skus_status {
@@ -777,6 +781,7 @@ enum master_skus_status {
   new_launch   @map("new launch")
   in_review
   draft
+  rejected
 }
 
 enum master_rm_status {
@@ -785,6 +790,7 @@ enum master_rm_status {
   discontinued
   in_review
   draft
+  rejected
 }
 
 enum history_vrm_status {
@@ -810,6 +816,7 @@ enum pm_mrm_fixed_status {
   discontinued
   in_review
   draft
+  rejected
 }
 
 enum history_bom_status {
@@ -824,6 +831,7 @@ enum pm_vrm_dynamic_status {
   discontinued
   in_review
   draft
+  rejected
 }
 
 enum rm_vrm_dynamic_status {
@@ -832,6 +840,7 @@ enum rm_vrm_dynamic_status {
   discontinued
   in_review
   draft
+  rejected
 }
 
 enum rm_mrm_fixed_status {
@@ -840,4 +849,5 @@ enum rm_mrm_fixed_status {
   discontinued
   in_review
   draft
+  rejected
 }

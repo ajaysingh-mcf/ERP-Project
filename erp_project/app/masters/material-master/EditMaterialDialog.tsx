@@ -75,7 +75,7 @@ export default function EditMaterialDialog({
     setMakeIsNew(false)
     setInciIsNew(false)
 
-    if (row.status === "draft" && row.id) {
+    if (row.status === "rejected" && row.id) {
       const mod = material === "rm" ? "RM_MAT" : "PM_MAT"
       setLoadingInfo(true)
       fetch(`/api/approvals/entity?module=${mod}&entity_id=${row.id}`)
@@ -103,7 +103,7 @@ export default function EditMaterialDialog({
     }
   }, [row, material])
 
-  const isDraft = row?.status === "draft"
+  const isDraft = row?.status === "rejected"
   const canEdit = !isDraft || currentUserId === null || rejection === null || currentUserId === rejection.raised_by
 
   async function handleSubmit() {

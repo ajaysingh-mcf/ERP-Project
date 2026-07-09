@@ -174,6 +174,8 @@ export default function SkusClient({
                     <TableCell>
                       {row.status === "in_review" ? (
                         <Badge variant="warning" className="capitalize">In Review</Badge>
+                      ) : row.status === "rejected" ? (
+                        <Badge variant="destructive" className="capitalize">Rejected</Badge>
                       ) : row.status === "draft" ? (
                         <Badge variant="secondary" className="capitalize">Draft</Badge>
                       ) : (

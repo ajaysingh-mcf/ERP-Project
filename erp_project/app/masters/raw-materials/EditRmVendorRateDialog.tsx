@@ -53,8 +53,8 @@ export function EditRmVendorRateDialog({
       setError(null)
       setRejection(null)
 
-      // For draft rows, fetch rejection reason + ownership info.
-      if (row.vrm_status === "draft" && row.vrm_id) {
+      // For rejected rows, fetch rejection reason + ownership info.
+      if (row.vrm_status === "rejected" && row.vrm_id) {
         setLoadingInfo(true)
         fetch(`/api/approvals/entity?module=RM_VRM&entity_id=${row.vrm_id}`)
           .then((r) => r.json())
@@ -71,7 +71,7 @@ export function EditRmVendorRateDialog({
   if (!row) return null
 
   const today    = new Date().toISOString().slice(0, 10)
-  const isDraft  = row.vrm_status === "draft"
+  const isDraft  = row.vrm_status === "rejected"
   const canEdit  = !isDraft || currentUserId === null || rejection === null || currentUserId === rejection.raised_by
 
   function toDateStr(val: unknown): string {

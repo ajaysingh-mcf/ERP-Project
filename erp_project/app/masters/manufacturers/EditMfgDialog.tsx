@@ -62,7 +62,7 @@ export function EditMfgDialog({
       setError(null)
       setRejection(null)
 
-      if (mfg.status === "draft") {
+      if (mfg.status === "rejected") {
         setLoadingInfo(true)
         fetch(`/api/approvals/entity?module=MFG&entity_id=${mfg.mfg_id}`)
           .then((r) => r.json())
@@ -79,7 +79,7 @@ export function EditMfgDialog({
   if (!mfg) return null
 
   const isInReview = mfg.status === "in_review"
-  const isDraft = mfg.status === "draft"
+  const isDraft = mfg.status === "rejected"
   const canEdit = !isDraft || currentUserId === null || rejection === null || currentUserId === rejection.raised_by
 
   function set(key: string, value: string) {

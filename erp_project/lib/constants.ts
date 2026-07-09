@@ -10,6 +10,7 @@ export const STATUS = {
   DRAFT:     "draft",
   IN_REVIEW: "in_review",
   INACTIVE:  "inactive",
+  REJECTED:  "rejected",
 } as const
 
 export type EntityStatus = typeof STATUS[keyof typeof STATUS]

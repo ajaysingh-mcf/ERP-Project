@@ -49,7 +49,7 @@ export function EditPmMfgRateDialog({
       setError(null)
       setRejection(null)
 
-      if (row.status === "draft" && row.rate_id) {
+      if (row.status === "rejected" && row.rate_id) {
         setLoadingInfo(true)
         fetch(`/api/approvals/entity?module=PM_RATE&entity_id=${row.rate_id}`)
           .then((r) => r.json())
@@ -65,7 +65,7 @@ export function EditPmMfgRateDialog({
 
   if (!row) return null
 
-  const isDraft = row.status === "draft"
+  const isDraft = row.status === "rejected"
   const canEdit = !isDraft || currentUserId === null || rejection === null || currentUserId === rejection.raised_by
 
   function toDateStr(val: unknown): string {

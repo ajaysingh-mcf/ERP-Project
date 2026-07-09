@@ -34,7 +34,7 @@ export default function RejectDialog({
         </DialogHeader>
         <div className="grid gap-3 py-2">
           <p className="text-sm text-muted-foreground">
-            The record will revert to <strong>Draft</strong> so the requester can modify and resubmit.
+            The record will be marked <strong>Rejected</strong> so the requester can modify and resubmit.
           </p>
           <div className="grid gap-1.5">
             <Label htmlFor="remarks">Remarks <span className="text-destructive">*</span></Label>

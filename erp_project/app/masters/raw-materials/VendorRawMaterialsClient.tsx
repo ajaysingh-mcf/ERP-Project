@@ -23,6 +23,7 @@ import { EditRmVendorRateDialog } from "./EditRmVendorRateDialog"
 const vrmStatusBadge = (row: AnyRow) => {
   const s = row.vrm_status as string | null
   if (s === "in_review") return <Badge variant="warning"  className="capitalize">In Review</Badge>
+  if (s === "rejected")  return <Badge variant="destructive" className="capitalize">Rejected</Badge>
   if (s === "draft")     return <Badge variant="secondary" className="capitalize">Draft</Badge>
   return <Badge variant={s === "active" ? "success" : "secondary"} className="capitalize">{s ?? "—"}</Badge>
 }
@@ -110,9 +111,9 @@ export default function VendorRawMaterialsClient({
                   In Review
                 </span>
               )}
-              {typedRow.vrm_status === "draft" && (
-                <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 mr-1">
-                  Draft
+              {typedRow.vrm_status === "rejected" && (
+                <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-red-100 text-red-700 mr-1">
+                  Rejected
                 </span>
               )}
               <button

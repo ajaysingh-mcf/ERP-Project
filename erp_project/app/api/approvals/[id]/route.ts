@@ -4,8 +4,9 @@
 // Approve: delegates to the module's handler (applyAndArchive), then marks
 //          the approval record as approved. All steps run in one transaction.
 //
-// Reject: sets the entity back to "draft" (re-editable) via the module's
-//         handler (setStatus), then records mandatory rejection remarks.
+// Reject: sets the entity to "rejected" (re-editable by the original
+//         submitter) via the module's handler (setStatus), then records
+//         mandatory rejection remarks.
 //
 // Auth: only users with the "admin" or "manager" role may call this endpoint.
 
@@ -18,7 +19,7 @@ import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { MODULE_HANDLERS, type DiffItem } from "@/lib/approvals/module-handlers"
 import { APPROVAL_STATUS, STATUS } from "@/lib/constants"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import { sendPoEmail } from "@/lib/mailer"
 import logger from "@/lib/logger"
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const items = await query<DiffItem>(approvalsSql.getItems, [approvalId])
 
   // ── Event S3 bucket ───────────────────────────────────────────────────
-  const eventId = `approval-${approvalId}-${Date.now()}`
+  const eventId = makeEventId("APPROVAL", "decide", approvalId)
   const eventLogCtx = { ...logCtx, eventId, module: approval.module, entityId: approval.entity_id }
 
   recordRawEvent("APPROVAL", eventId, {
@@ -101,9 +102,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await conn.execute(approvalsSql.markApproved, [approverId, approvalId])
       logger.info({ ...eventLogCtx, message: "Approval applied and archived", approverId })
     } else {
-      await handler.setStatus(conn, approval.entity_id, STATUS.DRAFT)
+      await handler.setStatus(conn, approval.entity_id, STATUS.REJECTED)
       await conn.execute(approvalsSql.markRejected, [approverId, remarks!.trim(), approvalId])
-      logger.info({ ...eventLogCtx, message: "Approval rejected, entity reverted to draft", approverId })
+      logger.info({ ...eventLogCtx, message: "Approval rejected, entity marked as rejected", approverId })
     }
     await conn.commit()
 

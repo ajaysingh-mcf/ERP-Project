@@ -54,7 +54,7 @@ export function EditVendorDialog({
       setError(null)
       setRejection(null)
 
-      if (vendor.status === "draft") {
+      if (vendor.status === "rejected") {
         setLoadingInfo(true)
         fetch(`/api/approvals/entity?module=VENDOR&entity_id=${vendor.vendor_id}`)
           .then((r) => r.json())
@@ -71,7 +71,7 @@ export function EditVendorDialog({
   if (!vendor) return null
 
   const isInReview = vendor.status === "in_review"
-  const isDraft = vendor.status === "draft"
+  const isDraft = vendor.status === "rejected"
   const canEdit = !isDraft || currentUserId === null || rejection === null || currentUserId === rejection.raised_by
 
   function set(key: string, value: string) {
@@ -117,7 +117,7 @@ export function EditVendorDialog({
             </div>
           )}
 
-          {/* Rejection banner for draft rows */}
+          {/* Rejection banner for rejected rows */}
           {isDraft && !loadingInfo && rejection && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">

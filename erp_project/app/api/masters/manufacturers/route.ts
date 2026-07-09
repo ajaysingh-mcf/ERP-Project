@@ -26,7 +26,7 @@ import { pool, query } from "@/lib/db"
 import { manufacturers } from "@/lib/queries/manufacturers"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { parseS3Import } from "@/lib/import-s3"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
@@ -44,7 +44,7 @@ export const POST = withGateway({
       const { location, gst_number, registered_name, zone, bank_name, ifsc_number, account_number, email,
               gst_certificate_key, cancelled_cheque_key, pan_card_key, misc_document_key } = body
 
-      const eventId = `mfg-new-${Date.now()}`
+      const eventId = makeEventId("MFG", "create")
       const logCtx = { ...ctx, eventId, module: "MFG_CREATE" }
       logger.info({ ...logCtx, name, message: "Manufacturer create started" })
       recordRawEvent("MFG", eventId, { name })
@@ -128,7 +128,7 @@ export const POST = withGateway({
     // ── bulk (client-side CSV) ───────────────────────────────────────────────────
     if (body.action === "bulk") {
       const { rows } = body
-      const eventId = `mfg-bulk-${Date.now()}`
+      const eventId = makeEventId("MFG_BULK", "bulk")
       const logCtx = { ...ctx, eventId, module: "MFG_BULK" }
       logger.info({ ...logCtx, rowCount: rows.length, message: "Manufacturer bulk insert started" })
       recordRawEvent("MFG_BULK", eventId, { source: "csv", rowCount: rows.length })
@@ -210,7 +210,7 @@ export const POST = withGateway({
     // ── update_docs (approval flow) ──────────────────────────────────────────────
     if (body.action === "update_docs") {
       const { mfg_id, gst_certificate_key, cancelled_cheque_key, pan_card_key, misc_document_key } = body
-      const eventId = `mfg-docs-${Date.now()}`
+      const eventId = makeEventId("MFG_DOCS", "docs", mfg_id)
       const logCtx = { ...ctx, eventId, module: "MFG_DOCS" }
 
       const pending = await query(approvalsSql.hasPending, ["MFG", mfg_id])
@@ -273,7 +273,7 @@ export const POST = withGateway({
     if (body.action === "update") {
       const { mfg_id, name, location, gst_number, status, registered_name, zone, bank_name, ifsc_number, account_number, email } = body
 
-      const eventId = `mfg-update-${Date.now()}`
+      const eventId = makeEventId("MFG_UPDATE", "update", mfg_id)
       const logCtx = { ...ctx, eventId, module: "MFG_UPDATE" }
 
       const pending = await query(approvalsSql.hasPending, ["MFG", mfg_id])
@@ -318,7 +318,7 @@ export const POST = withGateway({
           ([k, v]) => String(current[k] ?? "") !== String(v ?? "")
         )
 
-        const isDraftResubmit = diff.length === 0 && current.status === "draft"
+        const isDraftResubmit = diff.length === 0 && current.status === "rejected"
 
         if (diff.length === 0 && !isDraftResubmit) {
           await conn.rollback()
@@ -358,7 +358,7 @@ export const POST = withGateway({
     // ── bulk_from_s3 ─────────────────────────────────────────────────────────────
     if(body.action === "bulk_from_s3") {
       const { key } = body
-      const eventId = `mfg-bulk-CSV-${Date.now()}`
+      const eventId = makeEventId("MFG_BULK", "bulk-csv")
       const logCtx = { ...ctx, eventId, module: "MFG_BULK" }
 
       let rawRows

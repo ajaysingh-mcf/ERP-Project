@@ -27,7 +27,7 @@ export async function applyVendorRateApproval(
   setVendorRateStatusSql: string,
 ): Promise<void> {
   if (existing.status === "in_review") return
-  if (existing.status === "draft") {
+  if (existing.status === "rejected") {
     const [rejRows] = await conn.execute(approvalsSql.selectLatestRejection, [moduleVrm, existing.id])
     const rej = (rejRows as any[])[0]
     if (rej && rej.raised_by !== userId) return
@@ -62,7 +62,7 @@ export async function applyMfgRateApproval(
   setRateStatusSql: string,
 ): Promise<void> {
   if (existing.status === "in_review") return
-  if (existing.status === "draft") {
+  if (existing.status === "rejected") {
     const [rejRows] = await conn.execute(approvalsSql.selectLatestRejection, [moduleMrm, existing.id])
     const rej = (rejRows as any[])[0]
     if (rej && rej.raised_by !== userId) return

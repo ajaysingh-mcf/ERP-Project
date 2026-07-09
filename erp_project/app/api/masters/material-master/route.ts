@@ -4,7 +4,7 @@ import { rawMaterials } from "@/lib/queries/raw-materials"
 import { packingMaterials as PMMaterials } from "@/lib/queries/packing-materials"
 import { approvalsSql } from "@/lib/queries/approvals"
 import logger from "@/lib/logger"
-import { recordRawEvent, recordFailedEvent, recordProcessedEvent } from "@/lib/events"
+import { recordRawEvent, recordFailedEvent, recordProcessedEvent, makeEventId } from "@/lib/events"
 import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
 import { materialMasterCreateSchema, materialMasterUpdateSchema } from "@/lib/validation/material-master"
@@ -24,7 +24,7 @@ export const POST = withGateway({
       const inci_name = body.inci_name.trim()
       const { type, uom, hsn_code } = body
 
-      const eventId = `rm-create-${Date.now()}`
+      const eventId = makeEventId("RM_MAT", "create")
       const logCtx = { ...ctx, eventId, module: "RM_MAT" }
       logger.info({ ...logCtx, name, make, inci_name, message: "Raw material create started" })
       recordRawEvent("RM_MAT", eventId, { name, make, inci_name })
@@ -83,7 +83,7 @@ export const POST = withGateway({
       const type = body.type.trim()
       const { uom, hsn_code } = body
 
-      const eventId = `pm-create-${Date.now()}`
+      const eventId = makeEventId("PM", "create")
       const logCtx = { ...ctx, eventId, module: "PM" }
 
       logger.info({ ...logCtx, name, type, message: "Packing material create started" })
@@ -169,7 +169,7 @@ export const PUT = withGateway({
       const inci_name = body.inci_name.trim()
       const { type, uom, status, hsn_code } = body
 
-      const eventId = `rm-update-${Date.now()}`
+      const eventId = makeEventId("RM_UPDATE", "update", id)
       const logCtx = { ...ctx, eventId, module: "RM_UPDATE" }
       logger.info({ ...logCtx, id, name, make, inci_name, message: "Raw material update started" })
       const curRows = await query<any>(rawMaterials.selectBaseById, [id])
@@ -182,11 +182,11 @@ export const PUT = withGateway({
         logger.warn({ ...logCtx, id, message: "Raw material already pending approval" })
         throw new ApiError(409, "pending_approval", "This record is already pending approval.")
       }
-      // For draft rows, only the original submitter may re-edit.
-      if (cur.status === "draft") {
+      // For rejected rows, only the original submitter may re-edit.
+      if (cur.status === "rejected") {
         const rejRows = await query<{ raised_by: number }>(approvalsSql.selectLatestRejection, ["RM_MAT", id])
         if (rejRows[0] && rejRows[0].raised_by !== userId) {
-          logger.warn({ ...logCtx, id, userId, message: "Unauthorized draft edit attempt" })
+          logger.warn({ ...logCtx, id, userId, message: "Unauthorized rejected-record edit attempt" })
           throw new ApiError(403, "forbidden", "Only the original submitter can re-edit a rejected record.")
         }
       }
@@ -241,7 +241,7 @@ export const PUT = withGateway({
       const type = body.type.trim()
       const { uom, status, hsn_code } = body
 
-      const eventId = `pm-update-${Date.now()}`
+      const eventId = makeEventId("PM_UPDATE", "update", id)
       const logCtx = { ...ctx, eventId, module: "PM_UPDATE" }
       logger.info({ ...logCtx, id, name, type, message: "Packing material update started" })
       const curRows = await query<any>(PMMaterials.selectBaseById, [id])
@@ -254,11 +254,11 @@ export const PUT = withGateway({
         logger.warn({ ...logCtx, id, message: "Packing material already pending approval" })
         throw new ApiError(409, "pending_approval", "This record is already pending approval.")
       }
-      if (cur.status === "draft") {
+      if (cur.status === "rejected") {
         const rejRows = await query<{ raised_by: number }>(approvalsSql.selectLatestRejection, ["PM_MAT", id])
-        logger.info({ ...logCtx, id, userId, message: "Draft saved in approval table." })
+        logger.info({ ...logCtx, id, userId, message: "Rejected record re-edit submitted for approval." })
         if (rejRows[0] && rejRows[0].raised_by !== userId) {
-          logger.warn({ ...logCtx, id, userId, message: "Unauthorized draft edit attempt" })
+          logger.warn({ ...logCtx, id, userId, message: "Unauthorized rejected-record edit attempt" })
           throw new ApiError(403, "forbidden", "Only the original submitter can re-edit a rejected record.")
         }
       }

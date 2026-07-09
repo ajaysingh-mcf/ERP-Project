@@ -73,16 +73,23 @@ function serializeCell(
 
 // ── Filename builder ─────────────────────────────────────────────────────────
 
+/** Max characters kept from any single filter value in the filename suffix. */
+const MAX_VALUE_LENGTH = 16
+
 /**
  * Build an export filename that embeds the current date and any active filter
- * values so the downloaded file is self-descriptive.
+ * *values* so the downloaded file is self-descriptive — field names are never
+ * included, only what the user actually picked.
  *
- * Example: buildExportFilename("vendors", "csv", { type: "rm", zone: "West" })
- *          → "vendors_2026-07-02_type-rm_zone-west.csv"
+ * Example: buildExportFilename("vendors", "csv", { type: "rm", zone: "West", status: "active" })
+ *          → "vendors_2026-07-02_rm_west_active.csv"
  *
  * Rules:
  *   - Null / empty values are skipped (no suffix emitted for that filter).
- *   - Values are lower-cased and spaces replaced with hyphens for safe filenames.
+ *   - Only the value is used — field names are dropped entirely
+ *     (e.g. status: "active" → "_active", not "_status-active").
+ *   - Values are lower-cased, spaces replaced with hyphens, and truncated to
+ *     MAX_VALUE_LENGTH so a long free-text search doesn't bloat the filename.
  *   - Key order in the object determines suffix order.
  */
 export function buildExportFilename(
@@ -93,7 +100,9 @@ export function buildExportFilename(
   const date   = new Date().toISOString().split("T")[0]
   const suffix = Object.entries(filters)
     .filter(([, v]) => v)
-    .map(([k, v]) => `_${k}-${v!.toLowerCase().replace(/\s+/g, "-")}`)
+    .map(([, v]) =>
+      `_${v!.toLowerCase().replace(/\s+/g, "-").slice(0, MAX_VALUE_LENGTH)}`
+    )
     .join("")
   return `${base}_${date}${suffix}.${format}`
 }

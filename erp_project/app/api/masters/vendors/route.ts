@@ -27,7 +27,7 @@ import { pool, query } from "@/lib/db"
 import { vendors } from "@/lib/queries/vendors"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { parseS3Import } from "@/lib/import-s3"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
@@ -45,7 +45,7 @@ export const POST = withGateway({
       const type = body.type.trim()
       const { location, zone, registered_name, gst_certificate_key, cancelled_cheque_key, pan_card_key, misc_document_key } = body
 
-      const eventId = `vendor-new-${Date.now()}`
+      const eventId = makeEventId("VENDOR", "create")
       const logCtx = { ...ctx, eventId, module: "VEN_Create" }
       logger.info({ ...logCtx, name, type, message: "Vendor Create Started" })
       recordRawEvent("VENDOR", eventId, { name, type })
@@ -120,7 +120,7 @@ export const POST = withGateway({
     // ── bulk (client-side CSV) ───────────────────────────────────────────────────
     if (body.action === "bulk") {
       const { rows } = body
-      const eventId = `vendor-bulk-${Date.now()}`
+      const eventId = makeEventId("VENDOR_BULK", "bulk")
       const logCtx = { ...ctx, eventId, module: "VENDOR_BULK" }
       logger.info({ ...logCtx, rows: rows.length, message: "Vendor Bulk insert started." })
       recordRawEvent("VENDOR_BULK", eventId, { source: "csv", rowCount: rows.length })
@@ -195,7 +195,7 @@ export const POST = withGateway({
     if (body.action === "update") {
       const { vendor_id, name, type, location, status, zone, registered_name } = body
 
-      const eventId = `vendor-update-${Date.now()}`
+      const eventId = makeEventId("VENDOR_UPDATE", "update", vendor_id)
       const logCtx = { ...ctx, eventId, module: "VENDOR_UPDATE" }
 
       const pending = await query(approvalsSql.hasPending, ["VENDOR", vendor_id])
@@ -233,7 +233,7 @@ export const POST = withGateway({
           ([k, v]) => String(current[k] ?? "") !== String(v ?? "")
         )
 
-        const isDraftResubmit = diff.length === 0 && current.status === "draft"
+        const isDraftResubmit = diff.length === 0 && current.status === "rejected"
         if (diff.length === 0 && !isDraftResubmit) {
           await conn.rollback()
           return NextResponse.json({ ok: true, message: "No changes detected" })
@@ -275,7 +275,7 @@ export const POST = withGateway({
     // ── bulk_from_s3 ─────────────────────────────────────────────────────────────
     if(body.action === "bulk_from_s3") {
       const { key } = body
-      const eventId = `vendor-bulk-${Date.now()}`
+      const eventId = makeEventId("VENDOR_BULK", "bulk-s3")
       const logCtx = { ...ctx, eventId, module: "VENDOR_BULK" }
 
       let rawRows
@@ -364,7 +364,7 @@ export const POST = withGateway({
       const { vendor_id, gst_certificate_key, cancelled_cheque_key, pan_card_key, misc_document_key } = body
       const vendorId = Number(vendor_id)
 
-      const eventId = `vendor-docs-${Date.now()}`
+      const eventId = makeEventId("VENDOR_DOCS", "docs", vendorId)
       const logCtx = { ...ctx, eventId, module: "VENDOR_DOCS" }
 
       const pending = await query(approvalsSql.hasPending, ["VENDOR", vendorId])

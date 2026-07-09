@@ -53,7 +53,7 @@ export function EditPmVendorRateDialog({
       setError(null)
       setRejection(null)
 
-      if (row.status === "draft" && row.vrm_id) {
+      if (row.status === "rejected" && row.vrm_id) {
         setLoadingInfo(true)
         fetch(`/api/approvals/entity?module=PM_VRM&entity_id=${row.vrm_id}`)
           .then((r) => r.json())
@@ -70,7 +70,7 @@ export function EditPmVendorRateDialog({
   if (!row) return null
 
   const today    = new Date().toISOString().slice(0, 10)
-  const isDraft  = row.status === "draft"
+  const isDraft  = row.status === "rejected"
   const canEdit  = !isDraft || currentUserId === null || rejection === null || currentUserId === rejection.raised_by
 
   function toDateStr(val: unknown): string {
