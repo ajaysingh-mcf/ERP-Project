@@ -6,7 +6,7 @@ import { approvalsSql } from "@/lib/queries/approvals"
 import { skus as skusSql } from "@/lib/queries/skus"
 import { manufacturers as mfgsSql } from "@/lib/queries/manufacturers"
 import { getFileBuffer } from "@/lib/s3"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import type { PoolConnection } from "mysql2/promise"
 import logger from "@/lib/logger"
 import { withGateway } from "@/lib/gateway/with-gateway"
@@ -101,7 +101,7 @@ export const POST = withGateway({
       throw new ApiError(422, "no_valid_rows", "No valid data rows found — check mfg_code, sku_code, qty columns.")
     }
 
-    const eventId = `po-bulk-${Date.now()}`
+    const eventId = makeEventId("PO_BULK", "bulk")
     recordRawEvent("PO_BULK", eventId, { filename, s3Key, rowCount: validRows.length })
 
     const year  = new Date().getFullYear()
@@ -130,13 +130,13 @@ export const POST = withGateway({
       }
 
       await conn.commit()
-      logger.info({ ...ctx, filename, s3Key, inserted, skipped, message: "Bulk CSV PO insert committed" })
+      logger.info({ ...ctx, eventId, filename, s3Key, inserted, skipped, message: "Bulk CSV PO insert committed" })
       recordProcessedEvent("PO_BULK", eventId, { filename, s3Key, inserted, skipped })
       return NextResponse.json({ ok: true, inserted, skipped })
     } catch (err: any) {
       await conn.rollback()
       recordFailedEvent("PO_BULK", eventId, { filename, s3Key }, err.message)
-      logger.error({ ...ctx, err: err.message, stack: err.stack, message: "Bulk CSV PO insert failed" })
+      logger.error({ ...ctx, eventId, err: err.message, stack: err.stack, message: "Bulk CSV PO insert failed" })
       throw new ApiError(500, "internal", "Database error: " + err.message)
     } finally {
       conn.release()
@@ -179,7 +179,7 @@ export const POST = withGateway({
   const unitPrice   = unit_price   != null && unit_price   !== "" ? Number(unit_price)   : null
   const totalAmount = total_amount != null && total_amount !== "" ? Number(total_amount) : null
 
-  const eventId = `po-new-${Date.now()}`
+  const eventId = makeEventId("PO", "create")
   recordRawEvent("PO", eventId, { mfg_id, sku_code, qty, unit_price: unitPrice, expected_on, destination, reason, po_type })
 
   // ── Normal PO: insert directly as raised, no approval needed ──────────────
@@ -192,12 +192,12 @@ export const POST = withGateway({
       ])
       const poId = (poResult as any).insertId
       await conn.commit()
-      logger.info({ ...ctx, poId, po_no, message: "Normal PO created" })
+      logger.info({ ...ctx, eventId, poId, po_no, message: "Normal PO created" })
       recordProcessedEvent("PO", eventId, { poId, po_no })
       return NextResponse.json({ ok: true, po_no })
     } catch (err: any) {
       await conn.rollback()
-      logger.error({ ...ctx, err: err.message, stack: err.stack, message: "Normal PO create failed" })
+      logger.error({ ...ctx, eventId, err: err.message, stack: err.stack, message: "Normal PO create failed" })
       recordFailedEvent("PO", eventId, { mfg_id, sku_code, qty, expected_on, destination }, err.message)
       if (err.code === "ER_DUP_ENTRY") {
         throw new ApiError(409, "duplicate", "PO number already exists, please retry.")
@@ -238,13 +238,13 @@ export const POST = withGateway({
     }
 
     await conn.commit()
-    logger.info({ ...ctx, poId, po_no, approvalId, message: "Impromptu PO submitted for approval" })
+    logger.info({ ...ctx, eventId, poId, po_no, approvalId, message: "Impromptu PO submitted for approval" })
     recordProcessedEvent("PO", eventId, { poId, po_no, approvalId })
     return NextResponse.json({ ok: true, approval_id: approvalId, po_no })
   } catch (err: any) {
     await conn.rollback()
     recordFailedEvent("PO", eventId, { mfg_id, sku_code, qty, expected_on, destination, reason }, err.message)
-    logger.error({ ...ctx, err: err.message, stack: err.stack, message: "Impromptu PO create failed" })
+    logger.error({ ...ctx, eventId, err: err.message, stack: err.stack, message: "Impromptu PO create failed" })
     if (err.code === "ER_DUP_ENTRY") {
       throw new ApiError(409, "duplicate", "PO number already exists, please retry.")
     }

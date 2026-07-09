@@ -20,6 +20,7 @@ import { query } from "@/lib/db"
 import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
 import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { MFG_EXPORT_COLUMNS } from "@/lib/export-configs"
+import logger from "@/lib/logger"
 
 const ROW_LIMIT = 50_000
 
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
       filterParams
     )
 
-    const filename = buildExportFilename("manufacturers", format, { search: search || null })
+    const filename = buildExportFilename("MFG", format, { search: search || null })
     console.log(`[/api/masters/manufacturers/export] served ${rows.length} rows as ${format}`)
 
     if (format === "xlsx") {

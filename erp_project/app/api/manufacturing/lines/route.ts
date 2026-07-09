@@ -11,7 +11,7 @@ import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
 import { mfgLineActionSchema } from "@/lib/validation/manufacturing"
 import { manufacturingSql } from "@/lib/queries/manufacturing"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 
 export const POST = withGateway({
@@ -21,7 +21,7 @@ export const POST = withGateway({
     const userId = Number(session.user.id)
 
     if (body.action === "create") {
-      const eventId = `mfgline-create-${body.mfg_id}-${body.bom_id}-${Date.now()}`
+      const eventId = makeEventId("MFG_LINE", "create", `${body.mfg_id}-${body.bom_id}`)
       const logCtx = { ...ctx, eventId, module: "MFG_LINE_CREATE" }
       logger.info({ ...logCtx, mfgId: body.mfg_id, bomId: body.bom_id, status: body.status, message: "Manufacturing line create started" })
       recordRawEvent("MFG_LINE", eventId, { mfgId: body.mfg_id, bomId: body.bom_id, status: body.status })
@@ -50,7 +50,7 @@ export const POST = withGateway({
     }
 
     // action === "update"
-    const eventId = `mfgline-update-${body.id}-${Date.now()}`
+    const eventId = makeEventId("MFG_LINE_UPDATE", "update", body.id)
     const logCtx = { ...ctx, eventId, module: "MFG_LINE_UPDATE" }
     logger.info({ ...logCtx, id: body.id, status: body.status, message: "Manufacturing line update started" })
     recordRawEvent("MFG_LINE_UPDATE", eventId, { id: body.id, status: body.status })

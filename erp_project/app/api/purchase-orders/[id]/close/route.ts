@@ -9,7 +9,7 @@ import { auth } from "@/lib/auth"
 import { query, execute } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import logger from "@/lib/logger"
-import { recordFailedEvent, recordProcessedEvent, recordRawEvent } from "@/lib/events"
+import { recordFailedEvent, recordProcessedEvent, recordRawEvent, makeEventId } from "@/lib/events"
 
 const CLOSEABLE = new Set(["raised", "punched", "partially_received"])
 
@@ -24,8 +24,8 @@ export async function POST(
   const { id } = await params
   const poId = parseInt(id)
   if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
-  const eventId = `po-short-close-${poId}-${Date.now()}`
-  const logCtx = { requestId: crypto.randomUUID(), userId, route: `/api/purchase-orders/${poId}/close` }
+  const eventId = makeEventId("PO_CLOSE", "short-close", poId)
+  const logCtx = { requestId: crypto.randomUUID(), userId, route: `/api/purchase-orders/${poId}/close`, eventId }
   recordRawEvent("PO_CLOSE", eventId, { poId, userId })
 
   try {

@@ -13,53 +13,47 @@
  * manually-typed rate.
  */
 
-import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { NextResponse } from "next/server"
 import { query } from "@/lib/db"
 import { manufacturingSql } from "@/lib/queries/manufacturing"
 import type { MiscCostType } from "@/types/masters"
+import { withGateway } from "@/lib/gateway/with-gateway"
+import { ApiError } from "@/lib/gateway/errors"
+import { quoteRateQuerySchema } from "@/lib/validation/purchase-order-detail"
 
-export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+export const GET = withGateway({
+  handler: async ({ req }) => {
+    const parsed = quoteRateQuerySchema.safeParse(Object.fromEntries(req.nextUrl.searchParams))
+    if (!parsed.success) {
+      throw new ApiError(400, "validation_error", "Invalid query parameters", parsed.error.flatten())
+    }
+    const { sku_code: skuCode, mfg_id: mfgId } = parsed.data
 
-  const sp = req.nextUrl.searchParams
-  const skuCode = sp.get("sku_code")
-  const mfgId = Number(sp.get("mfg_id"))
-  if (!skuCode || !mfgId) {
-    return NextResponse.json({ error: "sku_code and mfg_id are required" }, { status: 400 })
-  }
+    const [lineRows, materialCostRows, miscCostRows] = await Promise.all([
+      query<{ bom_id: number; sku_code: string }>(manufacturingSql.selectLinesByMfg, [mfgId, "active", "active"]),
+      query<{ bom_id: number; rm_cost: string; pm_cost: string }>(manufacturingSql.selectMaterialCostByMfg, [mfgId, mfgId, mfgId]),
+      query<{ bom_id: number; type: MiscCostType; cost: string }>(manufacturingSql.selectMiscCostsByMfg, [mfgId]),
+    ])
 
-  const [lineRows, materialCostRows, miscCostRows] = await Promise.all([
-    query<{ bom_id: number; sku_code: string }>(manufacturingSql.selectLinesByMfg, [mfgId, "active", "active"]),
-    query<{ bom_id: number; rm_cost: string; pm_cost: string }>(manufacturingSql.selectMaterialCostByMfg, [mfgId, mfgId, mfgId]),
-    query<{ bom_id: number; type: MiscCostType; cost: string }>(manufacturingSql.selectMiscCostsByMfg, [mfgId]),
-  ])
+    const line = lineRows.find((l) => l.sku_code === skuCode)
+    if (!line) {
+      throw new ApiError(404, "no_line", "No active production line links this SKU to the selected manufacturer.")
+    }
 
-  const line = lineRows.find((l) => l.sku_code === skuCode)
-  if (!line) {
-    return NextResponse.json(
-      { error: "No active production line links this SKU to the selected manufacturer." },
-      { status: 404 }
-    )
-  }
+    const material = materialCostRows.find((r) => r.bom_id === line.bom_id)
+    if (!material) {
+      throw new ApiError(404, "no_costing", "No costing available for this SKU/Manufacturer combination.")
+    }
 
-  const material = materialCostRows.find((r) => r.bom_id === line.bom_id)
-  if (!material) {
-    return NextResponse.json(
-      { error: "No costing available for this SKU/Manufacturer combination." },
-      { status: 404 }
-    )
-  }
+    const rm = Number(material.rm_cost)
+    const pm = Number(material.pm_cost)
+    const misc: Record<MiscCostType, number> = { jw: 0, shrink: 0, shipper: 0 }
+    for (const r of miscCostRows) {
+      if (r.bom_id === line.bom_id) misc[r.type] = Number(r.cost)
+    }
+    const wastage = (rm + pm) * 0.10
+    const rate = rm + pm + wastage + misc.jw + misc.shrink + misc.shipper
 
-  const rm = Number(material.rm_cost)
-  const pm = Number(material.pm_cost)
-  const misc: Record<MiscCostType, number> = { jw: 0, shrink: 0, shipper: 0 }
-  for (const r of miscCostRows) {
-    if (r.bom_id === line.bom_id) misc[r.type] = Number(r.cost)
-  }
-  const wastage = (rm + pm) * 0.10
-  const rate = rm + pm + wastage + misc.jw + misc.shrink + misc.shipper
-
-  return NextResponse.json({ rate })
-}
+    return NextResponse.json({ rate })
+  },
+})

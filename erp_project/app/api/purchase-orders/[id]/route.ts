@@ -11,7 +11,7 @@ import { approvalsSql } from "@/lib/queries/approvals"
 import { skus as skusSql } from "@/lib/queries/skus"
 import { manufacturers as mfgsSql } from "@/lib/queries/manufacturers"
 import { deleteFile } from "@/lib/s3"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 
 export async function PUT(
@@ -76,7 +76,7 @@ export async function PUT(
   }
 
   const ctx = { requestId: crypto.randomUUID(), userId, route: `/api/purchase-orders/${poId}` }
-  const eventId = `po-edit-${poId}-${Date.now()}`
+  const eventId = makeEventId("PO", "edit", poId)
   const logCtx = { ...ctx, eventId, module: "PO_EDIT" }
   logger.info({ ...logCtx, poId, mfg_id, sku_code, qty, message: "PO re-edit started" })
   recordRawEvent("PO", eventId, { poId, mfg_id, sku_code, qty, expected_on, destination, reason })

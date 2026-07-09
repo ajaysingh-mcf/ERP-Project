@@ -81,7 +81,7 @@ recordProcessedEvent("VENDOR", eventId, requestPayload)
 recordFailedEvent("VENDOR", eventId, requestPayload, err.message)
 ```
 
-S3 key pattern: `{raw|processed|failed}-events/{module}/YYYY-MM-DD/{eventId}.json`
+S3 key pattern: `{raw|processed|failed}-events/{module}/{eventId}.json` — the key is derived directly from `eventId`, the same id passed to `logger.info`/`logger.error`, so a logged eventId always resolves to the exact object (no separate random id, no need to know the date to search). Build `eventId` with `makeEventId(module, action, ref?)` from `lib/events.ts` rather than a hand-rolled template string.
 
 ---
 
@@ -270,9 +270,9 @@ Extended to support `.xlsx` files:
 | `purchase-orders/{mfg_name}/{yyyy-mm}/PO-{po_no}.pdf` | FILES | Auto-generated PO PDF — uploaded on approval, attached to the email |
 | `attachments/purchase-orders/{id}/{field}.{ext}` | FILES | Manual PO attachment uploaded via `FileUpload` component |
 | `imports/{module}/{yyyy-mm}/{filename}_{ts}.{ext}` | FILES | CSV/Excel files for bulk imports (masters and PO bulk CSV) |
-| `raw-events/{module}/YYYY-MM-DD/` | EVENTS | Pre-DB-write payloads |
-| `processed-events/{module}/YYYY-MM-DD/` | EVENTS | Successful DB writes |
-| `failed-events/{module}/YYYY-MM-DD/` | EVENTS | Failed DB writes |
+| `raw-events/{module}/{eventId}.json` | EVENTS | Pre-DB-write payloads |
+| `processed-events/{module}/{eventId}.json` | EVENTS | Successful DB writes |
+| `failed-events/{module}/{eventId}.json` | EVENTS | Failed DB writes |
 
 **Module codes used in event keys:** `SKU`, `VENDOR`, `MFG`, `RM`, `PM`, `PO`, `PO_BULK`, `PO_SPLIT`.
 
@@ -298,10 +298,12 @@ New prefixes can be added at any time — no AWS Console changes required.
 ### Add event recording to an API route
 
 ```typescript
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 
-// Generate a simple event ID (e.g. timestamp + entity id)
-const eventId = `${Date.now()}-${entityId}`
+// Same eventId is used for logger.info(...) and the S3 key -- makeEventId()
+// bakes in module + action + entity ref + timestamp so both sides carry the
+// same specific, backtrackable id.
+const eventId = makeEventId("MODULE_CODE", "create", entityId)
 
 recordRawEvent("MODULE_CODE", eventId, requestBody)
 

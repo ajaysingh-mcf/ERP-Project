@@ -5,7 +5,7 @@ import { generatePoPdf, type PoEmailData } from "@/lib/pdf/po-document"
 import { uploadFile, getFileBuffer } from "@/lib/s3"
 import { s3FilesSql } from "@/lib/queries/s3-files"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 import crypto from "crypto"
 
@@ -67,7 +67,7 @@ export async function sendPoEmail(
     return false
   }
 
-  const eventId = `po-email-${poId}-${Date.now()}`
+  const eventId = makeEventId("PO_EMAIL", "send", poId)
   recordRawEvent("PO_EMAIL", eventId, {
     poId,
     po_no:     data.po_no,
@@ -81,7 +81,7 @@ export async function sendPoEmail(
     pdfBuffer = await generatePoPdf(data)
     console.log(`[mailer] PDF generated for PO ${data.po_no} (${pdfBuffer.length} bytes)`)
   } catch (pdfErr: any) {
-    logger.error({ ...ctx, err: pdfErr.message, stack: pdfErr.stack, message: "PO email PDF generation failed" })
+    logger.error({ ...ctx, eventId, err: pdfErr.message, stack: pdfErr.stack, message: "PO email PDF generation failed" })
     recordFailedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no }, "PDF generation failed: " + pdfErr.message)
     throw new Error("PDF generation failed: " + pdfErr.message)
   }
@@ -141,12 +141,12 @@ export async function sendPoEmail(
       ],
     })
   } catch (sendErr: any) {
-    logger.error({ ...ctx, err: sendErr.message, stack: sendErr.stack, message: "PO email send failed" })
+    logger.error({ ...ctx, eventId, err: sendErr.message, stack: sendErr.stack, message: "PO email send failed" })
     // console.error("[mailer] sendMail failed:", sendErr)
     recordFailedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no }, sendErr.message)
     throw sendErr
   }
-  logger.info({ ...ctx, poId, po_no: data.po_no, mfg_email: data.mfg_email, message: "PO email sent successfully" })
+  logger.info({ ...ctx, eventId, poId, po_no: data.po_no, mfg_email: data.mfg_email, message: "PO email sent successfully" })
   // console.log(`[mailer] PO ${data.po_no} sent to ${data.mfg_email}`)
   recordProcessedEvent("PO_EMAIL", eventId, {
     poId,
@@ -180,7 +180,7 @@ export async function sendPoCancellationEmail(poId: number, reason?: string): Pr
     return false
   }
 
-  const eventId = `po-cancel-email-${poId}-${Date.now()}`
+  const eventId = makeEventId("PO_EMAIL", "cancel-email", poId)
   recordRawEvent("PO_EMAIL", eventId, {
     poId,
     po_no:     data.po_no,
@@ -228,12 +228,12 @@ export async function sendPoCancellationEmail(poId: number, reason?: string): Pr
       attachments: pdfBuffer ? [{ filename: `PO-${data.po_no}.pdf`, content: pdfBuffer }] : undefined,
     })
   } catch (sendErr: any) {
-    logger.error({ ...ctx, err: sendErr.message, stack: sendErr.stack, message: "PO cancellation email send failed" })
+    logger.error({ ...ctx, eventId, err: sendErr.message, stack: sendErr.stack, message: "PO cancellation email send failed" })
     recordFailedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no }, sendErr.message)
     throw sendErr
   }
 
-  logger.info({ ...ctx, poId, po_no: data.po_no, mfg_email: data.mfg_email, message: "PO cancellation email sent successfully" })
+  logger.info({ ...ctx, eventId, poId, po_no: data.po_no, mfg_email: data.mfg_email, message: "PO cancellation email sent successfully" })
   recordProcessedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no, mfg_email: data.mfg_email })
   return true
 }

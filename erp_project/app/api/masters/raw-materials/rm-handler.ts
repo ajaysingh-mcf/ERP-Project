@@ -3,7 +3,7 @@ import { query, pool } from "@/lib/db"
 import { rawMaterials } from "@/lib/queries/raw-materials"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { parseS3Import } from "@/lib/import-s3"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval } from "../../../../lib/master-routes/material-utils"
 
@@ -43,7 +43,7 @@ export async function rmCreate(body: any, userId: number, ctx: object): Promise<
   if (!body.name?.trim()) return NextResponse.json({ error: "name is required" }, { status: 400 })
 
   const today = new Date().toISOString().slice(0, 10)
-  const logCtx = { ...ctx, eventId: `rm-new-${Date.now()}`, module: "RM_Create" }
+  const logCtx = { ...ctx, eventId: makeEventId("RM_MAT", "create"), module: "RM_Create" }
   logger.info({ ...logCtx, name: body.name.trim(), message: "RM Create Started" })
   recordRawEvent("RM_MAT", logCtx.eventId, { name: body.name.trim() })
 
@@ -141,7 +141,7 @@ export async function rmCreateFull(body: any, userId: number, ctx: object): Prom
   if (!rm?.name?.trim()) return NextResponse.json({ error: "name is required" }, { status: 400 })
 
   const today = new Date().toISOString().slice(0, 10)
-  const logCtx = { ...ctx, eventId: `rm-create-full-${Date.now()}`, module: "RM_CreateFull" }
+  const logCtx = { ...ctx, eventId: makeEventId("RM_FULL", "create-full"), module: "RM_CreateFull" }
   logger.info({ ...logCtx, name: rm.name.trim(), vendors: vendorList.length, mfgs: mfgList.length, message: "RM Create-Full Started" })
   recordRawEvent("RM_FULL", logCtx.eventId, { name: rm.name.trim(), vendorCount: vendorList.length, mfgCount: mfgList.length })
 
@@ -217,7 +217,7 @@ export async function rmAddRates(body: any, userId: number, ctx: object): Promis
   if (vendorList.length === 0 && mfgList.length === 0)
     return NextResponse.json({ error: "Provide at least one vendor rate or manufacturer" }, { status: 400 })
 
-  const logCtx = { ...ctx, eventId: `rm-add-rates-${Date.now()}`, module: "RM_AddRates" }
+  const logCtx = { ...ctx, eventId: makeEventId("RM_RATES", "add-rates"), module: "RM_AddRates" }
   logger.info({ ...logCtx, name: name.trim(), message: "RM Add Rates Started" })
   recordRawEvent("RM_RATES", logCtx.eventId, { name: name.trim() })
 
@@ -290,7 +290,7 @@ export async function rmBulk(body: any, userId: number, ctx: object): Promise<Ne
   if (!Array.isArray(rows) || rows.length === 0)
     return NextResponse.json({ error: "No rows provided" }, { status: 400 })
 
-  const logCtx = { ...ctx, eventId: `rm-bulk-${Date.now()}`, module: "RM_Bulk" }
+  const logCtx = { ...ctx, eventId: makeEventId("RM_BULK", "bulk"), module: "RM_Bulk" }
   logger.info({ ...logCtx, rowCount: rows.length, message: "RM Bulk Insert Started" })
   recordRawEvent("RM_BULK", logCtx.eventId, { rowCount: rows.length })
 
@@ -334,7 +334,7 @@ export async function rmS3Bulk(body: any, userId: number, ctx: object): Promise<
   const { key } = body
   if (!key?.trim()) return NextResponse.json({ error: "key is required" }, { status: 400 })
 
-  const logCtx = { ...ctx, eventId: `rm-s3bulk-${Date.now()}`, module: "RM_S3Bulk" }
+  const logCtx = { ...ctx, eventId: makeEventId("RM_S3BULK", "bulk-s3"), module: "RM_S3Bulk" }
   logger.info({ ...logCtx, s3Key: key, message: "RM S3 Bulk Import Started" })
   recordRawEvent("RM_S3BULK", logCtx.eventId, { s3Key: key, rowCount: null })
 

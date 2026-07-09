@@ -10,7 +10,7 @@ import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
 import { miscCostActionSchema } from "@/lib/validation/manufacturing"
 import { manufacturingSql } from "@/lib/queries/manufacturing"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 
 export const POST = withGateway({
@@ -18,7 +18,7 @@ export const POST = withGateway({
   access: { pageSlug: "/manufacturing", level: "editor" },
   handler: async ({ body, ctx }) => {
     if (body.action === "create-misc") {
-      const eventId = `misccost-create-${body.mfg_id}-${body.bom_id}-${body.type}-${Date.now()}`
+      const eventId = makeEventId("MFG_MISC_COST", "create", `${body.mfg_id}-${body.bom_id}-${body.type}`)
       const logCtx = { ...ctx, eventId, module: "MFG_MISC_COST_CREATE" }
       logger.info({ ...logCtx, mfgId: body.mfg_id, bomId: body.bom_id, type: body.type, cost: body.cost, message: "Misc. cost line create started" })
       recordRawEvent("MFG_MISC_COST", eventId, { mfgId: body.mfg_id, bomId: body.bom_id, type: body.type, cost: body.cost })
@@ -45,7 +45,7 @@ export const POST = withGateway({
 
     // action === "update-misc"
     if(body.action == "update-misc") {
-      const eventId = `misccost-update-${body.id}-${Date.now()}`
+      const eventId = makeEventId("MFG_MISC_COST_UPDATE", "update", body.id)
       const logCtx = { ...ctx, eventId, module: "MFG_MISC_COST_UPDATE" }
       logger.info({ ...logCtx, id: body.id, cost: body.cost, message: "Misc. cost line update started" })
       recordRawEvent("MFG_MISC_COST_UPDATE", eventId, { id: body.id, cost: body.cost })

@@ -22,6 +22,7 @@ import { query } from "@/lib/db"
 import { bom as bomSql } from "@/lib/queries/bom"
 import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { BOM_EXPORT_COLUMNS } from "@/lib/export-configs"
+import logger from "@/lib/logger"
 
 const ROW_LIMIT = 50_000
 
@@ -59,11 +60,11 @@ export async function GET(req: NextRequest) {
       filterParams
     )
 
-    const filename = buildExportFilename("bom_master", format, { type: type || null, status: status || null, search: search || null })
+    const filename = buildExportFilename("BOM", format, { type: type || null, status: status || null, search: search || null })
     console.log(`[/api/masters/bom-master/export] served ${rows.length} rows as ${format}`)
 
     if (format === "xlsx") {
-      const buffer = await buildXlsx("BOM Master", BOM_EXPORT_COLUMNS, rows)
+      const buffer = await buildXlsx("BOM", BOM_EXPORT_COLUMNS, rows)
       return new NextResponse(buffer, {
         status: 200,
         headers: {
@@ -82,6 +83,7 @@ export async function GET(req: NextRequest) {
       },
     })
   } catch (err) {
+    logger.error({message:"BOM export failed" ,userId: session.user.id, format , type , status, err});
     console.error("[/api/masters/bom-master/export]", err)
     return NextResponse.json({ error: "Export failed" }, { status: 500 })
   }

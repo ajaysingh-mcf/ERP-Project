@@ -37,7 +37,7 @@ const EMPTY_DOCS: Record<DocKey, null> = {
 const DETAIL_FIELDS = [
   { key: "name",            label: "Name",            required: true,  colSpan: 1, placeholder: "Vendor name" },
   { key: "type",            label: "Type",            required: true,  colSpan: 1, isSelect: true },
-  { key: "registered_name", label: "Registered Name", required: false, colSpan: 1, placeholder: "Legal registered name" },
+  { key: "registered_name", label: "Registered Name", required: true, colSpan: 1, placeholder: "Legal registered name" },
   { key: "location",        label: "Location",        required: false, colSpan: 1, placeholder: "e.g. Mumbai" },
   { key: "zone",            label: "Zone",            required: false, colSpan: 1, placeholder: "e.g. West" },
 ] as const

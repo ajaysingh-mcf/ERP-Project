@@ -22,6 +22,7 @@ import { query } from "@/lib/db"
 import { vendors as vendorSql } from "@/lib/queries/vendors"
 import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { VENDOR_EXPORT_COLUMNS } from "@/lib/export-configs"
+import logger from "@/lib/logger"
 
 const ROW_LIMIT = 50_000
 
@@ -54,11 +55,12 @@ export async function GET(req: NextRequest) {
       filterParams
     )
 
-    const filename = buildExportFilename("vendors", format, { type: type || null, zone: zone || null, search: search || null })
+    const filename = buildExportFilename("VEN", format, { type: type || null, zone: zone || null, search: search || null })
+    logger.info({message:"Vendors export served." , userId: session.user.id , format, view: "VEN", rowCount: rows.length})
     console.log(`[/api/masters/vendors/export] served ${rows.length} rows as ${format}`)
 
     if (format === "xlsx") {
-      const buffer = await buildXlsx("Vendors", VENDOR_EXPORT_COLUMNS, rows)
+      const buffer = await buildXlsx("VEN", VENDOR_EXPORT_COLUMNS, rows)
       return new NextResponse(buffer, {
         status: 200,
         headers: {
@@ -77,6 +79,7 @@ export async function GET(req: NextRequest) {
       },
     })
   } catch (err) {
+    logger.error({message:"Filtered Vendorsexport failed" , userId: session.user.id , format , view:"VEN", error : err});
     console.error("[/api/masters/vendors/export]", err)
     return NextResponse.json({ error: "Export failed" }, { status: 500 })
   }

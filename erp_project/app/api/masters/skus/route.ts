@@ -3,7 +3,7 @@ import { execute, pool, query } from "@/lib/db"
 import { skus as skuSql } from "@/lib/queries/skus"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { parseS3Import } from "@/lib/import-s3"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
@@ -20,7 +20,7 @@ export const POST = withGateway({
       const name = body.name.trim()
       const { brand, category, status } = body
 
-      const eventId = `sku-create-${Date.now()}`
+      const eventId = makeEventId("SKU", "create")
       const logCtx = { ...ctx, eventId, module: "SKU_CREATE" }
       logger.info({ ...logCtx, sku_code, name, message: "SKU create started" })
       recordRawEvent("SKU", eventId, { sku_code, name, brand, category, status })
@@ -52,7 +52,7 @@ export const POST = withGateway({
     if (body.action === "bulk") {
       const { rows } = body
 
-      const eventId = `sku-bulk-${Date.now()}`
+      const eventId = makeEventId("SKU_BULK", "bulk")
       const logCtx = { ...ctx, eventId, module: "SKU_BULK" }
       logger.info({ ...logCtx, rowCount: rows.length, message: "SKU bulk insert started" })
       recordRawEvent("SKU_BULK", eventId, { source: "csv", rowCount: rows.length })
@@ -103,7 +103,7 @@ export const POST = withGateway({
       const name = body.name.trim()
       const { brand, category, status } = body
 
-      const eventId = `sku-update-${Date.now()}`
+      const eventId = makeEventId("SKU_UPDATE", "update", id)
       const logCtx = { ...ctx, eventId, module: "SKU_UPDATE" }
 
       const pending = await query(approvalsSql.hasPending, ["SKU", id])
@@ -177,7 +177,7 @@ export const POST = withGateway({
 
     if(body.action === "bulk_from_s3") {
       const { key } = body
-      const eventId = `sku-s3bulk-${Date.now()}`
+      const eventId = makeEventId("SKU_BULK", "bulk-s3")
       const logCtx = { ...ctx, eventId, module: "SKU_S3BULK" }
 
       let rawRows

@@ -24,6 +24,7 @@ import { query } from "@/lib/db"
 import { rawMaterials as rmSql } from "@/lib/queries/raw-materials"
 import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { RM_VENDOR_EXPORT_COLUMNS, RM_MFG_EXPORT_COLUMNS } from "@/lib/export-configs"
+import logger from "@/lib/logger"
 
 const ROW_LIMIT = 50_000
 
@@ -40,8 +41,8 @@ export async function GET(req: NextRequest) {
   const columns   = isMfg ? RM_MFG_EXPORT_COLUMNS      : RM_VENDOR_EXPORT_COLUMNS
   const countSql  = isMfg ? rmSql.countMfg              : rmSql.countVendor
   const dataSql   = isMfg ? rmSql.selectMfgAllFiltered  : rmSql.selectVendorAllFiltered
-  const viewLabel = isMfg ? "manufacturer"              : "vendor"
-  const sheetName = isMfg ? "RM - Manufacturer Rates"   : "RM - Vendor Rates"
+  const viewLabel = isMfg ? "MRM"  : "VRM"
+  const sheetName = isMfg ? "RM_MRM"   : "RM_VRM"
 
   let filterParams: unknown[]
   let filename: string
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest) {
       search || null, status || null, typeFilter || null, mfgCode || null,
       mfgRateMin || null, mfgRateMax || null, mfgEffFrom || null
     )
-    filename = buildExportFilename(`raw_materials_${viewLabel}`, format, {
+    filename = buildExportFilename(`RM_${viewLabel}`, format, {
       search:             search      || null,
       status:             status      || null,
       mfg_code:           mfgCode     || null,
@@ -96,7 +97,7 @@ export async function GET(req: NextRequest) {
 
     const rows = await query<Record<string, unknown>>(dataSql, filterParams)
     console.log(`[/api/masters/raw-materials/export] served ${rows.length} rows as ${format} (view=${viewLabel})`)
-
+    logger.info({ message: "Raw materials export", userId: session.user.id, format, view: viewLabel, rowCount: rows.length }) 
     if (format === "xlsx") {
       const buffer = await buildXlsx(sheetName, columns, rows)
       return new NextResponse(buffer, {
@@ -117,6 +118,7 @@ export async function GET(req: NextRequest) {
       },
     })
   } catch (err) {
+    logger.error({ message: "Raw materials export failed", userId: session.user.id, format, view: viewLabel, err })
     console.error("[/api/masters/raw-materials/export]", err)
     return NextResponse.json({ error: "Export failed" }, { status: 500 })
   }

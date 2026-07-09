@@ -12,7 +12,7 @@ import { query, pool } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { manufacturers as mfgsSql } from "@/lib/queries/manufacturers"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
@@ -47,7 +47,7 @@ export const POST = withGateway({
 
     const userId = Number(session.user.id)
 
-    const eventId = `po-split-${poId}-${Date.now()}`
+    const eventId = makeEventId("PO_SPLIT", "split", poId)
     const logCtx = { ...ctx, eventId, module: "PO_SPLIT" }
     logger.info({ ...logCtx, parentPoId: poId, splitCount: splits.length, remaining, splitTotal, message: "PO split started" })
     recordRawEvent("PO_SPLIT", eventId, { parentPoId: poId, parentPoNo: po.po_no, splits })

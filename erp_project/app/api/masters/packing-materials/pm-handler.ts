@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { query, pool } from "@/lib/db"
 import { packingMaterials } from "@/lib/queries/packing-materials"
 import { parseS3Import } from "@/lib/import-s3"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval } from "@/lib/master-routes/material-utils"
 
@@ -31,7 +31,7 @@ export async function pmCreate(body: any, userId: number, ctx: object): Promise<
     return NextResponse.json({ error: "name is required" }, { status: 400 })
   }
 
-  const eventId = `pm-new-${Date.now()}`
+  const eventId = makeEventId("PM", "create")
   const hasVendorRate = !!body.vendor_code?.trim()
   const hasMfgRate = !!body.mfg_code?.trim()
   const rateTab = hasVendorRate ? "vendor" : hasMfgRate ? "manufacturer" : "none"
@@ -159,7 +159,7 @@ export async function pmCreateFull(body: any, userId: number, ctx: object): Prom
   const { pm } = body
   const vendorList = Array.isArray(body.vendors) ? body.vendors : []
   const mfgList = Array.isArray(body.manufacturers) ? body.manufacturers : []
-  const eventId = `mfg-full-${Date.now()}`
+  const eventId = makeEventId("PM_FULL", "create-full")
   const logCtx = { ...ctx, action: "create-full", eventId }
 
   if (!pm?.name?.trim()) {
@@ -251,7 +251,7 @@ export async function pmAddRates(body: any, userId: number, ctx: object): Promis
   const { name, type, pm_id } = body
   const vendorList = Array.isArray(body.vendors) ? body.vendors : []
   const mfgList = Array.isArray(body.manufacturers) ? body.manufacturers : []
-  const eventId = `mfg-addrates-${Date.now()}`
+  const eventId = makeEventId("PM_RATES", "add-rates", pm_id)
   const logCtx = { ...ctx, action: "add-rates", eventId }
 
   if (vendorList.length === 0 && mfgList.length === 0) {
@@ -338,7 +338,7 @@ export async function pmAddRates(body: any, userId: number, ctx: object): Promis
 
 export async function pmBulk(body: any, userId: number, ctx: object): Promise<NextResponse> {
   const { rows } = body
-  const eventId = `mfg-bulk-${Date.now()}`
+  const eventId = makeEventId("PM_BULK", "bulk")
   const logCtx = { ...ctx, action: "bulk", eventId }
 
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -394,7 +394,7 @@ export async function pmBulk(body: any, userId: number, ctx: object): Promise<Ne
 
 export async function pmS3Bulk(body: any, userId: number, ctx: object): Promise<NextResponse> {
   const { key } = body
-  const eventId = `mfg-bulk-s3-${Date.now()}`
+  const eventId = makeEventId("PM_S3BULK", "bulk-s3")
   const logCtx = { ...ctx, action: "bulk_from_s3", eventId, s3Key: key?.trim() }
 
   if (!key?.trim()) {

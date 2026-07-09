@@ -22,7 +22,7 @@ import { ApiError } from "@/lib/gateway/errors"
 import { bomActionSchema } from "@/lib/validation/bom"
 import { bom as bomSql, BOM_STATUS_IN_REVIEW } from "@/lib/queries/bom"
 import { approvalsSql } from "@/lib/queries/approvals"
-import { recordRawEvent, recordProcessedEvent, recordFailedEvent } from "@/lib/events"
+import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 
 export const POST = withGateway({
@@ -47,7 +47,7 @@ export const POST = withGateway({
 
     // ── create-full: single atomic submit ─────────────────────────────────
     if(body.action == "create-full") {
-      const eventId = `bom-submit-${body.sku_id}-${Date.now()}`
+      const eventId = makeEventId("BOM", "submit", body.sku_id)
       const logCtx = { ...ctx, eventId, module: "BOM" }
       logger.info({ ...logCtx, skuId: body.sku_id, mode: body.mode, lineCount: body.rm_lines.length + body.pm_lines.length, message: "BOM submit started" })
       recordRawEvent("BOM", eventId, { skuId: body.sku_id, mode: body.mode, lineCount: body.rm_lines.length + body.pm_lines.length, source: body.source })

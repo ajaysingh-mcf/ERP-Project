@@ -24,6 +24,7 @@ import { query } from "@/lib/db"
 import { packingMaterials as pmSql } from "@/lib/queries/packing-materials"
 import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { PM_VENDOR_EXPORT_COLUMNS, PM_MFG_EXPORT_COLUMNS } from "@/lib/export-configs"
+import logger from "@/lib/logger"
 
 const ROW_LIMIT = 50_000
 
@@ -40,8 +41,8 @@ export async function GET(req: NextRequest) {
   const columns   = isMfg ? PM_MFG_EXPORT_COLUMNS : PM_VENDOR_EXPORT_COLUMNS
   const countSql  = isMfg ? pmSql.countMfg         : pmSql.countVendor
   const dataSql   = isMfg ? pmSql.selectMfgAllFiltered : pmSql.selectVendorAllFiltered
-  const viewLabel = isMfg ? "manufacturer" : "vendor"
-  const sheetName = isMfg ? "PM - Manufacturer Rates" : "PM - Vendor Rates"
+  const viewLabel = isMfg ? "MFG" : "VEN"
+  const sheetName = isMfg ? "PM_MRM" : "PM_VRM"
 
   let filterParams: unknown[]
   if (isMfg) {
@@ -96,6 +97,7 @@ export async function GET(req: NextRequest) {
           effective_from: sp.get("effective_from")           || null,
         })
 
+    logger.info({message:"Packing materials export served." , userId: session.user.id , format, view: viewLabel, rowCount: rows.length})
     console.log(`[/api/masters/packing-materials/export] served ${rows.length} rows as ${format} (view=${viewLabel})`)
 
     if (format === "xlsx") {
@@ -118,6 +120,7 @@ export async function GET(req: NextRequest) {
       },
     })
   } catch (err) {
+    logger.error({message:"Packing material export failed", userId: session.user.id , format, view:viewLabel , error:err})
     console.error("[/api/masters/packing-materials/export]", err)
     return NextResponse.json({ error: "Export failed" }, { status: 500 })
   }

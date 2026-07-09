@@ -27,7 +27,7 @@ import { rawMaterials as rmSql }                from "@/lib/queries/raw-material
 import { packingMaterials as pmSql }            from "@/lib/queries/packing-materials"
 import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { RM_BASE_EXPORT_COLUMNS, PM_BASE_EXPORT_COLUMNS } from "@/lib/export-configs"
-
+import logger from "@/lib/logger"
 const ROW_LIMIT = 50_000
 
 export async function GET(req: NextRequest) {
@@ -55,8 +55,8 @@ export async function GET(req: NextRequest) {
   const columns   = isPm ? PM_BASE_EXPORT_COLUMNS  : RM_BASE_EXPORT_COLUMNS
   const countSql  = isPm ? pmSql.countAll           : rmSql.countAll
   const dataSql   = isPm ? pmSql.selectBaseAllFiltered : rmSql.selectBaseAllFiltered
-  const typeLabel = isPm ? "pm"                     : "rm"
-  const sheetName = isPm ? "Packing Materials"      : "Raw Materials"
+  const typeLabel = isPm ? "PM"                     : "RM"
+  const sheetName = isPm ? "PM"      : "RM"
 
   try {
     const [{ total }] = await query<{ total: number }>(countSql, filterParams)
@@ -69,7 +69,8 @@ export async function GET(req: NextRequest) {
 
     const rows = await query<Record<string, unknown>>(dataSql, filterParams)
 
-    const filename = buildExportFilename(`material_master_${typeLabel}`, format, { search: search || null, status: status || null })
+    const filename = buildExportFilename(`${typeLabel}`, format, { search: search || null, status: status || null })
+    logger.info({message:"Material master export served." , userId: session.user.id , format, view: typeLabel, rowCount: rows.length})
     console.log(`[/api/masters/material-master/export] served ${rows.length} rows as ${format} (material=${typeLabel})`)
 
     if (format === "xlsx") {
@@ -92,6 +93,7 @@ export async function GET(req: NextRequest) {
       },
     })
   } catch (err) {
+    logger.error({message:"Material master export failed" , userId: session.user.id , format, view:typeLabel , err})
     console.error("[/api/masters/material-master/export]", err)
     return NextResponse.json({ error: "Export failed" }, { status: 500 })
   }
