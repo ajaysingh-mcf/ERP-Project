@@ -244,7 +244,6 @@ This eliminates `any` type noise and gives full IntelliSense on `conn.execute`, 
 | `app/sales-crm/` | Sales CRM |
 | `app/hr-payroll/` | HR & Payroll |
 | `app/reports/` | Reports |
-| `app/sheet-viewer/` | Google Sheets viewer |
 | `app/actions/` | Server actions |
 | `app/auth/` | Authentication pages |
 
@@ -267,7 +266,6 @@ This eliminates `any` type noise and gives full IntelliSense on `conn.execute`, 
 | `app/api/admin/permissions/route.ts` | Role-based page permission management |
 | `app/api/admin/user-permissions/route.ts` | Per-user page permission overrides |
 | `app/api/auth/[...nextauth]/route.ts` | NextAuth — Google OAuth |
-| `app/api/google-sheet/route.ts` | Google Sheets proxy |
 
 ---
 

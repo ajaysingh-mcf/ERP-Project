@@ -13,7 +13,6 @@ const modules = [
   { name: "Masters",              slug: "/masters",       description: "Master data: SKUs, vendors, manufacturers, materials", built: true },
   { name: "Reports & Analytics",  slug: "/reports",       description: "Dashboards, KPIs, data exports", built: false },
   { name: "Manufacturing",        slug: "/manufacturing", description: "Production planning, BOMs, work orders", built: true },
-  { name: "Sheet Viewer",         slug: "/sheet-viewer",  description: "Preview published Google Sheets in a table", built: true },
 ]
 
 export default async function Home() {

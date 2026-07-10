@@ -10,7 +10,6 @@ const matrix: { role: string; page_slug: string; access_level: "none" | "viewer"
   { role: "production_operations", page_slug: "/hr-payroll",     access_level: "none"   },
   { role: "production_operations", page_slug: "/sales-crm",      access_level: "none"   },
   { role: "production_operations", page_slug: "/reports",        access_level: "viewer" },
-  { role: "production_operations", page_slug: "/sheet-viewer",   access_level: "viewer" },
 
   // production_head
   { role: "production_head", page_slug: "/",               access_level: "viewer" },
@@ -20,7 +19,6 @@ const matrix: { role: string; page_slug: string; access_level: "none" | "viewer"
   { role: "production_head", page_slug: "/hr-payroll",     access_level: "viewer" },
   { role: "production_head", page_slug: "/sales-crm",      access_level: "viewer" },
   { role: "production_head", page_slug: "/reports",        access_level: "editor" },
-  { role: "production_head", page_slug: "/sheet-viewer",   access_level: "editor" },
 
   // cost_creator
   { role: "cost_creator", page_slug: "/",               access_level: "viewer" },
@@ -30,7 +28,6 @@ const matrix: { role: string; page_slug: string; access_level: "none" | "viewer"
   { role: "cost_creator", page_slug: "/hr-payroll",     access_level: "none"   },
   { role: "cost_creator", page_slug: "/sales-crm",      access_level: "none"   },
   { role: "cost_creator", page_slug: "/reports",        access_level: "editor" },
-  { role: "cost_creator", page_slug: "/sheet-viewer",   access_level: "editor" },
 
   // bom_creator
   { role: "bom_creator", page_slug: "/",               access_level: "viewer" },
@@ -40,7 +37,6 @@ const matrix: { role: string; page_slug: string; access_level: "none" | "viewer"
   { role: "bom_creator", page_slug: "/hr-payroll",     access_level: "none"   },
   { role: "bom_creator", page_slug: "/sales-crm",      access_level: "none"   },
   { role: "bom_creator", page_slug: "/reports",        access_level: "viewer" },
-  { role: "bom_creator", page_slug: "/sheet-viewer",   access_level: "viewer" },
 
   // developer
   { role: "developer", page_slug: "/",               access_level: "editor" },
@@ -50,7 +46,6 @@ const matrix: { role: string; page_slug: string; access_level: "none" | "viewer"
   { role: "developer", page_slug: "/hr-payroll",     access_level: "editor" },
   { role: "developer", page_slug: "/sales-crm",      access_level: "editor" },
   { role: "developer", page_slug: "/reports",        access_level: "editor" },
-  { role: "developer", page_slug: "/sheet-viewer",   access_level: "editor" },
   {role: "developer", page_slug: "/masters",        access_level: "editor" },
 
   // PO Tracking module (PO Procurement + placeholders). Gated under one slug.
