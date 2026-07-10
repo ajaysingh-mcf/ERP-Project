@@ -199,27 +199,29 @@ export const POST = withGateway({
       // ── Auto-send PO email right after a normal PO is created ─────────────
       // Normal POs skip the approval flow entirely, so this is the only auto-send
       // trigger for them (impromptu POs auto-send on approval instead — see
-      // app/api/approvals/[id]/route.ts). Fire-and-forget: never block the
-      // create response on email/PDF generation.
+      // app/api/approvals/[id]/route.ts). Awaited (not fire-and-forget) so the
+      // create response can tell the caller whether the email actually sent.
       const mailEventId = makeEventId("PO_NORMAL_MAIL", "send", poId)
-      ;(async () => {
-        try {
-          const sent = await sendPoEmail(poId, "auto_approval")
-          if (sent) {
-            await execute(purchaseOrdersSql.setEmailSentAt, [poId])
-            logger.info({ ...ctx, eventId: mailEventId, poId, po_no, message: "Auto-sent normal PO email" })
-            recordProcessedEvent("PO_NORMAL_MAIL", mailEventId, { poId, po_no })
-          } else {
-            logger.warn({ ...ctx, eventId: mailEventId, poId, po_no, message: "Normal PO created but manufacturer has no email — skipped auto-send" })
-            recordFailedEvent("PO_NORMAL_MAIL", mailEventId, { poId, po_no }, "Manufacturer has no email address on file")
-          }
-        } catch (err: any) {
-          logger.error({ ...ctx, eventId: mailEventId, poId, po_no, error: err.message, message: "Auto-send normal PO email failed" })
-          recordFailedEvent("PO_NORMAL_MAIL", mailEventId, { poId, po_no }, err.message)
+      let emailed = false
+      let emailError: string | undefined
+      try {
+        emailed = await sendPoEmail(poId, "auto_approval")
+        if (emailed) {
+          await execute(purchaseOrdersSql.setEmailSentAt, [poId])
+          logger.info({ ...ctx, eventId: mailEventId, poId, po_no, message: "Auto-sent normal PO email" })
+          recordProcessedEvent("PO_NORMAL_MAIL", mailEventId, { poId, po_no })
+        } else {
+          emailError = "Manufacturer has no email address on file"
+          logger.warn({ ...ctx, eventId: mailEventId, poId, po_no, message: "Normal PO created but manufacturer has no email — skipped auto-send" })
+          recordFailedEvent("PO_NORMAL_MAIL", mailEventId, { poId, po_no }, emailError)
         }
-      })()
+      } catch (err: any) {
+        emailError = err.message
+        logger.error({ ...ctx, eventId: mailEventId, poId, po_no, error: err.message, message: "Auto-send normal PO email failed" })
+        recordFailedEvent("PO_NORMAL_MAIL", mailEventId, { poId, po_no }, err.message)
+      }
 
-      return NextResponse.json({ ok: true, po_no })
+      return NextResponse.json({ ok: true, po_no, emailed, emailError })
     } catch (err: any) {
       await conn.rollback()
       logger.error({ ...ctx, eventId, err: err.message, stack: err.stack, message: "Normal PO create failed" })

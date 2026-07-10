@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { useState } from "react"
-import { Filter, Plus, Upload, X } from "lucide-react"
+import { Filter, Mail, Plus, Upload, X } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -175,6 +175,12 @@ export default function PoProcurementClient({
           className="inline-flex h-9 items-center gap-2 rounded-lg border border-input bg-background px-3 text-xs font-medium hover:bg-accent transition-colors"
         >
           <Upload className="h-3.5 w-3.5" /> Bulk Upload
+        </button>
+        <button
+          onClick={() => router.push("/po-tracking/po-procurement/entity-emails")}
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-input bg-background px-3 text-xs font-medium hover:bg-accent transition-colors"
+        >
+          <Mail className="h-3.5 w-3.5" /> Entity Emails
         </button>
         <button
           onClick={() => setShowAddPO(true)}

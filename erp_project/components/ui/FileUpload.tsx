@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Upload, FileIcon, ExternalLink, X, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -40,6 +40,12 @@ export function FileUpload({
   const [progress, setProgress]   = useState(0)
   const [error, setError]         = useState<string | null>(null)
   const [localKey, setLocalKey]   = useState<string | null>(currentKey)
+
+  // `currentKey` can change after this component has already mounted (e.g. the
+  // Manufacturer Documents dialog stays mounted across different manufacturers
+  // and only learns the right key via an effect one render after opening) — the
+  // useState initializer above only runs once, so re-sync on every prop change.
+  useEffect(() => setLocalKey(currentKey), [currentKey])
 
   // In deferred mode the parent controls the pending file; derive display state from it.
   const hasPending = deferred && !!pendingFile

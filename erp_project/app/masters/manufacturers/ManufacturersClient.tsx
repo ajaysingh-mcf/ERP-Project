@@ -28,6 +28,7 @@ import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import { AddMfgDialog } from "./AddMfgDialog"
 import { DownloadButton } from "@/components/masters/DownloadButton"
 import type { MasterField } from "@/components/masters/field-config"
+import { GST_REGEX, IFSC_REGEX, ACCOUNT_NUMBER_REGEX, EMAIL_REGEX } from "@/lib/validation/shared"
 import type { Mfg } from "@/types/masters"
 import { useState } from "react"
 import { Pencil, FileText } from "lucide-react"
@@ -38,15 +39,25 @@ import { ManufacturerDocumentsDialog } from "./ManufacturerDocumentsDialog"
 // `code` is auto-generated server-side on both single-record create AND bulk
 // import (MFG-<serial>-<XX>), so it's never collected from the user.
 const MFG_COMMON_FIELDS: MasterField[] = [
-  { key: "name",            label: "Name",            required: true, colSpan: 2, placeholder: "Manufacturer name", sample: "Acme Manufacturing" },
+  { key: "name",            label: "Name",            required: true, colSpan: 2, placeholder: "Manufacturer name", sample: "Acme Manufacturing",
+    duplicateKey: true,
+    validate: (raw) => (/^\d+$/.test(raw) ? "Looks numeric, not a name" : null) },
   { key: "registered_name", label: "Registered Name", placeholder: "Legal registered name",         sample: "Acme Manufacturing Pvt Ltd" },
   { key: "location",        label: "Location",        placeholder: "e.g. Mumbai",                  sample: "Mumbai" },
   { key: "zone",            label: "Zone",            placeholder: "e.g. West",                    sample: "West" },
-  { key: "gst_number",      label: "GST Number",      placeholder: "e.g. 27AAEPM1234C1Z5",         sample: "27AAEPM1234C1Z5" },
+  { key: "gst_number",      label: "GST Number",      placeholder: "e.g. 27AAEPM1234C1Z5",         sample: "27AAEPM1234C1Z5",
+    duplicateKey: true,
+    validate: (raw) => (GST_REGEX.test(raw.toUpperCase()) ? null : "Invalid GST format") },
   { key: "bank_name",       label: "Bank Name",       placeholder: "e.g. HDFC Bank",               sample: "HDFC Bank" },
-  { key: "ifsc_number",     label: "IFSC Number",     placeholder: "e.g. HDFC0001234",             sample: "HDFC0001234" },
-  { key: "account_number",  label: "Account Number",  placeholder: "e.g. 12345678901234",          sample: "12345678901234" },
-  { key: "email",           label: "Email Address",   placeholder: "e.g. vendor@manufacturer.com", sample: "vendor@manufacturer.com" },
+  { key: "ifsc_number",     label: "IFSC Number",     placeholder: "e.g. HDFC0001234",             sample: "HDFC0001234",
+    duplicateKey: true,
+    validate: (raw) => (IFSC_REGEX.test(raw.toUpperCase()) ? null : "Invalid IFSC format") },
+  { key: "account_number",  label: "Account Number",  placeholder: "e.g. 12345678901234",          sample: "12345678901234",
+    duplicateKey: true,
+    validate: (raw) => (ACCOUNT_NUMBER_REGEX.test(raw) ? null : "Invalid account number — expected 9 to 18 digits") },
+  { key: "email",           label: "Email Address",   placeholder: "e.g. vendor@manufacturer.com", sample: "vendor@manufacturer.com",
+    duplicateKey: true,
+    validate: (raw) => (EMAIL_REGEX.test(raw) ? null : "Invalid email address") },
 ]
 
 const MFG_CSV_FIELDS: MasterField[] = MFG_COMMON_FIELDS
@@ -88,6 +99,8 @@ export default function ManufacturersClient({
             templateFilename="manufacturer_template.csv"
             fields={MFG_CSV_FIELDS}
             onSuccess={refresh}
+            enableDuplicateCheck
+            previewExcel
           />
           <AddMfgDialog onSuccess={refresh} />
         </MasterToolbarActions>

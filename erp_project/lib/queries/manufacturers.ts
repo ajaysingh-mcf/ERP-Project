@@ -167,6 +167,45 @@ export const manufacturers = {
     WHERE d.account_number = ? AND d.mfg_id != ? LIMIT 1
   `,
 
+  // ── Batched duplicate lookups for CSV-preview duplicate checking ──────────
+  // Each returns { code, value } for every existing row whose value is in the
+  // given IN (?) list — one query per field for the whole uploaded file,
+  // instead of one query per row.
+
+  /** Parameters: [gst_numbers[]] */
+  checkDuplicateGstBatch: `
+    SELECT mfg.code, d.gst_number AS value FROM details_mfg d
+    JOIN master_mfgs mfg ON mfg.id = d.mfg_id
+    WHERE d.gst_number IN (?)
+  `,
+
+  /** Parameters: [ifsc_numbers[]] */
+  checkDuplicateIfscBatch: `
+    SELECT mfg.code, d.ifsc_number AS value FROM details_mfg d
+    JOIN master_mfgs mfg ON mfg.id = d.mfg_id
+    WHERE d.ifsc_number IN (?)
+  `,
+
+  /** Parameters: [account_numbers[]] */
+  checkDuplicateAccountNumberBatch: `
+    SELECT mfg.code, d.account_number AS value FROM details_mfg d
+    JOIN master_mfgs mfg ON mfg.id = d.mfg_id
+    WHERE d.account_number IN (?)
+  `,
+
+  /** Parameters: [emails[]] */
+  checkDuplicateEmailBatch: `
+    SELECT mfg.code, d.email AS value FROM details_mfg d
+    JOIN master_mfgs mfg ON mfg.id = d.mfg_id
+    WHERE d.email IN (?)
+  `,
+
+  /** Parameters: [names[]] */
+  checkDuplicateNameBatch: `
+    SELECT mfg.code, mfg.name AS value FROM master_mfgs mfg
+    WHERE mfg.name IN (?)
+  `,
+
   /**
    * Build the filter parameter array for selectPaginated, selectAllFiltered, and countAll.
    * Centralises the repeated-param pattern so callers never have to count repetitions.

@@ -8,12 +8,15 @@
 //         submitter) via the module's handler (setStatus), then records
 //         mandatory rejection remarks.
 //
-// Auth: only users with the "admin" or "manager" role may call this endpoint.
+// Auth: requires "editor" access on the "/approvals" page, resolved from the DB
+// (page_permissions / user_page_permissions — see lib/permissions.ts resolveAccess).
+// No role name is hardcoded here; access is entirely data-driven.
 
 import { NextRequest, NextResponse } from "next/server"
 import { revalidateTag } from "next/cache"
 import type { PoolConnection } from "mysql2/promise"
 import { auth } from "@/lib/auth"
+import { resolveAccess } from "@/lib/permissions"
 import { query, execute, pool } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { approvalsSql } from "@/lib/queries/approvals"
@@ -35,9 +38,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   logger.info({ ...ctx, message: "Approval API request received" })
 
   const roles: string[] = session.user.roles ?? []
-  if (!roles.some((r) => ["admin", "manager"].includes(r))) {
-    logger.warn({ ...ctx, message: "Approval action forbidden: insufficient role", roles })
-    return NextResponse.json({ error: "Forbidden — admin or manager role required" }, { status: 403 })
+  const access = await resolveAccess(Number(session.user.id), roles, "/approvals")
+  if (access !== "editor") {
+    logger.warn({ ...ctx, message: "Approval action forbidden: insufficient access", roles, access })
+    return NextResponse.json({ error: "Forbidden — editor access to /approvals required" }, { status: 403 })
   }
 
   const approvalId = parseInt(id)

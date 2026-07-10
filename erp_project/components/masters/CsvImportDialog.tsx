@@ -16,7 +16,11 @@ import {
   type ParsedRow,
   csvFields,
   parseCSV,
+  buildRows,
   buildTemplate,
+  isFlagged,
+  rowRemark,
+  buildFlaggedCsv,
 } from "./field-config"
 
 export function CsvImportDialog({
@@ -27,6 +31,8 @@ export function CsvImportDialog({
   templateFilename,
   fields,
   onSuccess,
+  enableDuplicateCheck,
+  previewExcel,
 }: {
   /** Singular label, e.g. "SKU". */
   entityLabel: string
@@ -39,6 +45,15 @@ export function CsvImportDialog({
   templateFilename: string
   fields: MasterField[]
   onSuccess?: () => void
+  /** When true, POSTs `{ action: "check_duplicates", rows }` to `endpoint` after
+   *  parsing and merges the response into each row's remarks. The endpoint
+   *  must support that action (see app/api/masters/manufacturers/route.ts). */
+  enableDuplicateCheck?: boolean
+  /** When true, .xlsx files are also parsed client-side (via ExcelJS) into the
+   *  same preview/remarks/duplicate-check pipeline as CSV, and only the valid
+   *  rows are submitted (via the "bulk" action) — instead of the default
+   *  upload-to-S3-then-insert-everything "bulk_from_s3" flow. */
+  previewExcel?: boolean
 }) {
   const cols = csvFields(fields)
   const plural = entityLabelPlural ?? `${entityLabel}s`
@@ -49,9 +64,19 @@ export function CsvImportDialog({
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [loading, setLoading] = useState(false)
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false)
+  const [parsingExcel, setParsingExcel] = useState(false)
+  // Track whether the chosen file is Excel (needs S3 server-side processing
+  // unless previewExcel is enabled — see useClientRows below).
+  const [isExcel, setIsExcel] = useState(false)
+  const [s3Key,   setS3Key]   = useState<string | null>(null)
 
-  const valid = rows.filter((r) => !r._error)
-  const invalid = rows.filter((r) => r._error)
+  // Excel files get the same client-side preview as CSV when previewExcel is on;
+  // otherwise they go through the legacy upload-to-S3-then-insert-everything path.
+  const useClientRows = !isExcel || !!previewExcel
+
+  const valid = rows.filter((r) => !isFlagged(r))
+  const invalid = rows.filter(isFlagged)
 
   const requiredKeys = cols.filter((f) => f.required).map((f) => f.key)
   const optionalKeys = cols.filter((f) => !f.required).map((f) => f.key)
@@ -63,10 +88,6 @@ export function CsvImportDialog({
     setSuccess("")
     setOpen(true)
   }
-
-  // Track whether the chosen file is Excel (needs S3 server-side processing)
-  const [isExcel, setIsExcel] = useState(false)
-  const [s3Key,   setS3Key]   = useState<string | null>(null)
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -80,8 +101,22 @@ export function CsvImportDialog({
     const excel = file.name.toLowerCase().endsWith(".xlsx")
     setIsExcel(excel)
 
-    if (excel) {
-      // Excel: upload to S3 first, then process server-side (no client-side preview)
+    if (excel && previewExcel) {
+      // Excel with client-side preview: parse in-browser via ExcelJS, same
+      // validation/remarks/duplicate pipeline as CSV. No S3 round-trip needed.
+      setParsingExcel(true)
+      parseExcelFile(file)
+        .then((parsed) => {
+          setRows(parsed)
+          if (enableDuplicateCheck && parsed.length > 0) checkDuplicates(parsed)
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : "Failed to parse Excel file")
+          setRows([])
+        })
+        .finally(() => setParsingExcel(false))
+    } else if (excel) {
+      // Excel (legacy path): upload to S3 first, then process server-side.
       setLoading(true)
       const module = endpoint.split('/').pop() ?? "imports"
       const yyyymm = new Date().toISOString().slice(0, 7)
@@ -102,7 +137,9 @@ export function CsvImportDialog({
       const reader = new FileReader()
       reader.onload = (ev) => {
         try {
-          setRows(parseCSV(ev.target?.result as string, fields))
+          const parsed = parseCSV(ev.target?.result as string, fields)
+          setRows(parsed)
+          if (enableDuplicateCheck && parsed.length > 0) checkDuplicates(parsed)
         } catch (err) {
           setError(err instanceof Error ? err.message : "Failed to parse CSV")
           setRows([])
@@ -112,25 +149,90 @@ export function CsvImportDialog({
     }
   }
 
+  async function parseExcelFile(file: File): Promise<ParsedRow[]> {
+    const ExcelJS = (await import("exceljs")).default
+    const buffer = await file.arrayBuffer()
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(buffer)
+
+    const ws = wb.worksheets[0]
+    if (!ws) return []
+
+    let headers: string[] = []
+    const rawRows: Record<string, string>[] = []
+    ws.eachRow((row, rowNumber) => {
+      const values = (row.values as (string | number | null)[]).slice(1).map((v) =>
+        v == null ? "" : String(v).trim()
+      )
+      if (rowNumber === 1) {
+        headers = values.map((h) => h.toLowerCase())
+        return
+      }
+      if (values.every((v) => !v)) return
+      const raw: Record<string, string> = {}
+      headers.forEach((h, i) => { raw[h] = values[i] ?? "" })
+      rawRows.push(raw)
+    })
+
+    return buildRows(rawRows, fields)
+  }
+
+  async function checkDuplicates(parsed: ParsedRow[]) {
+    setCheckingDuplicates(true)
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "check_duplicates", rows: parsed }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Duplicate check failed")
+      const duplicates: Record<number, string[]> = data.duplicates ?? {}
+      setRows((prev) =>
+        prev.map((row, i) => {
+          const msgs = duplicates[i]
+          if (!msgs?.length) return row
+          return { ...row, _remarks: [...(row._remarks ?? []), ...msgs] }
+        })
+      )
+    } catch {
+      // Best-effort preview help — the server still enforces real duplicate
+      // rules on insert, so a failed check here shouldn't block upload.
+    } finally {
+      setCheckingDuplicates(false)
+    }
+  }
+
+  function downloadFlagged() {
+    const blob = new Blob([buildFlaggedCsv(rows, fields)], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `flagged_${templateFilename}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function handleUpload() {
     setLoading(true)
     setError("")
     try {
       let res: Response
-      if (isExcel && s3Key) {
-        // Excel path: server fetches from S3, parses, inserts
-        res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "bulk_from_s3", key: s3Key }),
-        })
-      } else {
-        // CSV path: send parsed rows as JSON
+      if (useClientRows) {
+        // CSV, or Excel with previewExcel: send the already-validated rows as JSON
         if (valid.length === 0) { setError("No valid rows to upload."); setLoading(false); return }
         res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "bulk", rows: valid }),
+        })
+      } else {
+        // Excel legacy path: server fetches from S3, parses, inserts
+        if (!s3Key) { setLoading(false); return }
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "bulk_from_s3", key: s3Key }),
         })
       }
       const data = await res.json()
@@ -208,16 +310,36 @@ export function CsvImportDialog({
                 >
                   Download template
                 </button>
+                {invalid.length > 0 && (
+                  <>
+                    <span className="text-muted-foreground text-sm">·</span>
+                    <button
+                      type="button"
+                      onClick={downloadFlagged}
+                      className="text-sm text-destructive hover:underline"
+                    >
+                      Download flagged rows
+                    </button>
+                  </>
+                )}
               </div>
-              {filename && isExcel && s3Key && (
+              {filename && isExcel && !useClientRows && s3Key && (
                 <p className="text-xs text-emerald-600">
                   Excel file uploaded — ready to import
                 </p>
               )}
-              {filename && isExcel && !s3Key && !loading && (
+              {filename && isExcel && !useClientRows && !s3Key && !loading && (
                 <p className="text-xs text-destructive">S3 upload failed — try again</p>
               )}
-              {filename && !isExcel && rows.length > 0 && (
+              {filename && isExcel && parsingExcel && (
+                <p className="text-xs text-muted-foreground">Parsing Excel file…</p>
+              )}
+              {filename && useClientRows && checkingDuplicates && (
+                <p className="text-xs text-muted-foreground">
+                  Checking for duplicates against existing records…
+                </p>
+              )}
+              {filename && useClientRows && rows.length > 0 && (
                 <p className="text-xs text-muted-foreground">
                   {rows.length} rows parsed
                   {invalid.length > 0 && (
@@ -246,11 +368,10 @@ export function CsvImportDialog({
               <div className="rounded-lg border border-border overflow-hidden">
                 <div className="px-3 py-2 bg-muted/50 border-b border-border">
                   <span className="text-xs font-medium text-muted-foreground">
-                    Preview — first {Math.min(5, rows.length)} of {rows.length}{" "}
-                    rows
+                    Preview — {rows.length} row{rows.length !== 1 ? "s" : ""}
                   </span>
                 </div>
-                <div className="overflow-x-auto max-h-44 overflow-y-auto">
+                <div className="overflow-x-auto max-h-72 overflow-y-auto">
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 bg-background border-b border-border">
                       <tr>
@@ -262,39 +383,58 @@ export function CsvImportDialog({
                             {f.label}
                           </th>
                         ))}
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                          Remarks
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.slice(0, 5).map((row, i) => (
-                        <tr
-                          key={i}
-                          className={cn(
-                            "border-b border-border last:border-0",
-                            row._error && "bg-destructive/5"
-                          )}
-                        >
-                          {cols.map((f) => {
-                            const v = row[f.key]
-                            const display =
-                              v === "" || v == null ? null : String(v)
-                            return (
-                              <td
-                                key={f.key}
-                                className="px-3 py-1.5 text-muted-foreground"
-                              >
-                                {display ??
-                                  (f.required ? (
-                                    <span className="text-destructive">
-                                      missing
-                                    </span>
-                                  ) : (
-                                    "—"
-                                  ))}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      ))}
+                      {rows.map((row, i) => {
+                        const flagged = isFlagged(row)
+                        return (
+                          <tr
+                            key={i}
+                            className={cn(
+                              "border-b border-border last:border-0",
+                              flagged && "bg-destructive/5"
+                            )}
+                          >
+                            {cols.map((f) => {
+                              const v = row[f.key]
+                              const display =
+                                v === "" || v == null ? null : String(v)
+                              return (
+                                <td
+                                  key={f.key}
+                                  className="px-3 py-1.5 text-muted-foreground"
+                                >
+                                  {display ??
+                                    (f.required ? (
+                                      <span className="text-destructive">
+                                        missing
+                                      </span>
+                                    ) : (
+                                      "—"
+                                    ))}
+                                </td>
+                              )
+                            })}
+                            <td className="px-3 py-1.5">
+                              {flagged ? (
+                                <span className="text-destructive flex items-start gap-1">
+                                  <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                                  {rowRemark(row)}
+                                </span>
+                              ) : (
+                                <span className="text-emerald-600 flex items-center gap-1">
+                                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                  OK
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -312,15 +452,17 @@ export function CsvImportDialog({
               Cancel
             </Button>
             <Button
-              disabled={(isExcel ? !s3Key : valid.length === 0) || loading}
+              disabled={(useClientRows ? valid.length === 0 : !s3Key) || loading || parsingExcel}
               onClick={handleUpload}
             >
               {loading
                 ? "Uploading…"
+                : parsingExcel
+                ? "Parsing…"
+                : useClientRows && valid.length > 0
+                ? `Upload ${valid.length} ${valid.length !== 1 ? plural : entityLabel}`
                 : isExcel && s3Key
                 ? `Import Excel`
-                : valid.length > 0
-                ? `Upload ${valid.length} ${valid.length !== 1 ? plural : entityLabel}`
                 : "Upload"}
             </Button>
           </DialogFooter>

@@ -1,4 +1,11 @@
 import { z } from "zod"
+import { BOM_STATUS_IN_REVIEW } from "@/lib/queries/bom"
+
+// Every value of the master_bom_status DB enum — note "in review" has a space
+// (see BOM_STATUS_IN_REVIEW's doc comment in lib/queries/bom.ts), unlike
+// STATUS.IN_REVIEW ("in_review") used by every other module.
+export const BOM_STATUS_VALUES = ["draft", "active", "inactive", BOM_STATUS_IN_REVIEW, "discontinued", "rejected"] as const
+export type BomStatusValue = typeof BOM_STATUS_VALUES[number]
 
 // Route param for /api/masters/bom-master/[id]
 export const bomIdParamSchema = z.object({
@@ -68,11 +75,21 @@ export const bomCreateFullSchema = z
     }
   })
 
+// Direct, immediate status change — no approval gate. Kept separate from
+// create-full's line edits, which still go through the approval flow.
+export const bomUpdateStatusSchema = z.object({
+  action: z.literal("update-status"),
+  bom_id: z.coerce.number().int().positive(),
+  status: z.enum(BOM_STATUS_VALUES),
+})
+
 export const bomActionSchema = z.discriminatedUnion("action", [
   bomCheckExistingSchema,
   bomCreateFullSchema,
+  bomUpdateStatusSchema,
 ])
 
 export type BomLine = z.infer<typeof bomLineSchema>
 export type BomCreateFull = z.infer<typeof bomCreateFullSchema>
+export type BomUpdateStatus = z.infer<typeof bomUpdateStatusSchema>
 export type BomAction = z.infer<typeof bomActionSchema>

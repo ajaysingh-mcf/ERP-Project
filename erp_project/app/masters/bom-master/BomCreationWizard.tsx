@@ -20,7 +20,6 @@ import {
 import { type BomMaterialOption } from "./BomLineEditorGrid"
 import { useBomWizard } from "./useBomWizard"
 import {
-  Step0ModeSelect,
   Step1SkuSelect,
   Step2ExistingBom,
   Step3EntryMethod,
@@ -55,7 +54,7 @@ export function BomCreationWizard({
       <Dialog open={wizard.open} onOpenChange={(v) => { if (!v) wizard.requestClose() }}>
         <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>{step === 0 ? "Create BOM" : `Create BOM — Step ${step} of 5`}</DialogTitle>
+            <DialogTitle>Create BOM — Step {step} of 5</DialogTitle>
           </DialogHeader>
 
           {wizard.showCloseConfirm ? (
@@ -79,8 +78,6 @@ export function BomCreationWizard({
               )}
 
               <div className="overflow-y-auto flex-1 min-h-0">
-                {step === 0 && <Step0ModeSelect onChoose={wizard.chooseMode} />}
-
                 {step === 1 && (
                   <Step1SkuSelect
                     skus={skus}
@@ -133,7 +130,7 @@ export function BomCreationWizard({
               {/* Footer nav */}
               <div className="flex items-center justify-between pt-2 border-t shrink-0">
                 <div>
-                  {step > 0 && step !== 2 && (
+                  {step > 1 && step !== 2 && (
                     <Button variant="outline" size="sm" onClick={wizard.goBack} disabled={loading}>
                       Back
                     </Button>

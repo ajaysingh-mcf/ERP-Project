@@ -220,6 +220,41 @@ export const POST = withGateway({
       }
     }
 
+    // ── check_duplicates (read-only CSV-preview helper) ─────────────────────────
+    if (body.action === "check_duplicates") {
+      const { rows } = body
+      const duplicates: Record<number, string[]> = {}
+
+      const fieldChecks: [string, string, string][] = [
+        ["name", manufacturers.checkDuplicateNameBatch, "Name"],
+        ["gst_number", manufacturers.checkDuplicateGstBatch, "GST number"],
+        ["ifsc_number", manufacturers.checkDuplicateIfscBatch, "IFSC code"],
+        ["account_number", manufacturers.checkDuplicateAccountNumberBatch, "Account number"],
+        ["email", manufacturers.checkDuplicateEmailBatch, "Email"],
+      ]
+
+      for (const [field, sql, label] of fieldChecks) {
+        const values = [...new Set(
+          rows.map((r: any) => String(r[field] ?? "").trim()).filter(Boolean)
+        )]
+        if (values.length === 0) continue
+
+        const matches = await query<{ code: string; value: string }>(sql, [values])
+        if (matches.length === 0) continue
+        const codeByValue = new Map(matches.map((m) => [m.value, m.code]))
+
+        rows.forEach((row: any, i: number) => {
+          const val = String(row[field] ?? "").trim()
+          const code = val && codeByValue.get(val)
+          if (code) {
+            ;(duplicates[i] ??= []).push(`${label} "${val}" is already used by ${code}`)
+          }
+        })
+      }
+
+      return NextResponse.json({ duplicates })
+    }
+
     // ── update_docs (approval flow) ──────────────────────────────────────────────
     if (body.action === "update_docs") {
       const { mfg_id, gst_certificate_key, cancelled_cheque_key, pan_card_key, misc_document_key } = body

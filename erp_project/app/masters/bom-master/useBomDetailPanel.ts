@@ -40,6 +40,12 @@ export function useBomDetailPanel() {
   const [saving, setSaving]               = useState(false)
   const [saveError, setSaveError]         = useState<string | null>(null)
 
+  // Status is edited/saved independently of the RM/PM lines above — it's a
+  // direct, immediate change (no approval gate), unlike the line edits.
+  const [editStatus, setEditStatus]       = useState<string>("")
+  const [statusSaving, setStatusSaving]   = useState(false)
+  const [statusError, setStatusError]     = useState<string | null>(null)
+
   // In-memory cache of fetched BOM details, keyed by bom_id, so re-opening a
   // BOM already seen this session (or one warmed by hover-prefetch) is
   // instant instead of re-hitting the API.
@@ -126,6 +132,8 @@ export function useBomDetailPanel() {
     })
     setEditRmRows(detail.lines.filter((l) => l.mtrl_type === "rm").map(toRow))
     setEditPmRows(detail.lines.filter((l) => l.mtrl_type === "pm").map(toRow))
+    setEditStatus(detail.status ?? "")
+    setStatusError(null)
     setEditSeededFor(detail.bom_id)
   }, [editMode, detail, editSeededFor])
 
@@ -152,6 +160,7 @@ export function useBomDetailPanel() {
     setEditMode(false)
     setEditSeededFor(null)
     setSaveError(null)
+    setStatusError(null)
     setSelectedBomId(null)
     const params = new URLSearchParams(searchParams.toString())
     params.delete("bomId")
@@ -165,6 +174,7 @@ export function useBomDetailPanel() {
     setEditMode(true)
     setEditSeededFor(null)
     setSaveError(null)
+    setStatusError(null)
     const params = new URLSearchParams(searchParams.toString())
     params.set("bomId", String(bomId))
     router.push(`${pathname}?${params.toString()}`, { scroll: false })
@@ -174,6 +184,7 @@ export function useBomDetailPanel() {
     setEditMode(false)
     setEditSeededFor(null)
     setSaveError(null)
+    setStatusError(null)
   }
 
   async function saveEdit() {
@@ -264,6 +275,35 @@ export function useBomDetailPanel() {
     }
   }
 
+  /** Direct, immediate status change — separate from saveEdit's line-diff
+   *  approval submit. Only guarded server-side by "no pending approval". */
+  async function saveStatus() {
+    setStatusError(null)
+    const bomId = detail?.bom_id ?? selectedBomId
+    if (bomId == null) { setStatusError("No BOM selected."); return }
+    if (!editStatus) { setStatusError("Select a status."); return }
+
+    setStatusSaving(true)
+    try {
+      const res = await fetch("/api/masters/bom-master", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update-status", bom_id: bomId, status: editStatus }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to update BOM status")
+      fetchDetail(bomId, { skipCache: true }).then(setDetail).catch(() => {})
+      toast({ title: "BOM status updated", description: editStatus, variant: "success" })
+      router.refresh()
+    } catch (e: any) {
+      const message = e.message || "An error occurred"
+      setStatusError(message)
+      toast({ title: "Failed to update BOM status", description: message, variant: "error" })
+    } finally {
+      setStatusSaving(false)
+    }
+  }
+
   return {
     selectedBomId,
     detail,
@@ -278,6 +318,11 @@ export function useBomDetailPanel() {
     setEditPmRows,
     saving,
     saveError,
+    editStatus,
+    setEditStatus,
+    statusSaving,
+    statusError,
+    saveStatus,
     rmLines,
     pmLines,
     rmDetailTotal,

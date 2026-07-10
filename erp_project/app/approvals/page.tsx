@@ -2,6 +2,7 @@
 // client for interactive approve / reject actions.
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
+import { resolveAccess } from "@/lib/permissions"
 import { query } from "@/lib/db"
 import { timedQuery } from "@/lib/query-timing"
 import { approvalsSql, entityLabelSql } from "@/lib/queries/approvals"
@@ -14,6 +15,11 @@ export const dynamic = "force-dynamic"
 export default async function ApprovalsPage() {
   const session = await auth()
   if (!session?.user) redirect("/auth/signin")
+
+  const userId = Number(session.user.id)
+  const roles  = session.user.roles ?? []
+  const access = await resolveAccess(userId, roles, "/approvals")
+  if (access === "none") redirect("/auth/unauthorized")
 
   const pageStart = performance.now()
   console.log(`[AUDIT] Approvals load`)
@@ -45,7 +51,7 @@ export default async function ApprovalsPage() {
 
   console.log(`[AUDIT] Approvals complete: ${(performance.now() - pageStart).toFixed(2)}ms | ${approvals.length} pending`)
 
-  const isApprover = session.user.roles?.some((r) => ["admin", "manager"].includes(r)) ?? false
+  const isApprover = access === "editor"
 
   return (
     <ApprovalsClient

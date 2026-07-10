@@ -9,6 +9,12 @@
 //                    approval encoding the full RM/PM line diff as
 //                    approval_items — details_bom itself is only written at
 //                    approval time (see lib/approvals/module-handlers.ts).
+//   update-status  — direct, immediate master_bom.status change from the Edit
+//                    BOM dialog. No approval gate (unlike create-full) —
+//                    blocked only while an approval is already pending for
+//                    this BOM. Setting "active" also deactivates any other
+//                    active BOM for the same SKU, same invariant as
+//                    bomHandler.applyAndArchive enforces on approval.
 //
 // This replaces the old action:"create"/"bulk" pair, which inserted directly
 // with no approval gate and referenced non-existent master_bom.sku_code/mfg_id
@@ -139,6 +145,59 @@ export const POST = withGateway({
         conn.release()
       }
     }
+
+    // ── update-status: direct, immediate status change (no approval gate) ──
+    if (body.action === "update-status") {
+      const { bom_id, status } = body
+      const eventId = makeEventId("BOM", "status", bom_id)
+      const logCtx = { ...ctx, eventId, module: "BOM" }
+
+      const pending = await query(approvalsSql.hasPending, ["BOM", bom_id])
+      if (pending.length > 0) {
+        throw new ApiError(409, "pending_approval", "This BOM has a pending approval — resolve it before changing status directly.")
+      }
+
+      const conn: PoolConnection = await pool.getConnection()
+      await conn.beginTransaction()
+      try {
+        const [rows] = await conn.execute(bomSql.selectBomHeaderRawById, [bom_id])
+        const cur = (rows as any[])[0]
+        if (!cur) throw new ApiError(404, "not_found", "BOM not found.")
+
+        await conn.execute(bomSql.setBomStatusWithUpdater, [status, userId, bom_id])
+
+        // Manually activating a BOM must still respect "only one active BOM
+        // per SKU" — the same invariant bomHandler.applyAndArchive enforces
+        // on approval — otherwise downstream costing/reporting queries that
+        // join details_bom on status='active' assuming a single row break.
+        if (status === "active" && cur.sku_id) {
+          const [siblingRows] = await conn.execute(bomSql.selectOtherActiveBomsForSku, [cur.sku_id, bom_id])
+          const siblingIds = (siblingRows as any[]).map((r) => r.id)
+          if (siblingIds.length > 0) {
+            await conn.execute(bomSql.deactivateOtherActiveBomsForSku, [cur.sku_id, bom_id])
+            for (const siblingId of siblingIds) {
+              const deactivateEventId = makeEventId("BOM", "deactivate", siblingId)
+              logger.info({ module: "BOM", eventId: deactivateEventId, bomId: siblingId, skuId: cur.sku_id, supersededBy: bom_id, message: "BOM deactivated (superseded by manual status change)" })
+              recordProcessedEvent("BOM", deactivateEventId, { bomId: siblingId, skuId: cur.sku_id, supersededBy: bom_id })
+            }
+          }
+        }
+
+        await conn.commit()
+        logger.info({ ...logCtx, bomId: bom_id, status, message: "BOM status updated manually" })
+        recordProcessedEvent("BOM", eventId, { bomId: bom_id, status })
+        return NextResponse.json({ ok: true })
+      } catch (err: any) {
+        await conn.rollback()
+        recordFailedEvent("BOM", eventId, { bomId: bom_id, status }, err.message)
+        logger.error({ ...logCtx, err: err.message, message: "BOM status update failed" })
+        if (err instanceof ApiError) throw err
+        throw new ApiError(500, "internal", "Database error: " + err.message)
+      } finally {
+        conn.release()
+      }
+    }
+
     return NextResponse.json({ ok: false, message: "Invalid action" }, { status: 400 })
   },
 })

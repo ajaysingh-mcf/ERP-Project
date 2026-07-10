@@ -11,7 +11,17 @@ import { AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { BomLineEditorTable } from "./BomLineEditorTable"
+import { BOM_STATUS_VALUES } from "@/lib/validation/bom"
 import type { BomLineRow, BomMaterialOption } from "./BomLineEditorGrid"
+
+const STATUS_LABELS: Record<string, string> = {
+  draft: "Draft",
+  active: "Active",
+  inactive: "Inactive",
+  "in review": "In Review",
+  discontinued: "Discontinued",
+  rejected: "Rejected",
+}
 
 export function BomEditDialog({
   open,
@@ -26,6 +36,11 @@ export function BomEditDialog({
   saving,
   onCancel,
   onSave,
+  status,
+  onChangeStatus,
+  statusSaving,
+  statusError,
+  onSaveStatus,
 }: {
   open: boolean
   bomCode: string | null
@@ -39,6 +54,13 @@ export function BomEditDialog({
   saving: boolean
   onCancel: () => void
   onSave: () => void
+  /** Direct, immediate status change — separate from the line edits above,
+   *  which still go through the approval flow. */
+  status: string
+  onChangeStatus: (status: string) => void
+  statusSaving: boolean
+  statusError: string | null
+  onSaveStatus: () => void
 }) {
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onCancel() }}>
@@ -54,6 +76,30 @@ export function BomEditDialog({
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <span>{saveError}</span>
           </div>
+        )}
+
+        <div className="flex items-end gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 shrink-0">
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Status — applies immediately, no approval needed
+            </label>
+            <select
+              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={status}
+              onChange={(e) => onChangeStatus(e.target.value)}
+              disabled={statusSaving}
+            >
+              {BOM_STATUS_VALUES.map((v) => (
+                <option key={v} value={v}>{STATUS_LABELS[v] ?? v}</option>
+              ))}
+            </select>
+          </div>
+          <Button variant="outline" size="sm" onClick={onSaveStatus} disabled={statusSaving}>
+            {statusSaving ? "Updating…" : "Update Status"}
+          </Button>
+        </div>
+        {statusError && (
+          <p className="text-xs text-destructive shrink-0">{statusError}</p>
         )}
 
         <div className="overflow-y-auto flex-1 min-h-0 py-1">

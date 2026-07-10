@@ -1,0 +1,152 @@
+"use client"
+
+/**
+ * CLIENT component for /po-tracking/po-procurement/entity-emails — standalone
+ * page counterpart to the vendor/manufacturer contact-email list (formerly a
+ * dialog on the FG POs Tracking page).
+ */
+
+import { useState } from "react"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
+import { ArrowLeft, Plus } from "lucide-react"
+import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
+import { MasterToolbar, MasterToolbarActions } from "@/components/masters/MasterToolbar"
+import { Button } from "@/components/ui/button"
+import { PaginationBar } from "@/components/ui/pagination-bar"
+import { Card, CardContent } from "@/components/ui/card"
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table"
+import AddEntityEmailDialog from "./AddEntityEmailDialog"
+
+type EntityOption = { id: number; code: string; name: string }
+
+type EntityEmailRow = {
+  id: number
+  entity_type: string
+  entity_code: string
+  email: string
+  purpose: string | null
+  created_at: string | null
+}
+
+const selectCls =
+  "h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+
+export default function EntityEmailsClient({
+  rows,
+  total,
+  page,
+  pageSize,
+  currentSearch,
+  currentType,
+  vendorOptions,
+  mfgOptions,
+  canEdit,
+}: {
+  rows: EntityEmailRow[]
+  total: number
+  page: number
+  pageSize: number
+  currentSearch: string
+  currentType: string
+  vendorOptions: EntityOption[]
+  mfgOptions: EntityOption[]
+  canEdit: boolean
+}) {
+  const router       = useRouter()
+  const pathname      = usePathname()
+  const searchParams  = useSearchParams()
+  const [showAdd, setShowAdd] = useState(false)
+
+  function navigate(updates: Record<string, string>) {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) params.set(k, v)
+      else   params.delete(k)
+    }
+    params.set("page", "1")
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
+  return (
+    <>
+      {/* ── Toolbar ── */}
+      <MasterToolbar>
+        <UrlSearchInput
+          initialValue={currentSearch}
+          placeholder="Search by code, email, or purpose…"
+        />
+        <select
+          value={currentType}
+          onChange={(e) => navigate({ type: e.target.value })}
+          className={selectCls}
+        >
+          <option value="">All Types</option>
+          <option value="vendor">Vendor</option>
+          <option value="mfg">Manufacturer</option>
+        </select>
+        <MasterToolbarActions>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => router.push("/po-tracking/po-procurement")}
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to FG POs Tracking
+          </Button>
+          {canEdit && (
+            <Button size="sm" className="gap-1.5" onClick={() => setShowAdd(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Add Email
+            </Button>
+          )}
+        </MasterToolbarActions>
+      </MasterToolbar>
+
+      {/* ── Table ── */}
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Type</TableHead>
+                <TableHead>Code</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Purpose</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8 text-sm">
+                    No entity emails found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="capitalize">{r.entity_type}</TableCell>
+                    <TableCell className="font-mono">{r.entity_code}</TableCell>
+                    <TableCell>{r.email}</TableCell>
+                    <TableCell>{r.purpose ?? "—"}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          <PaginationBar total={total} page={page} pageSize={pageSize} />
+        </CardContent>
+      </Card>
+
+      <AddEntityEmailDialog
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        vendorOptions={vendorOptions}
+        mfgOptions={mfgOptions}
+        onSaved={() => { setShowAdd(false); router.refresh() }}
+      />
+    </>
+  )
+}

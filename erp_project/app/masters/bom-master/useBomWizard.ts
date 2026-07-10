@@ -5,10 +5,13 @@
  * SKU select -> existing-active-BOM check -> entry method (manual/CSV) ->
  * RM+PM line entry -> review & submit.
  *
- * "Update Existing BOM" never submits from here — it closes the wizard and
- * hands off to the listing's edit-mode detail panel (onEditExisting), since
- * editing in place is a different surface (useBomDetailPanel.ts). This
- * wizard only ever submits mode:"new-version".
+ * "Update Existing BOM" (step 2, shown when the picked SKU already has an
+ * active BOM) never submits from here — it closes the wizard and hands off
+ * to the listing's edit-mode detail panel (onEditExisting), since editing in
+ * place is a different surface (useBomDetailPanel.ts). This wizard otherwise
+ * only ever submits mode:"new-version". Editing an existing BOM directly
+ * (without going through "Create BOM" first) is also available via the
+ * table's per-row Edit button, wired to the same onEditExisting.
  */
 
 import { useState } from "react"
@@ -18,8 +21,7 @@ import { rmTotal, type BomLineRow, type BomMaterialOption } from "./BomLineEdito
 import { parseBomCsv } from "./bom-csv"
 import type { Sku } from "@/types/masters"
 
-export type WizardStep = 0 | 1 | 2 | 3 | 4 | 5
-export type WizardMode = "create" | "modify"
+export type WizardStep = 1 | 2 | 3 | 4 | 5
 export type EntryMethod = "manual" | "csv"
 
 export function useBomWizard({
@@ -37,8 +39,7 @@ export function useBomWizard({
 }) {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
-  const [step, setStep] = useState<WizardStep>(0)
-  const [mode, setMode] = useState<WizardMode | null>(null)
+  const [step, setStep] = useState<WizardStep>(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
@@ -56,8 +57,7 @@ export function useBomWizard({
   const isDirty = skuId != null || rmRows.length > 0 || pmRows.length > 0
 
   function resetAll() {
-    setStep(0)
-    setMode(null)
+    setStep(1)
     setError(null)
     setShowCloseConfirm(false)
     setSkuId(null)
@@ -96,16 +96,6 @@ export function useBomWizard({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to check existing BOMs")
 
-      if (mode === "modify") {
-        if (data.hasActive) {
-          onEditExisting(data.bom_id)
-          closeWizard()
-        } else {
-          setError(`${sku ? sku.sku_code : "This SKU"} has no active BOM to modify. Use "Create New BOM" instead.`)
-        }
-        return
-      }
-
       if (data.hasActive) {
         setExistingBomId(data.bom_id)
         setExistingBomCode(data.bom_code)
@@ -119,12 +109,6 @@ export function useBomWizard({
     } finally {
       setLoading(false)
     }
-  }
-
-  function chooseMode(m: WizardMode) {
-    setMode(m)
-    setError(null)
-    setStep(1)
   }
 
   function handleUpdateExisting() {
@@ -163,9 +147,8 @@ export function useBomWizard({
     setError(null)
     // Step 3's "back" skips Step 2 if it was never shown (SKU had no existing
     // active BOM, so existingBomId is still null) — otherwise every other
-    // step just steps back by 1.
+    // step just steps back by 1. Step 1 is the first step, so it has no back target.
     if (step === 3) setStep(existingBomId != null ? 2 : 1)
-    else if (step === 1) setStep(0)
     else setStep((s) => (s - 1) as WizardStep)
   }
 
@@ -230,8 +213,6 @@ export function useBomWizard({
     setOpen,
     step,
     setStep,
-    mode,
-    chooseMode,
     loading,
     error,
     showCloseConfirm,

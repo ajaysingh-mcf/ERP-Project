@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/toast"
 import type { ImpromptuForm, MfgOption, SkuOption, WarehouseOption } from "./po-types"
 import { EMPTY_FORM } from "./po-types"
 import { useQuotedRate } from "./useQuotedRate"
@@ -29,6 +30,7 @@ export default function AddPODialog({
   const [errors, setErrors]         = useState<Partial<Record<keyof ImpromptuForm, string>>>({})
   const [submitting, setSubmitting] = useState(false)
   const [apiError, setApiError]     = useState("")
+  const { toast } = useToast()
 
   const today = new Date().toISOString().slice(0, 10)
   const defaultDest = warehouseOptions.find((w) => w.type === "MWH")?.name ?? ""
@@ -92,6 +94,23 @@ export default function AddPODialog({
       })
       const data = await res.json()
       if (!res.ok) { setApiError(data.error ?? "Failed to submit PO."); return }
+
+      if (poType === "normal") {
+        if (data.emailed) {
+          toast({
+            title: "PO raised",
+            description: `${data.po_no} raised and emailed to the manufacturer.`,
+            variant: "success",
+          })
+        } else {
+          toast({
+            title: "PO raised — email not sent",
+            description: data.emailError ?? "Email could not be sent.",
+            variant: "error",
+          })
+        }
+      }
+
       onCreated()
       onClose()
     } catch {

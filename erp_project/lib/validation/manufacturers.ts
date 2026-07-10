@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { gstNumberField, ifscNumberField, accountNumberField } from "./shared"
+import { gstNumberField, ifscNumberField, accountNumberField, emailField } from "./shared"
 
 // `code` is intentionally absent here — it's auto-generated server-side on create.
 export const mfgCreateSchema = z.object({
@@ -12,7 +12,7 @@ export const mfgCreateSchema = z.object({
   bank_name: z.string().optional(),
   ifsc_number: ifscNumberField,
   account_number: accountNumberField,
-  email: z.string().optional(),
+  email: emailField,
   // Optional doc keys — uploaded client-side before create; bundled into the same approval
   gst_certificate_key: z.string().nullable().optional(),
   cancelled_cheque_key: z.string().nullable().optional(),
@@ -36,13 +36,20 @@ export const mfgUpdateSchema = z.object({
   bank_name: z.string().optional(),
   ifsc_number: ifscNumberField,
   account_number: accountNumberField,
-  email: z.string().optional(),
+  email: emailField,
   status: z.string().optional(),
 })
 
 export const mfgBulkFromS3Schema = z.object({
   action: z.literal("bulk_from_s3"),
   key: z.string().trim().min(1),
+})
+
+// Read-only preview check used by the CSV import dialog before submission —
+// reports which rows collide with existing DB records, without inserting anything.
+export const mfgCheckDuplicatesSchema = z.object({
+  action: z.literal("check_duplicates"),
+  rows: z.array(z.record(z.string(), z.any())).min(1),
 })
 
 // S3 keys for the 4 reference documents. Files are pre-uploaded by the client;
@@ -62,6 +69,7 @@ export const mfgActionSchema = z.discriminatedUnion("action", [
   mfgUpdateSchema,
   mfgBulkFromS3Schema,
   mfgUpdateDocsSchema,
+  mfgCheckDuplicatesSchema,
 ])
 
 export type MfgAction = z.infer<typeof mfgActionSchema>

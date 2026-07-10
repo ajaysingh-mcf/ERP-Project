@@ -212,6 +212,11 @@ export default function BOMMasterComponent({
         saving={panel.saving}
         onCancel={panel.cancelEdit}
         onSave={panel.saveEdit}
+        status={panel.editStatus}
+        onChangeStatus={panel.setEditStatus}
+        statusSaving={panel.statusSaving}
+        statusError={panel.statusError}
+        onSaveStatus={panel.saveStatus}
       />
     </>
   )

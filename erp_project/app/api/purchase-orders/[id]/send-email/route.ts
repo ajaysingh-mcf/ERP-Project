@@ -21,12 +21,11 @@ export const POST = withGateway({
   handler: async ({ params, ctx }) => {
     const session = await auth()
     if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
-
+    const userId = Number(session.user.id)
     const poId = params.id
     const eventId = makeEventId("PO_EMAIL_SEND", "manual", poId)
     logger.info({ ...ctx, eventId, poId, message: "Manual PO email send requested" })
-    recordRawEvent("PO_EMAIL_SEND", eventId, { poId, userId: session.user.id })
-
+    recordRawEvent("PO_EMAIL_SEND", eventId, { poId, userId })
     const rows = await query<{ status: string }>(purchaseOrdersSql.selectForEdit, [poId])
     if (!rows[0]) throw new ApiError(404, "not_found", "PO not found")
     if (rows[0].status !== "raised") {

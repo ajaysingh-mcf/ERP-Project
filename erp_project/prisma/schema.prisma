@@ -301,6 +301,17 @@ model details_vendor {
   @@index([vendor_id], map: "vendor_id")
 }
 
+model entity_emails {
+  id          Int       @id @default(autoincrement())
+  entity_type String    @db.VarChar(10)
+  entity_code String    @db.VarChar(50)
+  email       String    @db.VarChar(255)
+  purpose     String?   @db.VarChar(100)
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+
+  @@index([entity_type, entity_code], map: "idx_entity_emails_lookup")
+}
+
 model history_bom {
   id             Int                   @id @default(autoincrement())
   bom_id         Int

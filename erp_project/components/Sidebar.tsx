@@ -22,24 +22,19 @@ type NavItem = {
 }
 
 const NAV: NavItem[] = [
-  { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Dashboard", href: "/masters", icon: LayoutDashboard },
   {
     label: "Masters", icon: Database,
     children: [
       { label: "SKUs",              href: "/masters/skus" , icon: (props) => <Dot className="text-blue-500" {...props} />  },
       { label: "Manufacturers",     href: "/masters/manufacturers" },
       { label: "Vendors",           href: "/masters/vendors" },
+      {label: "Bom Master" , href: "/masters/bom-master"},
+      {label: "Material Master",     href:"/masters/material-master"},
       { label: "RM Cost Master",     href: "/masters/raw-materials" },
       { label: "PM Cost Master", href: "/masters/packing-materials" },
-      {label: "Bom Master" , href: "/masters/bom-master"},
-      {label: "Material Master",     href:"/masters/material-master"}
     ],
   },
-  { label: "Planning",            icon: CalendarDays, children: [] },
-  // "PO Tracking" (formerly "Production Tracking") groups the purchase-order
-  // workflow pages. Children render as a collapsible sub-list — the generic
-  // logic further down (the `hasChildren` branch) handles open/close + active
-  // highlighting, so adding entries here is all that's needed.
   {
     label: "Production Tracking", icon: Activity,
     children: [
@@ -50,15 +45,8 @@ const NAV: NavItem[] = [
     ],
   },
   {
-    label: "Finance", icon: DollarSign,
-    children: [{ label: "Finance & Accounting", href: "/finance" }],
+    label: "Approvals", href: "/approvals", icon: CheckSquare,
   },
-  { label: "Approvals", href: "/approvals", icon: CheckSquare },
-  {
-    label: "Reports", icon: BarChart2,
-    children: [{ label: "Reports & Analytics", href: "/reports" }],
-  },
-  { label: "Settings", href: "/settings", icon: Settings },
 ]
 
 interface SidebarProps {
@@ -103,22 +91,24 @@ export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
     )
 
   // A child matches if the pathname equals its href or is nested under it
-  // (e.g. a detail page not represented as its own nav item). When several
-  // children match — e.g. "/manufacturing" (Overview) is a prefix of
-  // "/manufacturing/5" (a manufacturer's page) — only the most specific
-  // (longest href) one should be highlighted, never both at once.
-  const bestActiveChild = (children: NavChild[]): NavChild | undefined => {
-    const matches = children.filter(c => pathname === c.href || pathname.startsWith(c.href + "/"))
-    return matches.sort((a, b) => b.href.length - a.href.length)[0]
-  }
+  // (e.g. a detail page not represented as its own nav item). Matching must
+  // happen across the WHOLE sidebar at once, not per-section — "/manufacturing"
+  // (MFG Overview, under Production Tracking) is a prefix of "/manufacturing/5"
+  // (a manufacturer's page, under MFG Cost Manager). Computing the best match
+  // separately within each section let both win independently; only the single
+  // most specific (longest href) match across every section should ever be lit.
+  const allChildren = nav.flatMap(item => item.children ?? [])
+  const globalActiveChild = allChildren
+    .filter(c => pathname === c.href || pathname.startsWith(c.href + "/"))
+    .sort((a, b) => b.href.length - a.href.length)[0]
 
   const isChildActive = (children: NavChild[], href: string) =>
-    bestActiveChild(children)?.href === href
+    globalActiveChild?.href === href && children.some(c => c.href === href)
 
   const isSectionActive = (item: NavItem) =>
     item.href
       ? pathname === item.href
-      : bestActiveChild(item.children ?? []) !== undefined
+      : !!globalActiveChild && (item.children ?? []).some(c => c.href === globalActiveChild!.href)
 
   const initials = user?.name
     ? user.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)
@@ -218,7 +208,7 @@ export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
                 {!collapsed && isOpen && (() => {
                   const children = item.children!
                   const overflowCount = children.length - CHILD_CAP
-                  const activeChild = bestActiveChild(children)
+                  const activeChild = children.find(c => c.href === globalActiveChild?.href)
                   const activeIsHidden = !!activeChild && children.indexOf(activeChild) >= CHILD_CAP
                   const isExpanded = expandedSections.includes(item.label) || activeIsHidden
                   const visibleChildren = overflowCount > 0 && !isExpanded ? children.slice(0, CHILD_CAP) : children
