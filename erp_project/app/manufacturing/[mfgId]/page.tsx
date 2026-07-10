@@ -35,12 +35,13 @@ export default async function ManufacturerDetailPage({
   const session = await auth()
   if (!session) redirect("/auth/signin")
   const userId = parseInt(session.user.id)
-  const access = await resolveAccess(userId, session.user.roles, "/manufacturing")
-  if (access === "none") redirect("/auth/unauthorized")
 
   const { mfgId } = await params
   const id = parseInt(mfgId)
   if (!Number.isFinite(id)) notFound()
+
+  const access = await resolveAccess(userId, session.user.roles, `/manufacturing/${id}`)
+  if (access === "none") redirect("/auth/unauthorized")
 
   const sp = await searchParams
   const tabParam = String(sp.tab ?? "active")

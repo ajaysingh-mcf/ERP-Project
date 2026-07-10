@@ -87,6 +87,7 @@ export function BomTable({
                   key={row.bom_id}
                   onClick={() => row.bom_id != null && onRowClick(row.bom_id)}
                   onMouseEnter={() => onPrefetch(row.bom_id)}
+                  onMouseLeave={() => onPrefetch(null)}
                   className={cn(
                     "cursor-pointer transition-colors",
                     selectedBomId === row.bom_id

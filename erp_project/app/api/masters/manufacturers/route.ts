@@ -35,6 +35,7 @@ import { insertApprovalWithItems, assertNoDuplicateBankingFields, findDuplicateB
 
 export const POST = withGateway({
   schema: mfgActionSchema,
+  access: { pageSlug: "/masters/manufacturers", level: "editor" },
   handler: async ({ body, session, ctx }) => {
     const userId = Number(session.user.id)
 

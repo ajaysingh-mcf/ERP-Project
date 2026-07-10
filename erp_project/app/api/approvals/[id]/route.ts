@@ -9,14 +9,14 @@
 //         mandatory rejection remarks.
 //
 // Auth: requires "editor" access on the "/approvals" page, resolved from the DB
-// (page_permissions / user_page_permissions — see lib/permissions.ts resolveAccess).
-// No role name is hardcoded here; access is entirely data-driven.
+// (page_permissions / user_page_permissions — see lib/permissions.ts resolveAccess)
+// via withGateway's `access` option. No role name is hardcoded here.
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { revalidateTag } from "next/cache"
+import { z } from "zod"
 import type { PoolConnection } from "mysql2/promise"
-import { auth } from "@/lib/auth"
-import { resolveAccess } from "@/lib/permissions"
+import { withGateway } from "@/lib/gateway/with-gateway"
 import { query, execute, pool } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { approvalsSql } from "@/lib/queries/approvals"
@@ -25,30 +25,17 @@ import { APPROVAL_STATUS, STATUS } from "@/lib/constants"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import { sendPoEmail } from "@/lib/mailer"
 import logger from "@/lib/logger"
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
-  const { id } = await params
 
-  const ctx = {
-    requestId: crypto.randomUUID(),
-    userId: session ? Number(session.user.id) : undefined,
-    route: `/api/approval/[${id}]`,
-  }
+const approvalIdParamSchema = z.object({
+  id: z.coerce.number().int().positive("Invalid approval id"),
+})
+
+export const POST = withGateway({
+  paramsSchema: approvalIdParamSchema,
+  access: { pageSlug: "/approvals", level: "editor" },
+  handler: async ({ req, params, session, ctx }) => {
+  const approvalId = params.id
   logger.info({ ...ctx, message: "Approval API request received" })
-
-  const roles: string[] = session.user.roles ?? []
-  const access = await resolveAccess(Number(session.user.id), roles, "/approvals")
-  if (access !== "editor") {
-    logger.warn({ ...ctx, message: "Approval action forbidden: insufficient access", roles, access })
-    return NextResponse.json({ error: "Forbidden — editor access to /approvals required" }, { status: 403 })
-  }
-
-  const approvalId = parseInt(id)
-  if (isNaN(approvalId)) {
-    logger.error({ ...ctx, message: "Invalid approval id", rawId: id })
-    return NextResponse.json({ error: "Invalid id" }, { status: 400 })
-  }
 
   const body = await req.json()
   const { action, remarks } = body as { action: string; remarks?: string }
@@ -157,4 +144,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   } finally {
     conn.release()
   }
-}
+  },
+})

@@ -1,31 +1,22 @@
+// The MFG Overview list that used to live here moved to
+// /po-tracking/mfg-overview (see app/po-tracking/mfg-overview/page.tsx) — the
+// sidebar groups it under Production Tracking now. This bare route just
+// forwards to the first manufacturer's Cost Manager page (same order as the
+// sidebar's MFG Cost Manager list — manufacturingSql.selectActiveForNav).
 import { auth } from "@/lib/auth"
-import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
-import { timedQuery } from "@/lib/query-timing"
+import { query } from "@/lib/db"
 import { manufacturingSql } from "@/lib/queries/manufacturing"
-import type { MfgOverviewRow } from "@/types/masters"
-import ManufacturingOverviewClient from "./ManufacturingOverviewClient"
 
 export const dynamic = "force-dynamic"
 
-export default async function ManufacturingOverviewPage() {
+export default async function ManufacturingRootPage() {
   const session = await auth()
   if (!session) redirect("/auth/signin")
-  const userId = parseInt(session.user.id)
-  const access = await resolveAccess(userId, session.user.roles, "/manufacturing")
-  if (access === "none") redirect("/auth/unauthorized")
 
-  const rows = await timedQuery<MfgOverviewRow>(manufacturingSql.overviewByMfg, [], { label: "manufacturing.overviewByMfg" })
+  const rows = await query<{ id: number; name: string }>(manufacturingSql.selectActiveForNav, [])
+  const first = rows[0]
+  if (!first) redirect("/auth/unauthorized")
 
-  return (
-    <div className="p-6">
-      <div className="mb-4">
-        <h1 className="text-lg font-bold tracking-tight">MFG Management — Overview</h1>
-        <p className="text-muted-foreground text-xs mt-0.5">
-          Capacity, plan, and open PO exposure across all active manufacturers.
-        </p>
-      </div>
-      <ManufacturingOverviewClient rows={rows} />
-    </div>
-  )
+  redirect(`/manufacturing/${first.id}`)
 }

@@ -7,7 +7,7 @@
  * the panel doesn't have to switch between read/edit layouts.
  */
 
-import { X, Pencil } from "lucide-react"
+import { X, Pencil, ExternalLink, Paperclip } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,6 +15,16 @@ import { cn } from "@/lib/utils"
 import { formatDate, LOCKED_STATUSES } from "./bom-format"
 import { BomStatusBadge } from "./BomStatusBadge"
 import type { BomDetailResponse } from "@/types/masters"
+
+async function viewArtifact(s3Key: string) {
+  try {
+    const res = await fetch(`/api/files/presign?key=${encodeURIComponent(s3Key)}&view=1`)
+    const data = await res.json()
+    if (data.url) window.open(data.url, "_blank", "noopener,noreferrer")
+  } catch {
+    window.alert("Could not open file")
+  }
+}
 
 export function BomDetailPanel({
   detail,
@@ -90,6 +100,39 @@ export function BomDetailPanel({
                   <BomStatusBadge status={detail.status} />
                 </div>
               </div>
+            </div>
+
+            {/* ── Artifacts — read-only here; add/remove happens in the Edit
+                   BOM dialog below, since attaching a file is bundled into
+                   the same approval as the line edits. ── */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">
+                Artifacts ({detail.artifacts.length})
+              </p>
+              {detail.artifacts.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">No artifacts attached.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {detail.artifacts.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+                    >
+                      <Paperclip className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="flex-1 truncate">{a.file_name}</span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 shrink-0"
+                        title="View file"
+                        onClick={() => viewArtifact(a.s3_key)}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ── Material lines ── */}

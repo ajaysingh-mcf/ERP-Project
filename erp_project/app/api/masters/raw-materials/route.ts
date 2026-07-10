@@ -12,6 +12,7 @@ import {
 
 export const POST = withGateway({
   schema: rmActionSchema,
+  access: { pageSlug: "/masters/raw-materials", level: "editor" },
   handler: async ({ body, session, ctx }) => {
     const userId = Number(session.user.id)
     logger.info({ ...ctx, action: body.action, message: "Raw Materials API request received" })

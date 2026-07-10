@@ -11,6 +11,7 @@ import {
 
 export const POST = withGateway({
   schema: pmActionSchema,
+  access: { pageSlug: "/masters/packing-materials", level: "editor" },
   handler: async ({ body, session, ctx }) => {
     const userId = Number(session.user.id)
     logger.info({ ...ctx, action: body.action, message: "Packing Material API request received" })

@@ -18,20 +18,19 @@
  *   500  — server error
  */
 
-import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { NextResponse } from "next/server"
 import { query } from "@/lib/db"
 import { rawMaterials as rmSql } from "@/lib/queries/raw-materials"
 import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { RM_VENDOR_EXPORT_COLUMNS, RM_MFG_EXPORT_COLUMNS } from "@/lib/export-configs"
+import { withGateway } from "@/lib/gateway/with-gateway"
 import logger from "@/lib/logger"
 
 const ROW_LIMIT = 50_000
 
-export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
+export const GET = withGateway({
+  access: { pageSlug: "/masters/raw-materials", level: "viewer" },
+  handler: async ({ req, session }) => {
   const sp      = req.nextUrl.searchParams
   const format  = sp.get("format") === "xlsx" ? "xlsx" : "csv"
   const isMfg   = sp.get("view") === "manufacturer"
@@ -122,4 +121,5 @@ export async function GET(req: NextRequest) {
     console.error("[/api/masters/raw-materials/export]", err)
     return NextResponse.json({ error: "Export failed" }, { status: 500 })
   }
-}
+  },
+})

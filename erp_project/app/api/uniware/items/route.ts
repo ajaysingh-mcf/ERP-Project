@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { withGateway } from "@/lib/gateway/with-gateway"
 
 const UNIWARE_BASE_URL  = process.env.UNIWARE_BASE_URL
 const UNIWARE_USER_NAME = process.env.UNIWARE_USER_NAME
@@ -44,7 +45,8 @@ async function getAccessToken(): Promise<string> {
   return body.access_token as string
 }
 
-export async function GET() {
+export const GET = withGateway({
+  handler: async () => {
   if (!UNIWARE_BASE_URL || !UNIWARE_USER_NAME || !UNIWARE_PASSWORD) {
     return NextResponse.json(
       { error: "Missing Uniware environment variables." },
@@ -91,4 +93,5 @@ export async function GET() {
       { status: 500 }
     )
   }
-}
+  },
+})

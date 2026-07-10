@@ -11,8 +11,10 @@ import { AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { BomLineEditorTable } from "./BomLineEditorTable"
+import { BomArtifactsAddButton, BomArtifactsList } from "./BomArtifactsEditor"
 import { BOM_STATUS_VALUES } from "@/lib/validation/bom"
 import type { BomLineRow, BomMaterialOption } from "./BomLineEditorGrid"
+import type { BomArtifact } from "@/types/masters"
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -41,6 +43,11 @@ export function BomEditDialog({
   statusSaving,
   statusError,
   onSaveStatus,
+  artifacts,
+  pendingArtifactFiles,
+  onChangePendingArtifactFiles,
+  pendingArtifactRemoveIds,
+  onChangePendingArtifactRemoveIds,
 }: {
   open: boolean
   bomCode: string | null
@@ -61,6 +68,13 @@ export function BomEditDialog({
   statusSaving: boolean
   statusError: string | null
   onSaveStatus: () => void
+  /** Artifacts are staged here but only applied on onSave — bundled into the
+   *  same approval as the line edits (see BomArtifactsEditor.tsx). */
+  artifacts: BomArtifact[]
+  pendingArtifactFiles: File[]
+  onChangePendingArtifactFiles: (files: File[]) => void
+  pendingArtifactRemoveIds: number[]
+  onChangePendingArtifactRemoveIds: (ids: number[]) => void
 }) {
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onCancel() }}>
@@ -78,29 +92,51 @@ export function BomEditDialog({
           </div>
         )}
 
-        <div className="flex items-end gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 shrink-0">
-          <div className="flex-1">
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Status — applies immediately, no approval needed
-            </label>
-            <select
-              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              value={status}
-              onChange={(e) => onChangeStatus(e.target.value)}
-              disabled={statusSaving}
-            >
-              {BOM_STATUS_VALUES.map((v) => (
-                <option key={v} value={v}>{STATUS_LABELS[v] ?? v}</option>
-              ))}
-            </select>
+        <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 shrink-0 space-y-2.5">
+          {/* Status + Artifacts share one line — both are "extra metadata
+              around the line edit" rather than part of it, so they're grouped
+              together and kept out of the line editor's vertical space. */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium text-muted-foreground shrink-0">Status</label>
+              <select
+                className="w-36 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={status}
+                onChange={(e) => onChangeStatus(e.target.value)}
+                disabled={statusSaving}
+              >
+                {BOM_STATUS_VALUES.map((v) => (
+                  <option key={v} value={v}>{STATUS_LABELS[v] ?? v}</option>
+                ))}
+              </select>
+              <Button variant="outline" size="sm" onClick={onSaveStatus} disabled={statusSaving}>
+                {statusSaving ? "Updating…" : "Update Status"}
+              </Button>
+            </div>
+
+            <div className="w-px self-stretch bg-border" />
+
+            <div className="flex items-center gap-2 shrink-0">
+              <label className="text-xs font-medium text-muted-foreground">Artifacts</label>
+              <BomArtifactsAddButton
+                pendingFiles={pendingArtifactFiles}
+                onChangePendingFiles={onChangePendingArtifactFiles}
+                disabled={saving}
+              />
+            </div>
           </div>
-          <Button variant="outline" size="sm" onClick={onSaveStatus} disabled={statusSaving}>
-            {statusSaving ? "Updating…" : "Update Status"}
-          </Button>
+
+          {statusError && <p className="text-xs text-destructive">{statusError}</p>}
+
+          <BomArtifactsList
+            existing={artifacts}
+            pendingFiles={pendingArtifactFiles}
+            onChangePendingFiles={onChangePendingArtifactFiles}
+            pendingRemoveIds={pendingArtifactRemoveIds}
+            onChangePendingRemoveIds={onChangePendingArtifactRemoveIds}
+            disabled={saving}
+          />
         </div>
-        {statusError && (
-          <p className="text-xs text-destructive shrink-0">{statusError}</p>
-        )}
 
         <div className="overflow-y-auto flex-1 min-h-0 py-1">
           <BomLineEditorTable

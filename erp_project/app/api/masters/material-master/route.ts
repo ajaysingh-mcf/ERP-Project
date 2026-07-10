@@ -16,6 +16,7 @@ import { generateMaterialCode } from "@/lib/master-routes/material-utils"
 
 export const POST = withGateway({
   schema: materialMasterCreateSchema,
+  access: { pageSlug: "/masters/material-master", level: "editor" },
   handler: async ({ body, session, ctx }) => {
     const userId = Number(session.user.id)
 
@@ -164,6 +165,7 @@ export const POST = withGateway({
 
 export const PUT = withGateway({
   schema: materialMasterUpdateSchema,
+  access: { pageSlug: "/masters/material-master", level: "editor" },
   handler: async ({ body, session, ctx }) => {
     const userId = Number(session.user.id)
     const { id } = body

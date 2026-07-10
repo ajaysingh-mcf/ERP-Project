@@ -8,6 +8,7 @@
 
 import { Button } from "@/components/ui/button"
 import { BomLineEditorGrid, rmTotal, type BomLineRow, type BomMaterialOption } from "./BomLineEditorGrid"
+import { BomArtifactsEditor } from "./BomArtifactsEditor"
 import { CSV_HEADER } from "./bom-csv"
 import type { EntryMethod } from "./useBomWizard"
 import type { Sku } from "@/types/masters"
@@ -109,6 +110,8 @@ export function Step4LineEntry({
   onChangePm,
   rmMaterials,
   pmMaterials,
+  pendingArtifactFiles,
+  onChangePendingArtifactFiles,
 }: {
   bomCode: string
   onChangeBomCode: (v: string) => void
@@ -122,6 +125,8 @@ export function Step4LineEntry({
   onChangePm: (rows: BomLineRow[]) => void
   rmMaterials: BomMaterialOption[]
   pmMaterials: BomMaterialOption[]
+  pendingArtifactFiles: File[]
+  onChangePendingArtifactFiles: (files: File[]) => void
 }) {
   return (
     <div className="space-y-4 py-2">
@@ -165,6 +170,15 @@ export function Step4LineEntry({
           pmMaterials={pmMaterials}
         />
       )}
+
+      <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+        <BomArtifactsEditor
+          pendingFiles={pendingArtifactFiles}
+          onChangePendingFiles={onChangePendingArtifactFiles}
+          pendingRemoveIds={[]}
+          onChangePendingRemoveIds={() => {}}
+        />
+      </div>
     </div>
   )
 }

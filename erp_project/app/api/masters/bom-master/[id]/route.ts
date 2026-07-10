@@ -10,22 +10,23 @@ import { ApiError } from "@/lib/gateway/errors"
 import { bomIdParamSchema } from "@/lib/validation/bom"
 import { query } from "@/lib/db"
 import { bom } from "@/lib/queries/bom"
-import type { BOM, BomDetailResponse } from "@/types/masters"
+import type { BOM, BomArtifact, BomDetailResponse } from "@/types/masters"
 
 export const GET = withGateway({
   paramsSchema: bomIdParamSchema,
-  access: { pageSlug: "/masters", level: "viewer" },
+  access: { pageSlug: "/masters/bom-master", level: "viewer" },
   handler: async ({ params }) => {
-    // Header and lines are independent reads — run them concurrently instead
-    // of paying two sequential round-trips to the DB.
-    const [headerRows, lines] = await Promise.all([
-      query<Omit<BomDetailResponse, "lines">>(bom.selectHeaderById, [params.id]),
+    // Header, lines, and artifacts are independent reads — run them
+    // concurrently instead of paying three sequential round-trips to the DB.
+    const [headerRows, lines, artifacts] = await Promise.all([
+      query<Omit<BomDetailResponse, "lines" | "artifacts">>(bom.selectHeaderById, [params.id]),
       query<BOM>(bom.selectDetailLinesByBomId, [params.id]),
+      query<BomArtifact>(bom.selectArtifactsByBomId, [params.id]),
     ])
     const header = headerRows[0]
     if (!header) throw new ApiError(404, "not_found", "BOM not found.")
 
-    const response: BomDetailResponse = { ...header, lines }
+    const response: BomDetailResponse = { ...header, lines, artifacts }
     return NextResponse.json(response)
   },
 })

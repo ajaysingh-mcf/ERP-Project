@@ -19,6 +19,7 @@ import { useToast } from "@/components/ui/toast"
 import { isRmTotalValid } from "@/lib/validation/bom"
 import { rmTotal, type BomLineRow, type BomMaterialOption } from "./BomLineEditorGrid"
 import { parseBomCsv } from "./bom-csv"
+import { uploadPendingArtifacts } from "./bom-artifact-upload"
 import type { Sku } from "@/types/masters"
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5
@@ -53,8 +54,9 @@ export function useBomWizard({
   const [csvErrors, setCsvErrors] = useState<string[]>([])
   const [rmRows, setRmRows] = useState<BomLineRow[]>([])
   const [pmRows, setPmRows] = useState<BomLineRow[]>([])
+  const [pendingArtifactFiles, setPendingArtifactFiles] = useState<File[]>([])
 
-  const isDirty = skuId != null || rmRows.length > 0 || pmRows.length > 0
+  const isDirty = skuId != null || rmRows.length > 0 || pmRows.length > 0 || pendingArtifactFiles.length > 0
 
   function resetAll() {
     setStep(1)
@@ -69,6 +71,7 @@ export function useBomWizard({
     setCsvErrors([])
     setRmRows([])
     setPmRows([])
+    setPendingArtifactFiles([])
     setLoading(false)
   }
 
@@ -175,6 +178,11 @@ export function useBomWizard({
 
     setLoading(true)
     try {
+      const artifactAdds = await uploadPendingArtifacts(
+        pendingArtifactFiles,
+        `boms/tmp/${crypto.randomUUID()}`
+      )
+
       const toLine = (r: BomLineRow) => ({
         mtrl_type: r.mtrl_type,
         mtrl_id: r.mtrl_id,
@@ -194,6 +202,7 @@ export function useBomWizard({
           source: entryMethod === "csv" ? "csv" : "manual",
           rm_lines: rmRows.map(toLine),
           pm_lines: pmRows.map(toLine),
+          artifact_adds: artifactAdds,
         }),
       })
       const data = await res.json()
@@ -229,6 +238,8 @@ export function useBomWizard({
     setRmRows,
     pmRows,
     setPmRows,
+    pendingArtifactFiles,
+    setPendingArtifactFiles,
     requestClose,
     closeWizard,
     handleSelectSku,

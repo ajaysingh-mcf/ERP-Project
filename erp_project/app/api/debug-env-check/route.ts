@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { withGateway } from "@/lib/gateway/with-gateway"
 
 const CHECK = [
   "DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME",
@@ -9,7 +10,13 @@ const CHECK = [
   "AUTH_SECRET",
 ]
 
-export async function GET() {
-  const present = Object.fromEntries(CHECK.map((k) => [k, process.env[k] !== undefined]))
-  return NextResponse.json(present)
-}
+// Was completely unauthenticated — any anonymous caller could see which
+// secret env vars are configured on this deployment. Gated the same as the
+// other admin/settings routes now.
+export const GET = withGateway({
+  access: { pageSlug: "/settings", level: "editor" },
+  handler: async () => {
+    const present = Object.fromEntries(CHECK.map((k) => [k, process.env[k] !== undefined]))
+    return NextResponse.json(present)
+  },
+})

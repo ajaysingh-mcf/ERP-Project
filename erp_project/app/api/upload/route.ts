@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { NextResponse } from "next/server"
+import { withGateway } from "@/lib/gateway/with-gateway"
 import { uploadFile } from "@/lib/s3"
 
 const ALLOWED_SET = new Set([
@@ -20,10 +20,8 @@ const MIME_TO_EXT: Record<string, string> = {
 
 const MAX_BYTES = 10 * 1024 * 1024 // 10 MB
 
-export async function POST(req: NextRequest): Promise<NextResponse> {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
+export const POST = withGateway({
+  handler: async ({ req }) => {
   const form = await req.formData()
   const file   = form.get("file")
   const folder = form.get("folder")
@@ -56,4 +54,5 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     console.error("[upload] S3 upload failed:", err)
     return NextResponse.json({ error: "Upload failed" }, { status: 500 })
   }
-}
+  },
+})

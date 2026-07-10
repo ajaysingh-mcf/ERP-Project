@@ -25,7 +25,7 @@ export default async function ManufacturersPage({
   const session = await auth()
   if (!session) redirect("/auth/signin")
   const userId = parseInt(session.user.id)
-  const access = await resolveAccess(userId, session.user.roles, "/masters")
+  const access = await resolveAccess(userId, session.user.roles, "/masters/manufacturers")
   if (access === "none") redirect("/auth/unauthorized")
 
   // ── Read URL params ────────────────────────────────────────────────────────

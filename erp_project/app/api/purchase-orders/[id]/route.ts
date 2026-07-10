@@ -1,9 +1,8 @@
 // PUT /api/purchase-orders/[id]  — re-edit a draft PO and re-submit for approval
 // PATCH /api/purchase-orders/[id] — update attachment key (S3 file reference)
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import type { PoolConnection } from "mysql2/promise"
-import { auth } from "@/lib/auth"
 import { query, execute, pool } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { s3FilesSql } from "@/lib/queries/s3-files"
@@ -11,20 +10,17 @@ import { approvalsSql } from "@/lib/queries/approvals"
 import { skus as skusSql } from "@/lib/queries/skus"
 import { manufacturers as mfgsSql } from "@/lib/queries/manufacturers"
 import { deleteFile } from "@/lib/s3"
+import { withGateway } from "@/lib/gateway/with-gateway"
+import { poIdParamSchema } from "@/lib/validation/purchase-order-detail"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await auth()
-  if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
-  const userId = parseInt(session.user.id)
-
-  const { id } = await params
-  const poId = parseInt(id)
-  if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
+export const PUT = withGateway({
+  paramsSchema: poIdParamSchema,
+  access: { pageSlug: "/po-tracking", level: "editor" },
+  handler: async ({ req, params, session }) => {
+  const userId = Number(session.user.id)
+  const poId = params.id
 
   const body = await req.json()
   const { mfg_id, sku_code, qty, unit_price, total_amount, expected_on, destination, reason } = body
@@ -127,26 +123,22 @@ export async function PUT(
   } finally {
     conn.release()
   }
-}
+  },
+})
 
 // PATCH /api/purchase-orders/[id]
 // Body: { attachment_key: string | null }
 // Sets or clears the S3 attachment on a PO. Deletes the old S3 object when replacing.
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await auth()
-  if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
-  const userId = parseInt(session.user.id)
-
-  const { id } = await params
-  const poId = parseInt(id)
-  if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
+export const PATCH = withGateway({
+  paramsSchema: poIdParamSchema,
+  access: { pageSlug: "/po-tracking", level: "editor" },
+  handler: async ({ req, params, session, ctx }) => {
+  const userId = Number(session.user.id)
+  const poId = params.id
 
   const { attachment_key } = await req.json()
 
-  const patchCtx = { requestId: crypto.randomUUID(), userId, route: `/api/purchase-orders/${poId}` }
+  const patchCtx = { ...ctx, route: `/api/purchase-orders/${poId}` }
   logger.info({ ...patchCtx, poId, message: "PO attachment update started" })
 
   // Verify current user is the original submitter
@@ -169,4 +161,5 @@ export async function PATCH(
   }
 
   return NextResponse.json({ ok: true })
-}
+  },
+})

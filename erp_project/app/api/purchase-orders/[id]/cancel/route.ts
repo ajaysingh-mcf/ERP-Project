@@ -19,6 +19,7 @@ const CANCELLABLE = new Set(["raised", "punched", "partially_received"])
 export const POST = withGateway({
   paramsSchema: poIdParamSchema,
   schema: poCancelSchema,
+  access: { pageSlug: "/po-tracking", level: "editor" },
   handler: async ({ params, body, session, ctx }) => {
     const poId = params.id
     const { reason } = body

@@ -23,6 +23,7 @@ const SPLITTABLE = new Set(["draft", "raised", "punched", "partially_received"])
 export const POST = withGateway({
   paramsSchema: poIdParamSchema,
   schema: poSplitSchema,
+  access: { pageSlug: "/po-tracking", level: "editor" },
   handler: async ({ body, params, session, ctx }) => {
     const poId = params.id
     const { splits } = body

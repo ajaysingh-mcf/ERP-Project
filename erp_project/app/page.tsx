@@ -3,15 +3,17 @@ import { auth } from "@/lib/auth"
 import { resolveAccess } from "@/lib/permissions"
 import { redirect } from "next/navigation"
 
+// `built: false` routes have no page.tsx yet — prefetch={false} on their
+// Link stops Next from firing a background fetch that just 404s.
 const modules = [
-  { name: "HR & Payroll",         slug: "/hr-payroll",    description: "Employee management, attendance, payroll processing" },
-  { name: "Inventory",            slug: "/inventory",     description: "Stock management, warehousing, procurement" },
-  { name: "Sales & CRM",          slug: "/sales-crm",     description: "Orders, invoicing, customer management" },
-  { name: "Finance & Accounting", slug: "/finance",       description: "GL, AP/AR, financial reporting" },
-  { name: "Masters",              slug: "/masters",       description: "Master data: SKUs, vendors, manufacturers, materials" },
-  { name: "Reports & Analytics",  slug: "/reports",       description: "Dashboards, KPIs, data exports" },
-  { name: "Manufacturing",        slug: "/manufacturing", description: "Production planning, BOMs, work orders" },
-  { name: "Sheet Viewer",         slug: "/sheet-viewer",  description: "Preview published Google Sheets in a table" },
+  { name: "HR & Payroll",         slug: "/hr-payroll",    description: "Employee management, attendance, payroll processing", built: false },
+  { name: "Inventory",            slug: "/inventory",     description: "Stock management, warehousing, procurement", built: false },
+  { name: "Sales & CRM",          slug: "/sales-crm",     description: "Orders, invoicing, customer management", built: false },
+  { name: "Finance & Accounting", slug: "/finance",       description: "GL, AP/AR, financial reporting", built: false },
+  { name: "Masters",              slug: "/masters",       description: "Master data: SKUs, vendors, manufacturers, materials", built: true },
+  { name: "Reports & Analytics",  slug: "/reports",       description: "Dashboards, KPIs, data exports", built: false },
+  { name: "Manufacturing",        slug: "/manufacturing", description: "Production planning, BOMs, work orders", built: true },
+  { name: "Sheet Viewer",         slug: "/sheet-viewer",  description: "Preview published Google Sheets in a table", built: true },
 ]
 
 export default async function Home() {
@@ -55,6 +57,7 @@ export default async function Home() {
             <Link
               key={mod.slug}
               href={mod.slug}
+              prefetch={mod.built}
               className="rounded-xl border border-border p-5 bg-card hover:border-primary/30 hover:shadow-sm transition-all"
             >
               <h3 className="font-semibold text-sm mb-1">{mod.name}</h3>

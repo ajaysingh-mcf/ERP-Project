@@ -14,7 +14,7 @@ import type { BOM, BomDetailResponse } from "@/types/masters"
 
 export const GET = withGateway({
   paramsSchema: bomIdParamSchema,
-  access: { pageSlug: "/masters", level: "viewer" },
+  access: { pageSlug: "/masters/bom-master", level: "viewer" },
   handler: async ({ params }) => {
     const [headerRows, lines] = await Promise.all([
       query<Omit<BomDetailResponse, "lines">>(bom.selectHeaderById, [params.id]),

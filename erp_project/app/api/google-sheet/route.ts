@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withGateway } from "@/lib/gateway/with-gateway";
 
 function extractSheetId(input: string) {
   const trimmed = input.trim();
@@ -76,9 +77,10 @@ function toObjects(rows: string[][]) {
   );
 }
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const sheetUrl = searchParams.get("url");
+export const GET = withGateway({
+  access: { pageSlug: "/sheet-viewer", level: "viewer" },
+  handler: async ({ req }) => {
+  const sheetUrl = req.nextUrl.searchParams.get("url");
 
   if (!sheetUrl) {
     return NextResponse.json(
@@ -134,4 +136,5 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
-}
+  },
+});

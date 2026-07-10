@@ -217,6 +217,11 @@ export default function BOMMasterComponent({
         statusSaving={panel.statusSaving}
         statusError={panel.statusError}
         onSaveStatus={panel.saveStatus}
+        artifacts={panel.detail?.artifacts ?? []}
+        pendingArtifactFiles={panel.pendingArtifactFiles}
+        onChangePendingArtifactFiles={panel.setPendingArtifactFiles}
+        pendingArtifactRemoveIds={panel.pendingArtifactRemoveIds}
+        onChangePendingArtifactRemoveIds={panel.setPendingArtifactRemoveIds}
       />
     </>
   )

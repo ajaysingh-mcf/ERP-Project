@@ -224,6 +224,15 @@ export type BomListItem = {
 };
 
 /** BOM detail side-panel payload: header + all material lines. */
+export type BomArtifact = {
+  id: number;
+  bom_id: number;
+  s3_key: string;
+  file_name: string;
+  uploaded_by: number | null;
+  uploaded_at: Date | string;
+};
+
 export type BomDetailResponse = {
   bom_id: number | null;
   bom_code: string | null;
@@ -232,6 +241,7 @@ export type BomDetailResponse = {
   status: string | null;
   created_at: Date | string | null;
   lines: BOM[];
+  artifacts: BomArtifact[];
 };
 
 export type bomType = {

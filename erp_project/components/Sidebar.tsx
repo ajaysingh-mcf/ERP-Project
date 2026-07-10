@@ -1,17 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard, Database, Factory, CalendarDays,
   Activity, DollarSign, CheckSquare, BarChart2,
   Settings, ChevronLeft, ChevronRight, ChevronDown, LogOut,
-  Package, Truck, FlaskConical, Box, Dot
+  Package, Truck, FlaskConical, Box, Dot, Lock
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { handleSignOut } from "@/app/actions/auth"
+import type { AccessLevel } from "@/lib/permissions"
 
 type NavChild = { label: string; href: string ,icon?:React.ElementType  }
 type NavItem = {
@@ -38,7 +39,7 @@ const NAV: NavItem[] = [
   {
     label: "Production Tracking", icon: Activity,
     children: [
-      { label: "MFG Overview",       href: "/manufacturing" },
+      { label: "MFG Overview",       href: "/po-tracking/mfg-overview" },
       { label: "FG POs Tracking",    href: "/po-tracking/po-procurement" },
       { label: "RM/PM Procurement", href: "/po-tracking/rm-pm-procurement" },
       { label: "Dispatch Calendar", href: "/po-tracking/dispatch-calendar" },
@@ -52,6 +53,10 @@ const NAV: NavItem[] = [
 interface SidebarProps {
   user?: { name?: string | null; email?: string | null }
   mfgs?: { id: number; name: string }[]
+  /** Resolved per-slug access, keyed by href (see app/layout.tsx). Missing
+   *  keys default to accessible so a slug this map doesn't cover never
+   *  accidentally locks a legitimate link. */
+  access?: Record<string, AccessLevel>
 }
 
 // Sections with more children than this show only the first CHILD_CAP and
@@ -60,16 +65,26 @@ interface SidebarProps {
 // down the sidebar.
 const CHILD_CAP = 5
 
-export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
+export default function Sidebar({ user, mfgs = [], access }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [openSections, setOpenSections] = useState<string[]>(["Masters"])
   const [expandedSections, setExpandedSections] = useState<string[]>([])
 
+  // A slug not present in `access` is treated as accessible — it should only
+  // ever be missing here if app/layout.tsx's SIDEBAR_SLUGS list falls out of
+  // sync with this file's nav, and failing open avoids locking a legitimate
+  // link over that mismatch.
+  const isLocked = (href?: string) => !!href && access?.[href] === "none"
+
   // MFG Management's children depend on the live manufacturer list (passed
-  // down from the server), so this item is built per-render rather than
-  // living in the static NAV array above.
-  const nav: NavItem[] = [
+  // down from the server), so this item is built here rather than living in
+  // the static NAV array above. Memoized so its object/array identity stays
+  // stable across renders triggered by unrelated state (collapsed toggle,
+  // section open/close) — otherwise every <Link> below gets a "new" element
+  // each render and Next's viewport-prefetch observer refires for all of
+  // them, doubling every sidebar link's prefetch request.
+  const nav: NavItem[] = useMemo(() => [
     NAV[0], NAV[1],
     {
       label: "MFG Cost Manager", icon: Factory,
@@ -78,7 +93,7 @@ export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
       ],
     },
     ...NAV.slice(2),
-  ]
+  ], [mfgs])
 
   const toggleSection = (label: string) =>
     setOpenSections(prev =>
@@ -149,7 +164,19 @@ export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
             const isOpen = openSections.includes(item.label)
 
             if (!hasChildren) {
-              const navLink = (
+              const locked = isLocked(item.href)
+              const navLink = locked ? (
+                <div
+                  className={cn(
+                    "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm font-medium cursor-not-allowed",
+                    "text-sidebar-foreground/40",
+                    collapsed && "justify-center px-0"
+                  )}
+                >
+                  <Lock className="h-4 w-4 shrink-0" />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                </div>
+              ) : (
                 <Link
                   href={item.href ?? "#"}
                   className={cn(
@@ -164,10 +191,10 @@ export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
                   {!collapsed && <span className="truncate">{item.label}</span>}
                 </Link>
               )
-              return collapsed ? (
+              return collapsed || locked ? (
                 <Tooltip key={item.label}>
                   <TooltipTrigger asChild>{navLink}</TooltipTrigger>
-                  <TooltipContent side="right">{item.label}</TooltipContent>
+                  <TooltipContent side="right">{locked ? "No access" : item.label}</TooltipContent>
                 </Tooltip>
               ) : (
                 <div key={item.label}>{navLink}</div>
@@ -215,20 +242,36 @@ export default function Sidebar({ user, mfgs = [] }: SidebarProps) {
 
                   return (
                     <div className="ml-6 mt-0.5 mb-1 space-y-0.5 border-l border-sidebar-border pl-3">
-                      {visibleChildren.map(child => (
-                        <Link
-                          key={child.href}
-                          href={child.href}
-                          className={cn(
-                            "block px-2 py-1.5 rounded-md text-sm transition-colors",
-                            isChildActive(children, child.href)
-                              ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
-                              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                          )}
-                        >
-                          {child.label}
-                        </Link>
-                      ))}
+                      {visibleChildren.map(child => {
+                        const childLocked = isLocked(child.href)
+                        if (childLocked) {
+                          return (
+                            <Tooltip key={child.href}>
+                              <TooltipTrigger asChild>
+                                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm text-sidebar-foreground/35 cursor-not-allowed">
+                                  <Lock className="h-3 w-3 shrink-0" />
+                                  <span className="truncate">{child.label}</span>
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent side="right">No access</TooltipContent>
+                            </Tooltip>
+                          )
+                        }
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            className={cn(
+                              "block px-2 py-1.5 rounded-md text-sm transition-colors",
+                              isChildActive(children, child.href)
+                                ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
+                                : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                            )}
+                          >
+                            {child.label}
+                          </Link>
+                        )
+                      })}
                       {overflowCount > 0 && (
                         <button
                           onClick={() => toggleExpanded(item.label)}

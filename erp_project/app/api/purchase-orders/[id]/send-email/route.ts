@@ -13,14 +13,11 @@ import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
 import { poIdParamSchema } from "@/lib/validation/purchase-order-detail"
 import { recordProcessedEvent, recordFailedEvent , makeEventId, recordRawEvent } from "@/lib/events"
-import { auth } from "@/lib/auth"
-import { record } from "zod"
 
 export const POST = withGateway({
   paramsSchema: poIdParamSchema,
-  handler: async ({ params, ctx }) => {
-    const session = await auth()
-    if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
+  access: { pageSlug: "/po-tracking", level: "editor" },
+  handler: async ({ params, session, ctx }) => {
     const userId = Number(session.user.id)
     const poId = params.id
     const eventId = makeEventId("PO_EMAIL_SEND", "manual", poId)

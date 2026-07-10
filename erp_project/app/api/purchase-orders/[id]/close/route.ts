@@ -4,28 +4,24 @@
 // from a 10,000-unit order). Auto-close via the split route should handle the
 // normal case — this is only for intentional early closure.
 
-import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { NextResponse } from "next/server"
 import { query, execute } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
+import { withGateway } from "@/lib/gateway/with-gateway"
+import { poIdParamSchema } from "@/lib/validation/purchase-order-detail"
 import logger from "@/lib/logger"
 import { recordFailedEvent, recordProcessedEvent, recordRawEvent, makeEventId } from "@/lib/events"
 
 const CLOSEABLE = new Set(["raised", "punched", "partially_received"])
 
-export async function POST(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await auth()
-  if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
-  const userId = parseInt(session.user.id)
-
-  const { id } = await params
-  const poId = parseInt(id)
-  if (isNaN(poId)) return NextResponse.json({ error: "Invalid PO id" }, { status: 400 })
+export const POST = withGateway({
+  paramsSchema: poIdParamSchema,
+  access: { pageSlug: "/po-tracking", level: "editor" },
+  handler: async ({ params, session, ctx }) => {
+  const userId = Number(session.user.id)
+  const poId = params.id
   const eventId = makeEventId("PO_CLOSE", "short-close", poId)
-  const logCtx = { requestId: crypto.randomUUID(), userId, route: `/api/purchase-orders/${poId}/close`, eventId }
+  const logCtx = { ...ctx, route: `/api/purchase-orders/${poId}/close`, eventId }
   recordRawEvent("PO_CLOSE", eventId, { poId, userId })
 
   try {
@@ -55,4 +51,5 @@ export async function POST(
     logger.error({ ...logCtx, poId, err: err.message, stack: err.stack, message: "PO short-close failed" })
     return NextResponse.json({ error: "Database error: " + err.message }, { status: 500 })
   }
-}
+  },
+})

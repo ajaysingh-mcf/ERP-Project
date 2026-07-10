@@ -21,7 +21,7 @@ import { vendors as vendorSql } from "@/lib/queries/vendors"
 import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { bom as bomSql } from "@/lib/queries/bom"
-import { getFileBuffer } from "@/lib/s3"
+import { getFileBuffer, deleteFile } from "@/lib/s3"
 import { recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import { STATUS } from "@/lib/constants"
 import { roundToWholeNumber, roundToTwoDecimals } from "@/lib/numeric"
@@ -488,25 +488,42 @@ type BomLineDiff = {
   fields: Record<string, string> // field -> new_value
 }
 
-function parseBomLineItems(items: DiffItem[]): { mode: "new-version" | "update-existing"; lines: BomLineDiff[] } {
+type BomArtifactAdd = { s3_key: string; file_name: string }
+
+function parseBomLineItems(items: DiffItem[]): {
+  mode: "new-version" | "update-existing"
+  lines: BomLineDiff[]
+  artifactAdds: BomArtifactAdd[]
+  artifactRemoveIds: number[]
+} {
   const modeItem = items.find((i) => i.field_name === "__mode__")
   const mode: "new-version" | "update-existing" =
     modeItem?.new_value === "update-existing" ? "update-existing" : "new-version"
 
   const lineMap = new Map<string, BomLineDiff>()
+  const artifactAdds: BomArtifactAdd[] = []
+  const artifactRemoveIds: number[] = []
   for (const it of items) {
-    const m = it.field_name.match(/^line:(rm|pm):(\d+):(.+)$/)
-    if (!m) continue
-    const [, mtrlType, mtrlIdStr, field] = m
-    const key = `${mtrlType}:${mtrlIdStr}`
-    if (!lineMap.has(key)) {
-      lineMap.set(key, { mtrlType: mtrlType as "rm" | "pm", mtrlId: Number(mtrlIdStr), removed: false, fields: {} })
+    const lineMatch = it.field_name.match(/^line:(rm|pm):(\d+):(.+)$/)
+    if (lineMatch) {
+      const [, mtrlType, mtrlIdStr, field] = lineMatch
+      const key = `${mtrlType}:${mtrlIdStr}`
+      if (!lineMap.has(key)) {
+        lineMap.set(key, { mtrlType: mtrlType as "rm" | "pm", mtrlId: Number(mtrlIdStr), removed: false, fields: {} })
+      }
+      const entry = lineMap.get(key)!
+      if (field === "__removed__") entry.removed = true
+      else entry.fields[field] = it.new_value
+      continue
     }
-    const entry = lineMap.get(key)!
-    if (field === "__removed__") entry.removed = true
-    else entry.fields[field] = it.new_value
+    if (it.field_name.startsWith("artifact:add:")) {
+      artifactAdds.push(JSON.parse(it.new_value!) as BomArtifactAdd)
+      continue
+    }
+    const removeMatch = it.field_name.match(/^artifact:remove:(\d+)$/)
+    if (removeMatch) artifactRemoveIds.push(Number(removeMatch[1]))
   }
-  return { mode, lines: [...lineMap.values()] }
+  return { mode, lines: [...lineMap.values()], artifactAdds, artifactRemoveIds }
 }
 
 const bomHandler: ModuleHandler = {
@@ -515,7 +532,7 @@ const bomHandler: ModuleHandler = {
   },
 
   async applyAndArchive(conn, entityId, items, approverId) {
-    const { mode, lines } = parseBomLineItems(items)
+    const { mode, lines, artifactAdds, artifactRemoveIds } = parseBomLineItems(items)
 
     const [headerRows] = await conn.execute(bomSql.selectBomHeaderRawById, [entityId])
     const header = (headerRows as any[])[0]
@@ -555,7 +572,27 @@ const bomHandler: ModuleHandler = {
       ])
     }
 
-    // 3. Activate this BOM and deactivate any other active BOM for the same
+    // 3. Artifacts (bom_artifacts) — only ever written/deleted here, at
+    //    approval time. Adds/removes were staged client-side and bundled
+    //    into this same approval (see app/api/masters/bom-master/route.ts).
+    for (const artifact of artifactAdds) {
+      await conn.execute(bomSql.insertArtifact, [entityId, artifact.s3_key, artifact.file_name, approverId])
+    }
+    if (artifactRemoveIds.length > 0) {
+      // .query (not .execute) — prepared statements don't support expanding
+      // an array param into "IN (?)"'s comma-separated list the way .query does.
+      const [removedRows] = await conn.query(bomSql.selectArtifactsByIds, [entityId, artifactRemoveIds])
+      await conn.query(bomSql.deleteArtifactsByIds, [entityId, artifactRemoveIds])
+      for (const removed of removedRows as any[]) {
+        // Best-effort — not transactional with the DB delete above, same as
+        // every other S3-key cleanup in this codebase.
+        deleteFile(removed.s3_key).catch((err) => {
+          logger.warn({ module: "BOM", bomId: entityId, s3Key: removed.s3_key, err: err.message, message: "Failed to delete artifact from S3" })
+        })
+      }
+    }
+
+    // 4. Activate this BOM and deactivate any other active BOM for the same
     //    sku_id — enforces "only one active BOM per SKU" at approval time.
     await conn.execute(bomSql.setBomStatusWithUpdater, [STATUS.ACTIVE, approverId, entityId])
     const bomActivateEventId = makeEventId("BOM", "activate", entityId)

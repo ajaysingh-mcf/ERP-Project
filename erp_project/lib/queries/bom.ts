@@ -399,6 +399,50 @@ export const bom = {
     WHERE (? IS NULL OR b.bom_code LIKE ? OR s.sku_code LIKE ?)
   `,
 
+  // ============ ARTIFACT QUERIES (bom_artifacts) ============
+  // Reference files (spec sheets, lab reports, etc.) attached to a BOM.
+  // Rows are only ever written/deleted at approval time by
+  // bomHandler.applyAndArchive (lib/approvals/module-handlers.ts) — add/remove
+  // is staged client-side and submitted bundled with the RM/PM line diff via
+  // create-full, same as the lines themselves never being written pre-approval.
+
+  /**
+   * All artifacts attached to a BOM, oldest first. Params: [bom_id]
+   */
+  selectArtifactsByBomId: `
+    SELECT id, bom_id, s3_key, file_name, uploaded_by, uploaded_at
+    FROM bom_artifacts
+    WHERE bom_id = ?
+    ORDER BY uploaded_at ASC
+  `,
+
+  /**
+   * Look up artifacts by id, SCOPED to a specific bom_id so an approval can
+   * never remove another BOM's file. Used before deleteArtifactsByIds to
+   * know which s3_key(s) to also delete from S3.
+   * Params: [bom_id, ids[]]
+   */
+  selectArtifactsByIds: `
+    SELECT id, s3_key, file_name
+    FROM bom_artifacts
+    WHERE bom_id = ? AND id IN (?)
+  `,
+
+  /**
+   * Parameters: [bom_id, s3_key, file_name, uploaded_by]
+   */
+  insertArtifact: `
+    INSERT INTO bom_artifacts (bom_id, s3_key, file_name, uploaded_by, uploaded_at)
+    VALUES (?, ?, ?, ?, NOW())
+  `,
+
+  /**
+   * Parameters: [bom_id, ids[]]
+   */
+  deleteArtifactsByIds: `
+    DELETE FROM bom_artifacts WHERE bom_id = ? AND id IN (?)
+  `,
+
   /**
    * All archived lines for one BOM, newest snapshot first — the History
    * page's detail-panel equivalent of selectDetailLinesByBomId. Params: [bom_id]

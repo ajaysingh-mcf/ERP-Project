@@ -11,6 +11,7 @@ import { skuActionSchema } from "@/lib/validation/skus"
 
 export const POST = withGateway({
   schema: skuActionSchema,
+  access: { pageSlug: "/masters/skus", level: "editor" },
   handler: async ({ body, session, ctx }) => {
     const userId = Number(session.user.id)
 

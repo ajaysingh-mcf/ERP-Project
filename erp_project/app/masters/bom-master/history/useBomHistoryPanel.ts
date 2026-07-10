@@ -28,6 +28,11 @@ export function useBomHistoryPanel() {
 
   const detailCache = useRef<Map<number, BomDetailResponse>>(new Map())
   const inFlight     = useRef<Map<number, Promise<BomDetailResponse>>>(new Map())
+  const hoverTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => { if (hoverTimer.current) clearTimeout(hoverTimer.current) }
+  }, [])
 
   const fetchDetail = useCallback((bomId: number) => {
     const cached = detailCache.current.get(bomId)
@@ -54,9 +59,14 @@ export function useBomHistoryPanel() {
     return req
   }, [])
 
+  /** Debounced — sweeping the cursor across many rows only fires a request
+   *  for the one it actually settles on. */
   function prefetchDetail(bomId: number | null) {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
     if (bomId == null) return
-    fetchDetail(bomId).catch(() => {})
+    hoverTimer.current = setTimeout(() => {
+      fetchDetail(bomId).catch(() => {})
+    }, 200)
   }
 
   useEffect(() => {

@@ -3,10 +3,36 @@ import { Geist, Geist_Mono, Roboto, Merriweather } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { auth } from "@/lib/auth";
+import { resolveAccess, type AccessLevel } from "@/lib/permissions";
 import ClientLayout from "@/components/ClientLayout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { timedQuery } from "@/lib/query-timing";
 import { manufacturingSql } from "@/lib/queries/manufacturing";
+
+// Every sidebar destination that should be individually lockable. Masters
+// pages and manufacturers each get their own slug (see lib/permissions.ts'
+// parent-slug fallback) so access can be granted per-page/per-manufacturer,
+// not just for the section as a whole.
+// Keyed by the EXACT href each sidebar item/child links to (not just the
+// page_permissions slug the destination page itself checks) — resolveAccess's
+// parent-slug fallback means e.g. "/po-tracking/po-procurement" naturally
+// inherits whatever's granted at "/po-tracking" if it has no override of its
+// own, so listing the real hrefs here doesn't require separate seeding.
+const SIDEBAR_SLUGS = [
+  "/masters",
+  "/masters/skus",
+  "/masters/manufacturers",
+  "/masters/vendors",
+  "/masters/bom-master",
+  "/masters/material-master",
+  "/masters/raw-materials",
+  "/masters/packing-materials",
+  "/po-tracking/mfg-overview",
+  "/po-tracking/po-procurement",
+  "/po-tracking/rm-pm-procurement",
+  "/po-tracking/dispatch-calendar",
+  "/approvals",
+] as const;
 
 const merriweatherHeading = Merriweather({ subsets: ["latin"], variable: "--font-heading" });
 const roboto = Roboto({ subsets: ["latin"], variable: "--font-sans" });
@@ -37,6 +63,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     ? await timedQuery<{ id: number; name: string }>(manufacturingSql.selectActiveForNav, [], { label: "manufacturing.selectActiveForNav" })
     : [];
 
+  // Resolve access for every sidebar destination up front (server-side, one
+  // pass) so the sidebar can lock items the user can't reach instead of
+  // showing a dead link that bounces to /auth/unauthorized after a click.
+  let access: Record<string, AccessLevel> = {};
+  if (session?.user) {
+    const userId = Number(session.user.id);
+    const roles = session.user.roles ?? [];
+    const staticSlugs = [...SIDEBAR_SLUGS, ...mfgs.map((m) => `/manufacturing/${m.id}`)];
+    const levels = await Promise.all(staticSlugs.map((slug) => resolveAccess(userId, roles, slug)));
+    access = Object.fromEntries(staticSlugs.map((slug, i) => [slug, levels[i]]));
+  }
+
   return (
     <html
       lang="en"
@@ -55,7 +93,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body className="h-full">
         <ThemeProvider>
-          <ClientLayout user={user} mfgs={mfgs}>{children}</ClientLayout>
+          <ClientLayout user={user} mfgs={mfgs} access={access}>{children}</ClientLayout>
         </ThemeProvider>
       </body>
     </html>

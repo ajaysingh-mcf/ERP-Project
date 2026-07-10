@@ -4,26 +4,17 @@
 // Any authenticated user can view; there is no action endpoint here since
 // history rows are read-only (already actioned).
 
-import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { NextResponse } from "next/server"
 import { query } from "@/lib/db"
 import { paginate, parsePaginationParams } from "@/lib/pagination"
 import { approvalsSql, entityLabelSql } from "@/lib/queries/approvals"
+import { withGateway } from "@/lib/gateway/with-gateway"
 import logger from "@/lib/logger"
 
-export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user) {
-    logger.warn({ requestId: crypto.randomUUID(), route: "/api/approvals/history", message: "Unauthenticated access attempt" })
-    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
-  }
-
-  const ctx = {
-    requestId: crypto.randomUUID(),
-    userId: session.user.id,
-    route: "/api/approvals/history",
-  }
-  const logCtx = { ...ctx, module: "GET_APPROVAL_HISTORY" }
+export const GET = withGateway({
+  access: { pageSlug: "/approvals", level: "viewer" },
+  handler: async ({ req, ctx }) => {
+  const logCtx = { ...ctx, route: "/api/approvals/history", module: "GET_APPROVAL_HISTORY" }
 
   const sp = Object.fromEntries(req.nextUrl.searchParams)
   const { page, size, offset } = parsePaginationParams(sp)
@@ -69,4 +60,5 @@ export async function GET(req: NextRequest) {
     logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Failed to fetch approval history" })
     return NextResponse.json({ error: "Database error" }, { status: 500 })
   }
-}
+  },
+})

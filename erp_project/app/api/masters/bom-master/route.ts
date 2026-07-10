@@ -6,9 +6,10 @@
 //   create-full    — single atomic submit for BOTH "new-version" and
 //                    "update-existing", from either manual entry or the CSV
 //                    step. Inserts/locks the master_bom header and raises one
-//                    approval encoding the full RM/PM line diff as
-//                    approval_items — details_bom itself is only written at
-//                    approval time (see lib/approvals/module-handlers.ts).
+//                    approval encoding the full RM/PM line diff, plus any
+//                    staged artifact add/remove, as approval_items —
+//                    details_bom/bom_artifacts are only written at approval
+//                    time (see lib/approvals/module-handlers.ts).
 //   update-status  — direct, immediate master_bom.status change from the Edit
 //                    BOM dialog. No approval gate (unlike create-full) —
 //                    blocked only while an approval is already pending for
@@ -33,7 +34,7 @@ import logger from "@/lib/logger"
 
 export const POST = withGateway({
   schema: bomActionSchema,
-  access: { pageSlug: "/masters", level: "editor" },
+  access: { pageSlug: "/masters/bom-master", level: "editor" },
   handler: async ({ body, session, ctx }) => {
     const userId = Number(session.user.id)
 
@@ -105,6 +106,15 @@ export const POST = withGateway({
           const key = `${line.mtrl_type}:${line.mtrl_id}`
           seenKeys.add(key)
           const cur = currentByKey.get(key)
+          // Always write a marker for this line, even with zero changed
+          // fields — otherwise a line resubmitted unchanged has NO
+          // approval_item at all, parseBomLineItems never sees it, and
+          // applyAndArchive's wipe-then-reinsert-from-diff step would drop
+          // it permanently. This is what makes an "artifact-only" edit (no
+          // line changes) safe to bundle into the same create-full submit.
+          await conn.execute(approvalsSql.insertApprovalItem, [
+            approvalId, `line:${line.mtrl_type}:${line.mtrl_id}:__present__`, "1", "1",
+          ])
           const fieldVals: [string, string][] = [
             ["amount", String(line.amount)],
             ["uom", line.uom ?? ""],
@@ -129,6 +139,20 @@ export const POST = withGateway({
               approvalId, `line:${mtrlType}:${mtrlId}:__removed__`, "1", "",
             ])
           }
+        }
+
+        // Artifacts (bom_artifacts) are bundled into this same approval —
+        // actually written/deleted only at approval time, see
+        // bomHandler.applyAndArchive.
+        for (const [i, artifact] of (body.artifact_adds ?? []).entries()) {
+          await conn.execute(approvalsSql.insertApprovalItem, [
+            approvalId, `artifact:add:${i}`, "", JSON.stringify(artifact),
+          ])
+        }
+        for (const artifactId of body.artifact_removes ?? []) {
+          await conn.execute(approvalsSql.insertApprovalItem, [
+            approvalId, `artifact:remove:${artifactId}`, "1", "",
+          ])
         }
 
         await conn.commit()

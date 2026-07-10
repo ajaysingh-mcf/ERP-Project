@@ -15,6 +15,7 @@ import { recordProcessedEvent, recordFailedEvent , makeEventId, recordRawEvent }
 
 export const GET = withGateway({
   paramsSchema: poIdParamSchema,
+  access: { pageSlug: "/po-tracking", level: "viewer" },
   handler: async ({ params, ctx }) => {
     const poId = params.id
     const eventId = makeEventId("PO_PREVIEW_PDF", "preview", poId)

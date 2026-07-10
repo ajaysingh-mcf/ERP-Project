@@ -16,6 +16,7 @@ import { useToast } from "@/components/ui/toast"
 import { isRmTotalValid } from "@/lib/validation/bom"
 import { rmTotal, type BomLineRow } from "./BomLineEditorGrid"
 import { formatDateInput } from "./bom-format"
+import { uploadPendingArtifacts } from "./bom-artifact-upload"
 import type { BomDetailResponse } from "@/types/masters"
 
 export function useBomDetailPanel() {
@@ -46,11 +47,21 @@ export function useBomDetailPanel() {
   const [statusSaving, setStatusSaving]   = useState(false)
   const [statusError, setStatusError]     = useState<string | null>(null)
 
+  // Artifacts are staged client-side and bundled into saveEdit's create-full
+  // submission — see BomArtifactsEditor.tsx and bom-artifact-upload.ts.
+  const [pendingArtifactFiles, setPendingArtifactFiles] = useState<File[]>([])
+  const [pendingArtifactRemoveIds, setPendingArtifactRemoveIds] = useState<number[]>([])
+
   // In-memory cache of fetched BOM details, keyed by bom_id, so re-opening a
   // BOM already seen this session (or one warmed by hover-prefetch) is
   // instant instead of re-hitting the API.
   const detailCache = useRef<Map<number, BomDetailResponse>>(new Map())
   const inFlight     = useRef<Map<number, Promise<BomDetailResponse>>>(new Map())
+  const hoverTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => { if (hoverTimer.current) clearTimeout(hoverTimer.current) }
+  }, [])
 
   const fetchDetail = useCallback((bomId: number, opts?: { skipCache?: boolean }) => {
     if (!opts?.skipCache) {
@@ -81,10 +92,15 @@ export function useBomDetailPanel() {
     return req
   }, [])
 
-  /** Warm the cache on hover so the click a moment later is instant. */
+  /** Warm the cache on hover so the click a moment later is instant. Debounced
+   *  — sweeping the cursor across many rows only fires a request for the one
+   *  it actually settles on, not one per row it passed over. */
   function prefetchDetail(bomId: number | null) {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
     if (bomId == null) return
-    fetchDetail(bomId).catch(() => {})
+    hoverTimer.current = setTimeout(() => {
+      fetchDetail(bomId).catch(() => {})
+    }, 200)
   }
 
   // Fetch the selected BOM's detail from the permission-checked API route.
@@ -161,6 +177,8 @@ export function useBomDetailPanel() {
     setEditSeededFor(null)
     setSaveError(null)
     setStatusError(null)
+    setPendingArtifactFiles([])
+    setPendingArtifactRemoveIds([])
     setSelectedBomId(null)
     const params = new URLSearchParams(searchParams.toString())
     params.delete("bomId")
@@ -175,6 +193,8 @@ export function useBomDetailPanel() {
     setEditSeededFor(null)
     setSaveError(null)
     setStatusError(null)
+    setPendingArtifactFiles([])
+    setPendingArtifactRemoveIds([])
     const params = new URLSearchParams(searchParams.toString())
     params.set("bomId", String(bomId))
     router.push(`${pathname}?${params.toString()}`, { scroll: false })
@@ -185,6 +205,8 @@ export function useBomDetailPanel() {
     setEditSeededFor(null)
     setSaveError(null)
     setStatusError(null)
+    setPendingArtifactFiles([])
+    setPendingArtifactRemoveIds([])
   }
 
   async function saveEdit() {
@@ -238,6 +260,11 @@ export function useBomDetailPanel() {
 
     setSaving(true)
     try {
+      const artifactAdds = await uploadPendingArtifacts(
+        pendingArtifactFiles,
+        `boms/${bomId}/${Date.now()}`
+      )
+
       const toLine = (r: BomLineRow) => ({
         mtrl_type: r.mtrl_type,
         mtrl_id: r.mtrl_id,
@@ -257,12 +284,16 @@ export function useBomDetailPanel() {
           source: "manual",
           rm_lines: editRmRows.map(toLine),
           pm_lines: editPmRows.map(toLine),
+          artifact_adds: artifactAdds,
+          artifact_removes: pendingArtifactRemoveIds,
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to submit BOM update")
       setEditMode(false)
       setEditSeededFor(null)
+      setPendingArtifactFiles([])
+      setPendingArtifactRemoveIds([])
       fetchDetail(bomId, { skipCache: true }).then(setDetail).catch(() => {})
       toast({ title: "BOM update submitted for approval", description: bomCode ?? undefined, variant: "success" })
       router.refresh()
@@ -323,6 +354,10 @@ export function useBomDetailPanel() {
     statusSaving,
     statusError,
     saveStatus,
+    pendingArtifactFiles,
+    setPendingArtifactFiles,
+    pendingArtifactRemoveIds,
+    setPendingArtifactRemoveIds,
     rmLines,
     pmLines,
     rmDetailTotal,

@@ -111,6 +111,8 @@ export function BomCreationWizard({
                     onChangePm={wizard.setPmRows}
                     rmMaterials={rmMaterials}
                     pmMaterials={pmMaterials}
+                    pendingArtifactFiles={wizard.pendingArtifactFiles}
+                    onChangePendingArtifactFiles={wizard.setPendingArtifactFiles}
                   />
                 )}
 

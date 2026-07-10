@@ -13,6 +13,7 @@ import { entityEmailCreateSchema } from "@/lib/validation/entity-emails"
 
 export const POST = withGateway({
   schema: entityEmailCreateSchema,
+  access: { pageSlug: "/po-tracking", level: "editor" },
   handler: async ({ body }) => {
     for (const { email, purpose } of body.emails) {
       await execute(entityEmails.insert, [body.entity_type, body.entity_code, email, purpose || null])

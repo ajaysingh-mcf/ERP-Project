@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { query, pool, execute } from "@/lib/db"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { approvalsSql } from "@/lib/queries/approvals"
@@ -15,13 +14,13 @@ import { ApiError } from "@/lib/gateway/errors"
 import { poActionSchema } from "@/lib/validation/purchase-orders"
 
 // GET /api/purchase-orders — list all POs with MFG + SKU details
-export async function GET() {
-  const session = await auth()
-  if (!session?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 })
-
-  const rows = await query<any>(purchaseOrdersSql.selectAll, [])
-  return NextResponse.json(rows)
-}
+export const GET = withGateway({
+  access: { pageSlug: "/po-tracking", level: "viewer" },
+  handler: async () => {
+    const rows = await query<any>(purchaseOrdersSql.selectAll, [])
+    return NextResponse.json(rows)
+  },
+})
 
 // ── Minimal CSV parser (handles quoted fields) ────────────────────────────────
 function parseCsv(text: string): string[][] {
@@ -65,6 +64,7 @@ function parseCsv(text: string): string[][] {
 // Auth + body validation handled by withGateway (see lib/gateway/with-gateway.ts).
 export const POST = withGateway({
   schema: poActionSchema,
+  access: { pageSlug: "/po-tracking", level: "editor" },
   handler: async ({ body, session, ctx }) => {
   const userId = Number(session.user.id)
 

@@ -1,32 +1,19 @@
 // GET /api/approvals
 // Returns all pending approvals with field-level diff items.
-// Any authenticated user can view; only admin/manager can action (see [id]/route.ts).
+// Requires "viewer" access on /approvals; only "editor" can action (see [id]/route.ts).
 
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { query } from "@/lib/db"
 import { approvalsSql, entityLabelSql } from "@/lib/queries/approvals"
+import { withGateway } from "@/lib/gateway/with-gateway"
 import logger from "@/lib/logger"
-export async function GET() {
-  const requestId = crypto.randomUUID()
 
-  const session = await auth()
-  if (!session?.user) {
-    logger.warn({ requestId, route: "/api/approvals", message: "Unauthenticated access attempt" })
-    return NextResponse.json(
-      { error: "Unauthenticated" },
-      { status: 401 }
-    )
-  }
-
-  const ctx = {
-    requestId,
-    userId: session.user.id,
-    route: "/api/approvals",
-  }
-
+export const GET = withGateway({
+  access: { pageSlug: "/approvals", level: "viewer" },
+  handler: async ({ ctx }) => {
   const logCtx = {
     ...ctx,
+    route: "/api/approvals",
     module: "GET_APPROVALS",
   }
 
@@ -66,4 +53,5 @@ export async function GET() {
       { status: 500 }
     )
   }
-}
+  },
+})

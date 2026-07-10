@@ -1,11 +1,9 @@
-import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { NextResponse } from "next/server"
+import { withGateway } from "@/lib/gateway/with-gateway"
 import { getPresignedDownloadUrl, getPresignedViewUrl } from "@/lib/s3"
 
-export async function GET(req: NextRequest): Promise<NextResponse> {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
+export const GET = withGateway({
+  handler: async ({ req }) => {
   const key = req.nextUrl.searchParams.get("key")
   if (!key?.trim()) {
     return NextResponse.json({ error: "key is required" }, { status: 400 })
@@ -28,4 +26,5 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     console.error("[presign] failed key=%s", key, err)
     return NextResponse.json({ error: "Could not generate URL" }, { status: 500 })
   }
-}
+  },
+})

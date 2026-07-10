@@ -41,6 +41,13 @@ export const bomCheckExistingSchema = z.object({
   sku_id: z.coerce.number().int().positive(),
 })
 
+// A file already uploaded to S3 (client-side, before this submit), staged to
+// attach to the BOM once this submission is approved.
+export const bomArtifactAddSchema = z.object({
+  s3_key: z.string().trim().min(1),
+  file_name: z.string().trim().min(1).max(255),
+})
+
 export const bomCreateFullSchema = z
   .object({
     action: z.literal("create-full"),
@@ -51,6 +58,11 @@ export const bomCreateFullSchema = z
     source: z.enum(["manual", "csv"]),
     rm_lines: z.array(bomLineSchema).min(1, "At least one RM line is required"),
     pm_lines: z.array(bomLineSchema),
+    // Artifacts are bundled into this same approval — see
+    // lib/approvals/module-handlers.ts bomHandler.applyAndArchive, which is
+    // the only place bom_artifacts rows are actually written/deleted.
+    artifact_adds: z.array(bomArtifactAddSchema).optional(),
+    artifact_removes: z.array(z.coerce.number().int().positive()).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.mode === "update-existing" && !data.bom_id) {

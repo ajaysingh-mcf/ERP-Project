@@ -4,31 +4,20 @@
 // current user's ID so the client can decide whether the Save button should
 // be enabled without making a second session call.
 
-import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { NextResponse } from "next/server"
 import { query } from "@/lib/db"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { withGateway } from "@/lib/gateway/with-gateway"
 import logger from "@/lib/logger"
-export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user) {
-    logger.warn({ requestId: crypto.randomUUID(), route: "/api/approvals/entity", message: "Unauthenticated access attempt" })
-    return NextResponse.json(
-      { error: "Unauthenticated" },
-      { status: 401 }
-    )
-  }
 
+export const GET = withGateway({
+  access: { pageSlug: "/approvals", level: "viewer" },
+  handler: async ({ req, session, ctx }) => {
   const { searchParams } = new URL(req.url)
   const module = searchParams.get("module")
   const entityId = searchParams.get("entity_id")
 
-  const ctx = {
-    requestId: crypto.randomUUID(),
-    userId: session.user.id,
-    route: "/api/approvals/entity",
-  }
-  const logCtx = { ...ctx, module: "GET_APPROVAL_ENTITY" }
+  const logCtx = { ...ctx, route: "/api/approvals/entity", module: "GET_APPROVAL_ENTITY" }
   logger.info({ ...logCtx, queryModule: module, entityId, message: "Approval entity search started" })
   if (!module || !entityId || isNaN(Number(entityId))) {
     logger.warn({ ...logCtx, queryModule: module, entityId, message: "Validation failed. module and entity_id are required" })
@@ -52,4 +41,5 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     )
   }
-}
+  },
+})

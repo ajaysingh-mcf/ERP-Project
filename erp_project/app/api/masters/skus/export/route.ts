@@ -17,21 +17,19 @@
  *   500  — database or serialization error
  */
 
-import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { NextResponse } from "next/server"
 import { query } from "@/lib/db"
 import { skus as skuSql } from "@/lib/queries/skus"
 import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { SKU_EXPORT_COLUMNS } from "@/lib/export-configs"
+import { withGateway } from "@/lib/gateway/with-gateway"
 
 /** Hard cap on exported rows to prevent out-of-memory on large tables. */
 const ROW_LIMIT = 50_000
 
-export async function GET(req: NextRequest) {
-  // ── Auth ──────────────────────────────────────────────────────────────────
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
+export const GET = withGateway({
+  access: { pageSlug: "/masters/skus", level: "viewer" },
+  handler: async ({ req }) => {
   // ── Parse params ──────────────────────────────────────────────────────────
   const sp     = req.nextUrl.searchParams
   const format = sp.get("format") === "xlsx" ? "xlsx" : "csv"
@@ -93,4 +91,5 @@ export async function GET(req: NextRequest) {
     console.error("[/api/masters/skus/export]", err)
     return NextResponse.json({ error: "Export failed" }, { status: 500 })
   }
-}
+  },
+})

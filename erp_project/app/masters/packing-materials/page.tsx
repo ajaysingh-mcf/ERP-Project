@@ -35,7 +35,7 @@ export default async function PackingMaterialsPage({
   const session = await auth()
   if (!session) redirect("/auth/signin")
   const userId = parseInt(session.user.id)
-  const access = await resolveAccess(userId, session.user.roles, "/masters")
+  const access = await resolveAccess(userId, session.user.roles, "/masters/packing-materials")
   if (access === "none") redirect("/auth/unauthorized")
 
   // ── Read URL params ────────────────────────────────────────────────────────
