@@ -39,9 +39,8 @@ export async function insertVendorWithGeneratedCode(
   const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase()
   const [countRows] = await conn.execute(countTotalSql)
   let serial = (countRows as any[])[0].total as number
-  if(serial < 1) serial = 1
   for (; ; serial++) {
-    const code = `VEN-${type.toUpperCase()}-${suffix}-${String(serial).padStart(3, "0")}`
+    const code = `VEN-${type.toUpperCase()}-${suffix}-${String(serial+1).padStart(3, "0")}`
     try {
       const [result] = await conn.execute(insertVendorSql, [code, name, type])
       return { vendorId: (result as { insertId: number }).insertId, code }
@@ -66,10 +65,9 @@ export async function insertMfgWithGeneratedCode(
   const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase()
   const [countRows] = await conn.execute(countTotalSql)
   let serial = (countRows as any[])[0].total as number
-  if(serial < 1) serial = 1
 
   for (; ; serial++) {
-    const code = `MFG-${String(serial).padStart(3, "0")}-${suffix}`
+    const code = `MFG-${String(serial+1).padStart(3, "0")}-${suffix}`
     try {
       const [result] = await conn.execute(insertMfgSql, [code, name])
       return { mfgId: (result as { insertId: number }).insertId, code }
