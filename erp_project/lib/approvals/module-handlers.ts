@@ -501,7 +501,7 @@ const vendorBulkHandler: ModuleHandler = {
         }, 0)
         if (dup) { skipped++; continue }
 
-        const { vendorId } = await insertVendorWithGeneratedCode(conn, vendorSql.insertVendor, name, type)
+        const { vendorId } = await insertVendorWithGeneratedCode(conn, vendorSql.insertVendor, vendorSql.countTotal, name, type)
         await conn.execute(vendorSql.insertVendorDetails, [
           vendorId,
           row.location?.trim() || null,

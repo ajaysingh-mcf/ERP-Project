@@ -85,6 +85,9 @@ export const vendors = {
       AND (? IS NULL OR vd.zone = ?)
   `,
 
+  /** Unconditional count, used only to seed the next VEN-<serial> code. */
+  countTotal: `SELECT COUNT(*) AS total FROM master_vendors`,
+
   /** Distinct non-null zones for the filter dropdown. */
   selectDistinctZones: `
     SELECT DISTINCT zone FROM details_vendor
