@@ -36,12 +36,12 @@ export async function insertVendorWithGeneratedCode(
   name: string,
   type: string,
 ): Promise<{ vendorId: number; code: string }> {
-  const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
+  const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase()
   const [countRows] = await conn.execute(countTotalSql)
   let serial = (countRows as any[])[0].total as number
-
+  if(serial < 1) serial = 1
   for (; ; serial++) {
-    const code = `VEN-${String(serial).padStart(3, "0")}-${suffix}`
+    const code = `VEN-${type.toUpperCase()}-${suffix}-${String(serial).padStart(3, "0")}`
     try {
       const [result] = await conn.execute(insertVendorSql, [code, name, type])
       return { vendorId: (result as { insertId: number }).insertId, code }
@@ -63,9 +63,10 @@ export async function insertMfgWithGeneratedCode(
   countTotalSql: string,
   name: string,
 ): Promise<{ mfgId: number; code: string }> {
-  const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
+  const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase()
   const [countRows] = await conn.execute(countTotalSql)
   let serial = (countRows as any[])[0].total as number
+  if(serial < 1) serial = 1
 
   for (; ; serial++) {
     const code = `MFG-${String(serial).padStart(3, "0")}-${suffix}`
