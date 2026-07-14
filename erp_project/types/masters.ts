@@ -31,6 +31,11 @@ export type Sku = {
   created_at: Date | null
   /** FK to users.id; optional because not every page selects it. */
   created_by?: number | null
+  /** Below fields come from the SKU data warehouse (mcaff_dwh); optional since master_skus doesn't have them. */
+  sub_category?: string | null
+  mrp?: number | null
+  hsn?: string | null
+  launch_date?: string | null
 }
 
 /** `mfgs` table — Manufacturers (MFGs). Used by app/masters/manufacturers. */

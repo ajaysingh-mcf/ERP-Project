@@ -12,16 +12,25 @@
 //
 // POST /api/masters/vendors
 //   Request  { action: "create", name, type, location?, zone?, registered_name? }
-//     Process → auto-generate code (VEN-<serial>-<XX>) + INSERT vendors → INSERT details_vendor(vendor_id = new id).
+//     Process → auto-generate code (VEN-<RM/PM/BT>-<first 3 letters of name>) + INSERT vendors → INSERT details_vendor(vendor_id = new id).
 //     Response 200 { ok, approval_id } · 400 (validation, via withGateway) · 500 { error }
 //
 //   Request  { action: "bulk", rows: [{ name, type, location?, ... }, ...] }
-//     Process → auto-generate code (VEN-<serial>-<XX>) per row, INSERT vendor + details_vendor
-//       as in_review, and raise one approval per row — same as single create.
-//     Response 200 { inserted, skipped } · 500 { error }
+//     Process → stages the WHOLE batch as ONE pending approval (module
+//       "VENDOR_BULK") — rows are uploaded to S3 and nothing is inserted into
+//       master_vendors until an admin approves. See VENDOR_BULK's handler in
+//       lib/approvals/module-handlers.ts, which does the real insert.
+//     Response 200 { ok, approval_id, staged, skipped, total } · 500 { error }
+//
+//   Request  { action: "bulk_from_s3", key }
+//     Process → same staging behaviour as "bulk", but the file is already in
+//       S3 (client uploaded it via /api/upload) — just parsed for a preview
+//       count, no second upload.
+//     Response 200 { ok, approval_id, staged, skipped, total } · 500 { error }
 //
 // Auth + body validation handled by withGateway (see lib/gateway/with-gateway.ts).
-// `vendors.code` is UNIQUE; the generator retries the next serial on a collision. `type` is a NOT NULL enum, so it is required.
+// `vendors.code` is UNIQUE; the generator (insertVendorWithGeneratedCode in lib/master-routes/material-utils.ts)
+// retries with a numeric suffix (-2, -3, ...) on a collision. `type` is a NOT NULL enum, so it is required.
 import { NextResponse } from "next/server"
 import { pool, query } from "@/lib/db"
 import { vendors } from "@/lib/queries/vendors"
@@ -32,7 +41,8 @@ import logger from "@/lib/logger"
 import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
 import { vendorActionSchema } from "@/lib/validation/vendors"
-import { insertApprovalWithItems, assertNoDuplicateBankingFields, findDuplicateBankingField } from "@/lib/master-routes/material-utils"
+import { assertNoDuplicateBankingFields, findDuplicateBankingField, insertVendorWithGeneratedCode } from "@/lib/master-routes/material-utils"
+import { uploadRowsAsCsv, stageBulkUploadApproval } from "@/lib/master-routes/bulk-approval"
 
 export const POST = withGateway({
   schema: vendorActionSchema,
@@ -57,24 +67,8 @@ export const POST = withGateway({
       try {
         await assertNoDuplicateBankingFields(conn, vendors, { gst_number, ifsc_number, account_number }, 0)
 
-        // Auto-generate code as VEN-<serial>-<XX>, XX = first 2 letters of name.
-        // Retry with the next serial on a rare collision (concurrent inserts / gaps from deletions).
-        const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
-        const [countRows] = await conn.execute(vendors.countTotal)
-        let serial = (countRows as any[])[0].total as number
-        let code = ""
-        let vendorId: number
-        for (; ; serial++) {
-          code = `VEN-${String(serial).padStart(3, "0")}-${suffix}`
-          try {
-            const [vendorResult] = await conn.execute(vendors.insertVendor, [code, name, type])
-            vendorId = (vendorResult as { insertId: number }).insertId
-            break
-          } catch (err: any) {
-            if (err.code === "ER_DUP_ENTRY") continue
-            throw err
-          }
-        }
+        // Auto-generate code as VEN-<RM/PM/BT>-<first 3 letters of name>.
+        const { vendorId, code } = await insertVendorWithGeneratedCode(conn, vendors.insertVendor, name, type)
         logger.info({ ...logCtx, vendorId, code, message: "Vendor created." })
         await conn.execute(vendors.insertVendorDetails, [
           vendorId,
@@ -130,92 +124,49 @@ export const POST = withGateway({
     }
 
     // ── bulk (client-side CSV) ───────────────────────────────────────────────────
+    // Stages the WHOLE batch as one pending approval — nothing is inserted
+    // into master_vendors until an admin approves (see the VENDOR_BULK
+    // handler in lib/approvals/module-handlers.ts).
     if (body.action === "bulk") {
       const { rows } = body
       const eventId = makeEventId("VENDOR_BULK", "bulk")
       const logCtx = { ...ctx, eventId, module: "VENDOR_BULK" }
-      logger.info({ ...logCtx, rows: rows.length, message: "Vendor Bulk insert started." })
+      logger.info({ ...logCtx, rows: rows.length, message: "Vendor bulk upload started." })
       recordRawEvent("VENDOR_BULK", eventId, { source: "csv", rowCount: rows.length })
 
       const conn = await pool.getConnection()
-      await conn.beginTransaction()
-      let inserted = 0
+      let staged = 0
       let skipped = 0
-
       try {
-        // Auto-generate code as VEN-<serial>-<XX>, same scheme as manufacturers.
-        // `serial` keeps incrementing across rows so codes never collide within this batch.
-        const [countRows] = await conn.execute(vendors.countTotal)
-        let serial = (countRows as any[])[0].total as number
-
+        // Preview-only validation (no writes yet) — same skip rules used by
+        // the VENDOR_BULK handler at approval time, since data may drift
+        // between now and then.
         for (const row of rows) {
-          if (!row.name?.trim() || !row.type?.trim()) {
-            logger.warn({ ...logCtx, name: row.name, type: row.type, message: "Row Skipped - missing name or type" })
-            skipped++
-            continue
-          }
-          const name = row.name.trim()
-          const type = row.type.trim()
-
+          if (!row.name?.trim() || !row.type?.trim()) { skipped++; continue }
           const dup = await findDuplicateBankingField(conn, vendors, {
             gst_number: row.gst_number, ifsc_number: row.ifsc_number, account_number: row.account_number,
           }, 0)
-          if (dup) {
-            logger.warn({ ...logCtx, name, message: `Row skipped - ${dup}` })
-            skipped++
-            continue
-          }
-
-          const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
-          let code = ""
-          let vendorId: number
-          for (; ; serial++) {
-            code = `VEN-${String(serial).padStart(3, "0")}-${suffix}`
-            try {
-              const [vendorResult] = await conn.execute(vendors.insertVendor, [code, name, type])
-              vendorId = (vendorResult as { insertId: number }).insertId
-              break
-            } catch (err: any) {
-              if (err.code === "ER_DUP_ENTRY") continue
-              throw err
-            }
-          }
-          await conn.execute(vendors.insertVendorDetails, [
-            vendorId,
-            row.location?.trim() || null,
-            "in_review",
-            row.zone?.trim() || null,
-            row.registered_name?.trim() || null,
-            row.gst_number?.trim() || null,
-            row.bank_name?.trim() || null,
-            row.ifsc_number?.trim() || null,
-            row.account_number?.trim() || null,
-          ])
-          const approvalId = await insertApprovalWithItems(conn, userId, "VENDOR", vendorId, [
-            ["code", code],
-            ["name", name],
-            ["type", type],
-            ["location", row.location?.trim() || ""],
-            ["zone", row.zone?.trim() || ""],
-            ["registered_name", row.registered_name?.trim() || ""],
-            ["gst_number", row.gst_number?.trim() || ""],
-            ["bank_name", row.bank_name?.trim() || ""],
-            ["ifsc_number", row.ifsc_number?.trim() || ""],
-            ["account_number", row.account_number?.trim() || ""],
-          ])
-          logger.debug({ ...logCtx, vendorId, code, approvalId, message: "Row inserted, submitted for approval" })
-          inserted++
+          if (dup) { skipped++; continue }
+          staged++
         }
+
+        const yyyymm = new Date().toISOString().slice(0, 7)
+        const { key, filename } = await uploadRowsAsCsv(rows, `imports/vendors/${yyyymm}`, "vendor_bulk")
+
+        await conn.beginTransaction()
+        const approvalId = await stageBulkUploadApproval(conn, {
+          userId, module: "VENDOR_BULK", s3Key: key, filename, rowCount: rows.length,
+        })
         await conn.commit()
-        logger.info({ ...logCtx, inserted, skipped, message: "Transaction committed successfully" })
-        recordProcessedEvent("VENDOR_BULK", eventId, { source: "csv", inserted, skipped })
-        return NextResponse.json({ inserted, skipped })
+        logger.info({ ...logCtx, approvalId, staged, skipped, message: "Vendor bulk upload staged for approval" })
+        recordProcessedEvent("VENDOR_BULK", eventId, { source: "csv", staged, skipped, approvalId })
+        return NextResponse.json({ ok: true, approval_id: approvalId, staged, skipped, total: rows.length })
       } catch (err: any) {
         await conn.rollback()
-        logger.warn({ ...logCtx, inserted, skipped, message: "Transaction rolled back" })
+        logger.warn({ ...logCtx, staged, skipped, message: "Transaction rolled back" })
         recordFailedEvent("VENDOR_BULK", eventId, { source: "csv", rowCount: rows.length }, err.message)
-        logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Vendor bulk insert failed." })
-        throw new ApiError(500, "internal", "Bulk insert failed: " + err.message)
+        logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Vendor bulk upload failed." })
+        throw new ApiError(500, "internal", "Bulk upload failed: " + err.message)
       } finally {
         logger.debug({ ...logCtx, message: "DB connection released" })
         conn.release()
@@ -311,6 +262,9 @@ export const POST = withGateway({
     }
 
     // ── bulk_from_s3 ─────────────────────────────────────────────────────────────
+    // Same staging-only behaviour as "bulk" above — the file is already in S3
+    // (client uploaded it via /api/upload), so we just parse it for a preview
+    // count and stage ONE approval referencing that key.
     if(body.action === "bulk_from_s3") {
       const { key } = body
       const eventId = makeEventId("VENDOR_BULK", "bulk-s3")
@@ -328,88 +282,38 @@ export const POST = withGateway({
         logger.debug({ ...logCtx, message: "File is empty or has no data rows." })
         throw new ApiError(400, "empty_file", "File is empty or has no data rows")
       }
-      logger.info({ ...logCtx, rowCount: rawRows.length, message: "VENDOR BULK UPDATE started." })
-
+      logger.info({ ...logCtx, rowCount: rawRows.length, message: "Vendor bulk upload (S3) started." })
       recordRawEvent("VENDOR_BULK", eventId, { source: "s3", s3Key: key, rowCount: rawRows.length })
+
       const conn = await pool.getConnection()
-      await conn.beginTransaction()
-      let inserted = 0
+      let staged = 0
       let skipped = 0
-
       try {
-        // Same VEN-<serial>-<XX> auto-generation as the "bulk" (CSV) action above.
-        const [countRows] = await conn.execute(vendors.countTotal)
-        let serial = (countRows as any[])[0].total as number
-
         for (const row of rawRows) {
           const name = row["name"]?.trim()
           const type = row["type"]?.trim()
-          if (!name || !type) {
-            logger.debug({ ...logCtx, name, message: "Row Skipped - Missing Name or Type" })
-            skipped++
-            continue
-          }
-
+          if (!name || !type) { skipped++; continue }
           const dup = await findDuplicateBankingField(conn, vendors, {
             gst_number: row["gst_number"], ifsc_number: row["ifsc_number"], account_number: row["account_number"],
           }, 0)
-          if (dup) {
-            logger.warn({ ...logCtx, name, message: `Row skipped - ${dup}` })
-            skipped++
-            continue
-          }
-
-          const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
-          let code = ""
-          let vendorId: number
-          for (; ; serial++) {
-            code = `VEN-${String(serial).padStart(3, "0")}-${suffix}`
-            try {
-              const [vendorResult] = await conn.execute(vendors.insertVendor, [code, name, type])
-              vendorId = (vendorResult as any).insertId
-              break
-            } catch (err: any) {
-              if (err.code === "ER_DUP_ENTRY") continue
-              throw err
-            }
-          }
-          await conn.execute(vendors.insertVendorDetails, [
-            vendorId,
-            row["location"]?.trim() || null,
-            "in_review",
-            row["zone"]?.trim() || null,
-            row["registered_name"]?.trim() || null,
-            row["gst_number"]?.trim() || null,
-            row["bank_name"]?.trim() || null,
-            row["ifsc_number"]?.trim() || null,
-            row["account_number"]?.trim() || null,
-          ])
-          const approvalId = await insertApprovalWithItems(conn, userId, "VENDOR", vendorId, [
-            ["code", code],
-            ["name", name],
-            ["type", type],
-            ["location", row["location"]?.trim() || ""],
-            ["zone", row["zone"]?.trim() || ""],
-            ["registered_name", row["registered_name"]?.trim() || ""],
-            ["gst_number", row["gst_number"]?.trim() || ""],
-            ["bank_name", row["bank_name"]?.trim() || ""],
-            ["ifsc_number", row["ifsc_number"]?.trim() || ""],
-            ["account_number", row["account_number"]?.trim() || ""],
-          ])
-          logger.debug({ ...logCtx, vendorId, code, approvalId, message: "Row inserted, submitted for approval" })
-          inserted++
+          if (dup) { skipped++; continue }
+          staged++
         }
-        await conn.commit()
-        logger.info({ ...logCtx, inserted, skipped, message: "Transaction committed successfully" })
-        recordProcessedEvent("VENDOR_BULK", eventId, { source: "s3", s3Key: key, inserted, skipped })
 
-        return NextResponse.json({ inserted, skipped })
+        const filename = key.split("/").pop() ?? key
+        await conn.beginTransaction()
+        const approvalId = await stageBulkUploadApproval(conn, {
+          userId, module: "VENDOR_BULK", s3Key: key, filename, rowCount: rawRows.length,
+        })
+        await conn.commit()
+        logger.info({ ...logCtx, approvalId, staged, skipped, message: "Vendor bulk upload (S3) staged for approval" })
+        recordProcessedEvent("VENDOR_BULK", eventId, { source: "s3", s3Key: key, staged, skipped, approvalId })
+        return NextResponse.json({ ok: true, approval_id: approvalId, staged, skipped, total: rawRows.length })
       } catch (err: any) {
         await conn.rollback()
-        logger.warn({ ...logCtx, inserted, skipped, message: "Transaction rolled back" })
-
+        logger.warn({ ...logCtx, staged, skipped, message: "Transaction rolled back" })
         recordFailedEvent("VENDOR_BULK", eventId, { source: "s3", s3Key: key }, err.message)
-        logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Vendor bulk insert failed" })
+        logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Vendor bulk upload (S3) failed" })
         throw new ApiError(500, "internal", "Import failed: " + err.message)
       } finally {
         conn.release()

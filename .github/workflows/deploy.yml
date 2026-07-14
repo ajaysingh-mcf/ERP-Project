@@ -6,6 +6,14 @@ on:
     paths:
       - "erp_project/**"
       - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy"
+        required: true
+        default: test
+        type: choice
+        options: [test, prod]
 
 env:
   AWS_REGION: ap-south-1
@@ -37,8 +45,17 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    outputs:
+      environment: ${{ steps.target.outputs.environment }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Determine target environment
+        id: target
+        run: |
+          # workflow_dispatch lets a human pick test or prod; a plain push to
+          # main always goes to test — prod is a deliberate, manually-triggered promotion.
+          echo "environment=${{ github.event.inputs.environment || 'test' }}" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials (hosting account)
         uses: aws-actions/configure-aws-credentials@v4
@@ -53,24 +70,29 @@ jobs:
       - name: Build and push image
         env:
           REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          ENVIRONMENT: ${{ steps.target.outputs.environment }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" -t "$REGISTRY/$ECR_REPOSITORY:latest" erp_project
-          docker push "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-          docker push "$REGISTRY/$ECR_REPOSITORY:latest"
+          docker build \
+            -t "$REGISTRY/$ECR_REPOSITORY:$ENVIRONMENT-$IMAGE_TAG" \
+            -t "$REGISTRY/$ECR_REPOSITORY:$ENVIRONMENT" \
+            erp_project
+          docker push "$REGISTRY/$ECR_REPOSITORY:$ENVIRONMENT-$IMAGE_TAG"
+          docker push "$REGISTRY/$ECR_REPOSITORY:$ENVIRONMENT"
 
       - name: Roll out to EC2 via SSM
         env:
-          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          ENVIRONMENT: ${{ steps.target.outputs.environment }}
         run: |
           aws ssm send-command \
-            --targets "Key=tag:Name,Values=erp-app" \
+            --targets "Key=tag:Name,Values=erp-app-${ENVIRONMENT}" \
             --document-name "AWS-RunShellScript" \
-            --comment "Deploy erp-app ${{ github.sha }}" \
+            --comment "Deploy erp-app:${ENVIRONMENT} ${{ github.sha }}" \
             --parameters "{\"commands\":[
-              \"aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $REGISTRY\",
-              \"docker pull $REGISTRY/$ECR_REPOSITORY:latest\",
+              \"aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ steps.ecr-login.outputs.registry }}\",
+              \"docker pull ${{ steps.ecr-login.outputs.registry }}/$ECR_REPOSITORY:${ENVIRONMENT}\",
               \"docker rm -f erp || true\",
-              \"docker run -d --name erp --restart unless-stopped -p 127.0.0.1:3000:3000 --env-file /etc/erp/env -v /var/log/erp:/app/logs $REGISTRY/$ECR_REPOSITORY:latest\"
+              \"docker run -d --name erp --restart unless-stopped -p 127.0.0.1:3000:3000 --env-file /etc/erp/env -v /var/log/erp:/app/logs ${{ steps.ecr-login.outputs.registry }}/$ECR_REPOSITORY:${ENVIRONMENT}\",
+              \"docker image prune -f\"
             ]}" \
             --query 'Command.CommandId' --output text

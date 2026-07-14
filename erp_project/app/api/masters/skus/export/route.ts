@@ -9,6 +9,7 @@
  *   format — "csv" (default) | "xlsx"
  *   search — searches sku_code, name, brand
  *   status — "active" | "inactive" | "discontinued"
+ *   brand  — exact Brand match (e.g. "HYPHEN")
  *
  * Responses:
  *   200  — file attachment (CSV or XLSX)
@@ -18,8 +19,8 @@
  */
 
 import { NextResponse } from "next/server"
-import { query } from "@/lib/db"
-import { skus as skuSql } from "@/lib/queries/skus"
+import { queryDwh as query } from "@/lib/db-sku"
+import { skuDetails as skuSql } from "@/lib/queries/sku-details"
 import { buildCsv, buildXlsx, buildExportFilename } from "@/lib/export"
 import { SKU_EXPORT_COLUMNS } from "@/lib/export-configs"
 import { withGateway } from "@/lib/gateway/with-gateway"
@@ -35,12 +36,14 @@ export const GET = withGateway({
   const format = sp.get("format") === "xlsx" ? "xlsx" : "csv"
   const search = sp.get("search") ?? ""
   const status = sp.get("status") ?? ""
+  const brand  = sp.get("brand") ?? ""
 
   const like        = search ? `%${search}%` : null
   const statusParam = status || null
+  const brandParam  = brand || null
 
-  // Params match the selectPaginated / countAll pattern: [like×4, status×2]
-  const filterParams = [like, like, like, like, statusParam, statusParam]
+  // Params match the selectPaginated / countAll pattern: [like×4, status×2, brand×2]
+  const filterParams = [like, like, like, like, statusParam, statusParam, brandParam, brandParam]
 
   try {
     // ── Row cap check ────────────────────────────────────────────────────────
@@ -64,7 +67,7 @@ export const GET = withGateway({
     )
 
     // ── Build and return file ─────────────────────────────────────────────────
-    const filename = buildExportFilename("skus", format, { search: search || null, status: status || null })
+    const filename = buildExportFilename("skus", format, { search: search || null, status: status || null, brand: brand || null })
 
     console.log(`[/api/masters/skus/export] served ${rows.length} rows as ${format}`)
 

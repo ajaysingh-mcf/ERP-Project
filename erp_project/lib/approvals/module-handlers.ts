@@ -22,9 +22,11 @@ import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
 import { bom as bomSql } from "@/lib/queries/bom"
 import { getFileBuffer, deleteFile } from "@/lib/s3"
+import { parseS3Import } from "@/lib/import-s3"
 import { recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import { STATUS } from "@/lib/constants"
 import { roundToWholeNumber, roundToTwoDecimals } from "@/lib/numeric"
+import { findDuplicateBankingField, insertVendorWithGeneratedCode, insertMfgWithGeneratedCode, toRmParams, toPmParams } from "@/lib/master-routes/material-utils"
 import logger from "@/lib/logger"
 
 export type DiffItem = { field_name: string; old_value: string; new_value: string }
@@ -463,6 +465,166 @@ const poBulkHandler: ModuleHandler = {
   },
 }
 
+// ── VENDOR_BULK / MFG_BULK / RM_BULK / PM_BULK ────────────────────────────────
+// Same shape as PO_BULK above: one approval per whole uploaded batch, no
+// separate entity table to update on reject, and the real insert happens
+// here — at approve time — instead of when the file was first uploaded (see
+// stageBulkUploadApproval in lib/master-routes/bulk-approval.ts for the write
+// side). Rows are inserted directly as 'active' since this insert IS the
+// approval being applied, not a new one being raised.
+
+function s3KeyOf(items: DiffItem[], module: string): string {
+  const s3Key = items.find((i) => i.field_name === "s3_key")?.new_value
+  if (!s3Key) throw new Error(`${module}: s3_key not found in approval items`)
+  return s3Key
+}
+
+const vendorBulkHandler: ModuleHandler = {
+  async setStatus() {
+    // No entity exists before approval — nothing to roll back on reject.
+  },
+  async applyAndArchive(conn, _entityId, items) {
+    const s3Key = s3KeyOf(items, "VENDOR_BULK")
+    const rows = await parseS3Import(s3Key)
+    if (rows.length === 0) throw new Error("VENDOR_BULK: file has no data rows")
+
+    const eventId = makeEventId("VENDOR_BULK", "apply")
+    let inserted = 0, skipped = 0
+    try {
+      for (const row of rows) {
+        const name = row.name?.trim()
+        const type = row.type?.trim()
+        if (!name || !type) { skipped++; continue }
+
+        const dup = await findDuplicateBankingField(conn, vendorSql, {
+          gst_number: row.gst_number, ifsc_number: row.ifsc_number, account_number: row.account_number,
+        }, 0)
+        if (dup) { skipped++; continue }
+
+        const { vendorId } = await insertVendorWithGeneratedCode(conn, vendorSql.insertVendor, name, type)
+        await conn.execute(vendorSql.insertVendorDetails, [
+          vendorId,
+          row.location?.trim() || null,
+          STATUS.ACTIVE,
+          row.zone?.trim() || null,
+          row.registered_name?.trim() || null,
+          row.gst_number?.trim() || null,
+          row.bank_name?.trim() || null,
+          row.ifsc_number?.trim() || null,
+          row.account_number?.trim() || null,
+        ])
+        inserted++
+      }
+      recordProcessedEvent("VENDOR_BULK", eventId, { s3Key, inserted, skipped })
+    } catch (err: any) {
+      recordFailedEvent("VENDOR_BULK", eventId, { s3Key }, err.message)
+      throw err
+    }
+  },
+}
+
+const mfgBulkHandler: ModuleHandler = {
+  async setStatus() {
+    // No entity exists before approval — nothing to roll back on reject.
+  },
+  async applyAndArchive(conn, _entityId, items) {
+    const s3Key = s3KeyOf(items, "MFG_BULK")
+    const rows = await parseS3Import(s3Key)
+    if (rows.length === 0) throw new Error("MFG_BULK: file has no data rows")
+
+    const eventId = makeEventId("MFG_BULK", "apply")
+    let inserted = 0, skipped = 0
+    try {
+      for (const row of rows) {
+        const name = row.name?.trim()
+        if (!name) { skipped++; continue }
+
+        const dup = await findDuplicateBankingField(conn, mfgSql, {
+          gst_number: row.gst_number, ifsc_number: row.ifsc_number, account_number: row.account_number,
+        }, 0)
+        if (dup) { skipped++; continue }
+
+        const { mfgId } = await insertMfgWithGeneratedCode(conn, mfgSql.insert, mfgSql.countTotal, name)
+        await conn.execute(mfgSql.insertDetails, [
+          mfgId,
+          row.location?.trim() || null,
+          row.gst_number?.trim() || null,
+          STATUS.ACTIVE,
+          row.registered_name?.trim() || null,
+          row.zone?.trim() || null,
+          row.bank_name?.trim() || null,
+          row.ifsc_number?.trim() || null,
+          row.account_number?.trim() || null,
+          row.email?.trim() || null,
+        ])
+        inserted++
+      }
+      recordProcessedEvent("MFG_BULK", eventId, { s3Key, inserted, skipped })
+    } catch (err: any) {
+      recordFailedEvent("MFG_BULK", eventId, { s3Key }, err.message)
+      throw err
+    }
+  },
+}
+
+const rmBulkHandler: ModuleHandler = {
+  async setStatus() {
+    // No entity exists before approval — nothing to roll back on reject.
+  },
+  async applyAndArchive(conn, _entityId, items) {
+    const s3Key = s3KeyOf(items, "RM_BULK")
+    const rows = await parseS3Import(s3Key)
+    if (rows.length === 0) throw new Error("RM_BULK: file has no data rows")
+
+    const eventId = makeEventId("RM_BULK", "apply")
+    let inserted = 0, skipped = 0
+    try {
+      for (const row of rows) {
+        if (!row.name?.trim()) { skipped++; continue }
+        try {
+          await conn.execute(rmSql.insert, await toRmParams(conn, row, STATUS.ACTIVE))
+          inserted++
+        } catch (err: any) {
+          if (err.code === "ER_DUP_ENTRY") { skipped++ } else { throw err }
+        }
+      }
+      recordProcessedEvent("RM_BULK", eventId, { s3Key, inserted, skipped })
+    } catch (err: any) {
+      recordFailedEvent("RM_BULK", eventId, { s3Key }, err.message)
+      throw err
+    }
+  },
+}
+
+const pmBulkHandler: ModuleHandler = {
+  async setStatus() {
+    // No entity exists before approval — nothing to roll back on reject.
+  },
+  async applyAndArchive(conn, _entityId, items) {
+    const s3Key = s3KeyOf(items, "PM_BULK")
+    const rows = await parseS3Import(s3Key)
+    if (rows.length === 0) throw new Error("PM_BULK: file has no data rows")
+
+    const eventId = makeEventId("PM_BULK", "apply")
+    let inserted = 0, skipped = 0
+    try {
+      for (const row of rows) {
+        if (!row.name?.trim()) { skipped++; continue }
+        try {
+          await conn.execute(pmSql.insert, await toPmParams(conn, row, STATUS.ACTIVE))
+          inserted++
+        } catch (err: any) {
+          if (err.code === "ER_DUP_ENTRY") { skipped++ } else { throw err }
+        }
+      }
+      recordProcessedEvent("PM_BULK", eventId, { s3Key, inserted, skipped })
+    } catch (err: any) {
+      recordFailedEvent("PM_BULK", eventId, { s3Key }, err.message)
+      throw err
+    }
+  },
+}
+
 // ── BOM (spans master_bom + details_bom + history_bom) ────────────────────────
 //
 // One handler covers both "create new version" and "update existing in place",
@@ -633,5 +795,9 @@ export const MODULE_HANDLERS: Record<string, ModuleHandler> = {
   MFG:     mfgHandler,
   PO:      poHandler,
   PO_BULK: poBulkHandler,
+  VENDOR_BULK: vendorBulkHandler,
+  MFG_BULK: mfgBulkHandler,
+  RM_BULK: rmBulkHandler,
+  PM_BULK: pmBulkHandler,
   BOM:     bomHandler,
 }

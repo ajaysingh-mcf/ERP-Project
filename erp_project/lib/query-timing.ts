@@ -15,6 +15,7 @@ import { query as dbQuery } from "@/lib/db"
 export interface TimingOptions {
   label?: string       // Custom label for readability (defaults to sanitized SQL)
   warnThreshold?: number // ms threshold to mark as slow (default: 50ms)
+  queryFn?: <T = Record<string, unknown>>(sql: string, params?: any[]) => Promise<T[]> // defaults to lib/db.ts's query() — pass queryDwh from lib/db-sku.ts to time the SKU data warehouse pool instead
 }
 
 export async function timedQuery<T = Record<string, unknown>>(
@@ -22,13 +23,13 @@ export async function timedQuery<T = Record<string, unknown>>(
   params?: any[],
   options: TimingOptions = {}
 ): Promise<T[]> {
-  const { label, warnThreshold = 50 } = options
+  const { label, warnThreshold = 50, queryFn = dbQuery } = options
 
   // Generate a descriptive label from SQL if not provided
   const description = label || extractQueryLabel(sql)
 
   const start = performance.now()
-  const result = await dbQuery<T>(sql, params)
+  const result = await queryFn<T>(sql, params)
   const duration = performance.now() - start
 
   const durationStr = duration.toFixed(2)

@@ -238,7 +238,11 @@ export function CsvImportDialog({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Upload failed")
       setSuccess(
-        data.skipped > 0
+        data.approval_id
+          // Bulk-approval masters (vendors/manufacturers/RM/PM): nothing is
+          // inserted yet — the whole batch is staged as one pending approval.
+          ? `Submitted ${data.staged} ${plural} for approval${data.skipped > 0 ? ` (${data.skipped} skipped)` : ""}.`
+          : data.skipped > 0
           ? `Uploaded ${data.inserted} ${plural}. ${data.skipped} skipped (duplicates).`
           : `Successfully uploaded ${data.inserted} ${plural}.`
       )

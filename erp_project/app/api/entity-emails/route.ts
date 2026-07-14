@@ -19,5 +19,5 @@ export const POST = withGateway({
       await execute(entityEmails.insert, [body.entity_type, body.entity_code, email, purpose || null])
     }
     return NextResponse.json({ ok: true })
-  },
+},
 })

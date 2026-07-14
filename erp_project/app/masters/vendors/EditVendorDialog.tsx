@@ -175,7 +175,7 @@ export function EditVendorDialog({
               >
                 <option value="rm">RM</option>
                 <option value="pm">PM</option>
-                <option value="both">Both</option>
+                <option value="both">BOTH</option>
               </select>
             </div>
           </div>

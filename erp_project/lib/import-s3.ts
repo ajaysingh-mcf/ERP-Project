@@ -27,7 +27,7 @@ function parseCsvBuffer(buffer: Buffer): ImportRow[] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim())
   if (lines.length < 2) return []
 
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""))
+  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, "").toLowerCase())
   const rows: ImportRow[] = []
 
   for (let i = 1; i < lines.length; i++) {
@@ -69,7 +69,7 @@ async function parseXlsxBuffer(buffer: Buffer): Promise<ImportRow[]> {
       v == null ? "" : String(v).trim()
     )
     if (rowNumber === 1) {
-      headers = values
+      headers = values.map((h) => h.toLowerCase())
     } else {
       if (values.every((v) => !v)) return
       const obj: ImportRow = {}

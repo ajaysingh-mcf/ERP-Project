@@ -103,9 +103,6 @@ export const vendors = {
     INSERT INTO master_vendors (code, name, type) VALUES (?, ?, ?)
   `,
 
-  /** Total vendor count — used to seed the next auto-generated code serial. */
-  countTotal: `SELECT COUNT(*) AS total FROM master_vendors`,
-
   /**
    * Insert vendor details record
    * Parameters: [vendor_id, location, status, zone, registered_name, gst_number, bank_name, ifsc_number, account_number]

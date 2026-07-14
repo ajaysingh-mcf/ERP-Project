@@ -18,6 +18,14 @@ const MIME_TO_EXT: Record<string, string> = {
   "text/csv":     "csv",
 }
 
+// Some browsers/OSes report an empty or generic MIME type (e.g.
+// "application/octet-stream") for .xlsx/.csv, which would otherwise fail the
+// ALLOWED_SET check below before the file ever reaches S3. Fall back to the
+// filename extension in that case.
+const EXT_TO_MIME: Record<string, string> = Object.fromEntries(
+  Object.entries(MIME_TO_EXT).map(([mime, ext]) => [ext, mime])
+)
+
 const MAX_BYTES = 10 * 1024 * 1024 // 10 MB
 
 export const POST = withGateway({
@@ -36,19 +44,25 @@ export const POST = withGateway({
   if (!(file instanceof Blob)) {
     return NextResponse.json({ error: "file is required" }, { status: 400 })
   }
-  if (!ALLOWED_SET.has(file.type)) {
+
+  // Fall back to the filename extension when the browser-reported MIME type
+  // is missing/unrecognized (common for .xlsx/.csv on some browsers/OSes).
+  const filenameExt = "name" in file ? String((file as File).name).split(".").pop()?.toLowerCase() : undefined
+  const mimeType = ALLOWED_SET.has(file.type) ? file.type : (filenameExt && EXT_TO_MIME[filenameExt]) || file.type
+
+  if (!ALLOWED_SET.has(mimeType)) {
     return NextResponse.json({ error: `File type "${file.type}" is not allowed` }, { status: 400 })
   }
   if (file.size > MAX_BYTES) {
     return NextResponse.json({ error: "File exceeds 10 MB limit" }, { status: 400 })
   }
 
-  const ext = MIME_TO_EXT[file.type]
+  const ext = MIME_TO_EXT[mimeType]
   const key = `${folder.trim()}/${field.trim()}.${ext}`
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer())
-    await uploadFile(buffer, key, file.type)
+    await uploadFile(buffer, key, mimeType)
     return NextResponse.json({ key })
   } catch (err: any) {
     console.error("[upload] S3 upload failed:", err)

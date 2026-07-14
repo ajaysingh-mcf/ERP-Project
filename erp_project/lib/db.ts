@@ -39,7 +39,7 @@ if (NODE_ENV !== "production") {
 // Retry once on fatal connection errors (ECONNRESET, PROTOCOL_CONNECTION_LOST).
 // The first call hits a dead pooled connection; the pool removes it and the
 // retry gets a fresh one.
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (err: any) {

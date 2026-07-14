@@ -10,9 +10,16 @@
 //     Response 200 { ok, approval_id } · 400 (validation, via withGateway) · 500 { error }
 //
 //   Request  { action: "bulk", rows: [{ name, ... }, ...] }
-//     Process → auto-generate code (MFG-<serial>-<XX>) per row, INSERT each as in_review,
-//       and raise one approval per row — same as single create. All in one transaction.
-//     Response 200 { inserted, skipped } · 500 { error }
+//     Process → stages the WHOLE batch as ONE pending approval (module
+//       "MFG_BULK") — rows are uploaded to S3 and nothing is inserted into
+//       master_mfgs until an admin approves. See MFG_BULK's handler in
+//       lib/approvals/module-handlers.ts, which does the real insert.
+//     Response 200 { ok, approval_id, staged, skipped, total } · 500 { error }
+//
+//   Request  { action: "bulk_from_s3", key }
+//     Process → same staging behaviour as "bulk", but the file is already in
+//       S3 — just parsed for a preview count, no second upload.
+//     Response 200 { ok, approval_id, staged, skipped, total } · 500 { error }
 //
 //   Request  { action: "update_docs", mfg_id, gst_certificate_key?, cancelled_cheque_key?, pan_card_key?, misc_document_key? }
 //     Process → computes diff of the 4 doc key columns; submits MFG approval (same flow as "update").
@@ -31,7 +38,8 @@ import logger from "@/lib/logger"
 import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
 import { mfgActionSchema } from "@/lib/validation/manufacturers"
-import { insertApprovalWithItems, assertNoDuplicateBankingFields, findDuplicateBankingField } from "@/lib/master-routes/material-utils"
+import { assertNoDuplicateBankingFields, findDuplicateBankingField, insertMfgWithGeneratedCode } from "@/lib/master-routes/material-utils"
+import { uploadRowsAsCsv, stageBulkUploadApproval } from "@/lib/master-routes/bulk-approval"
 
 export const POST = withGateway({
   schema: mfgActionSchema,
@@ -55,24 +63,7 @@ export const POST = withGateway({
       try {
         await assertNoDuplicateBankingFields(conn, manufacturers, { gst_number, ifsc_number, account_number }, 0)
 
-        // Auto-generate code as MFG-<serial>-<XX>, XX = first 2 letters of name.
-        // Retry with the next serial on a rare collision (concurrent inserts / gaps from deletions).
-        const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
-        const [countRows] = await conn.execute(manufacturers.countTotal)
-        let serial = (countRows as any[])[0].total as number
-        let code = ""
-        let mfgId: number
-        for (; ; serial++) {
-          code = `MFG-${String(serial).padStart(3, "0")}-${suffix}`
-          try {
-            const [result] = await conn.execute(manufacturers.insert, [code, name])
-            mfgId = (result as any).insertId
-            break
-          } catch (err: any) {
-            if (err.code === "ER_DUP_ENTRY") continue
-            throw err
-          }
-        }
+        const { mfgId, code } = await insertMfgWithGeneratedCode(conn, manufacturers.insert, manufacturers.countTotal, name)
         logger.info({ ...logCtx, mfgId, code, message: "Manufacturer created" })
 
         await conn.execute(manufacturers.insertDetails, [
@@ -129,93 +120,46 @@ export const POST = withGateway({
     }
 
     // ── bulk (client-side CSV) ───────────────────────────────────────────────────
+    // Stages the WHOLE batch as one pending approval — nothing is inserted
+    // into master_mfgs until an admin approves (see the MFG_BULK handler in
+    // lib/approvals/module-handlers.ts).
     if (body.action === "bulk") {
       const { rows } = body
       const eventId = makeEventId("MFG_BULK", "bulk")
       const logCtx = { ...ctx, eventId, module: "MFG_BULK" }
-      logger.info({ ...logCtx, rowCount: rows.length, message: "Manufacturer bulk insert started" })
+      logger.info({ ...logCtx, rowCount: rows.length, message: "Manufacturer bulk upload started" })
       recordRawEvent("MFG_BULK", eventId, { source: "csv", rowCount: rows.length })
 
       const conn = await pool.getConnection()
-      await conn.beginTransaction()
-      let inserted = 0
+      let staged = 0
       let skipped = 0
-
       try {
-        // Auto-generate code as MFG-<serial>-<XX> for every row, same scheme as
-        // single create. `serial` keeps incrementing across rows (successes and
-        // collisions alike) so codes never collide within this batch.
-        const [countRows] = await conn.execute(manufacturers.countTotal)
-        let serial = (countRows as any[])[0].total as number
-
         for (const row of rows) {
-          if (!row.name?.trim()) {
-            logger.debug({ ...logCtx, name: row.name, message: "Row skipped — missing name" })
-            skipped++
-            continue
-          }
-          const name = row.name.trim()
-
+          if (!row.name?.trim()) { skipped++; continue }
           const dup = await findDuplicateBankingField(conn, manufacturers, {
             gst_number: row.gst_number, ifsc_number: row.ifsc_number, account_number: row.account_number,
           }, 0)
-          if (dup) {
-            logger.warn({ ...logCtx, name, message: `Row skipped — ${dup}` })
-            skipped++
-            continue
-          }
-
-          const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
-          let code = ""
-          let mfgId: number
-          for (; ; serial++) {
-            code = `MFG-${String(serial).padStart(3, "0")}-${suffix}`
-            try {
-              const [result] = await conn.execute(manufacturers.insert, [code, name])
-              mfgId = (result as any).insertId
-              break
-            } catch (err: any) {
-              if (err.code === "ER_DUP_ENTRY") continue
-              throw err
-            }
-          }
-          await conn.execute(manufacturers.insertDetails, [
-            mfgId,
-            row.location?.trim() || null,
-            row.gst_number?.trim() || null,
-            "in_review",
-            row.registered_name?.trim() || null,
-            row.zone?.trim() || null,
-            row.bank_name?.trim() || null,
-            row.ifsc_number?.trim() || null,
-            row.account_number?.trim() || null,
-            row.email?.trim() || null,
-          ])
-          const approvalId = await insertApprovalWithItems(conn, userId, "MFG", mfgId, [
-            ["code", code],
-            ["name", name],
-            ["registered_name", row.registered_name?.trim() || ""],
-            ["location", row.location?.trim() || ""],
-            ["zone", row.zone?.trim() || ""],
-            ["gst_number", row.gst_number?.trim() || ""],
-            ["bank_name", row.bank_name?.trim() || ""],
-            ["ifsc_number", row.ifsc_number?.trim() || ""],
-            ["account_number", row.account_number?.trim() || ""],
-            ["email", row.email?.trim() || ""],
-          ])
-          logger.debug({ ...logCtx, mfgId, code, approvalId, message: "Row inserted, submitted for approval" })
-          inserted++
+          if (dup) { skipped++; continue }
+          staged++
         }
+
+        const yyyymm = new Date().toISOString().slice(0, 7)
+        const { key, filename } = await uploadRowsAsCsv(rows, `imports/manufacturers/${yyyymm}`, "mfg_bulk")
+
+        await conn.beginTransaction()
+        const approvalId = await stageBulkUploadApproval(conn, {
+          userId, module: "MFG_BULK", s3Key: key, filename, rowCount: rows.length,
+        })
         await conn.commit()
-        logger.info({ ...logCtx, inserted, skipped, message: "Transaction committed successfully" })
-        recordProcessedEvent("MFG_BULK", eventId, { source: "csv", inserted, skipped })
-        return NextResponse.json({ inserted, skipped })
+        logger.info({ ...logCtx, approvalId, staged, skipped, message: "Manufacturer bulk upload staged for approval" })
+        recordProcessedEvent("MFG_BULK", eventId, { source: "csv", staged, skipped, approvalId })
+        return NextResponse.json({ ok: true, approval_id: approvalId, staged, skipped, total: rows.length })
       } catch (err: any) {
         await conn.rollback()
-        logger.warn({ ...logCtx, inserted, skipped, message: "Transaction rolled back" })
+        logger.warn({ ...logCtx, staged, skipped, message: "Transaction rolled back" })
         recordFailedEvent("MFG_BULK", eventId, { source: "csv", rowCount: rows.length }, err.message)
-        logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Manufacturer bulk insert failed" })
-        throw new ApiError(500, "internal", "Bulk insert failed: " + err.message)
+        logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Manufacturer bulk upload failed" })
+        throw new ApiError(500, "internal", "Bulk upload failed: " + err.message)
       } finally {
         conn.release()
       }
@@ -407,6 +351,8 @@ export const POST = withGateway({
     }
 
     // ── bulk_from_s3 ─────────────────────────────────────────────────────────────
+    // Same staging-only behaviour as "bulk" above — the file is already in S3,
+    // so we just parse it for a preview count and stage ONE approval.
     if(body.action === "bulk_from_s3") {
       const { key } = body
       const eventId = makeEventId("MFG_BULK", "bulk-csv")
@@ -424,85 +370,37 @@ export const POST = withGateway({
         logger.debug({ ...logCtx, message: "File is empty or has no data." })
         throw new ApiError(400, "empty_file", "File is empty or has no data rows")
       }
-      logger.info({ ...logCtx, rowCount: rawRows.length, message: "MFG bulk update started" })
+      logger.info({ ...logCtx, rowCount: rawRows.length, message: "Manufacturer bulk upload (S3) started" })
       recordRawEvent("MFG_BULK", eventId, { source: "s3", s3Key: key, rowCount: rawRows.length })
+
       const conn = await pool.getConnection()
-      await conn.beginTransaction()
-      let inserted = 0
+      let staged = 0
       let skipped = 0
-
       try {
-        // Same MFG-<serial>-<XX> auto-generation as the "bulk" (CSV) action above.
-        const [countRows] = await conn.execute(manufacturers.countTotal)
-        let serial = (countRows as any[])[0].total as number
-
         for (const row of rawRows) {
           const name = row["name"]?.trim()
-          if (!name) {
-            logger.debug({ ...logCtx, name: row.name, message: "Row Skipped - Missing Name" })
-            skipped++
-            continue
-          }
-
+          if (!name) { skipped++; continue }
           const dup = await findDuplicateBankingField(conn, manufacturers, {
             gst_number: row["gst_number"], ifsc_number: row["ifsc_number"], account_number: row["account_number"],
           }, 0)
-          if (dup) {
-            logger.warn({ ...logCtx, name, message: `Row skipped — ${dup}` })
-            skipped++
-            continue
-          }
-
-          const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
-          let code = ""
-          let mfgId: number
-          for (; ; serial++) {
-            code = `MFG-${String(serial).padStart(3, "0")}-${suffix}`
-            try {
-              const [result] = await conn.execute(manufacturers.insert, [code, name])
-              mfgId = (result as any).insertId
-              break
-            } catch (err: any) {
-              if (err.code === "ER_DUP_ENTRY") continue
-              throw err
-            }
-          }
-          await conn.execute(manufacturers.insertDetails, [
-            mfgId,
-            row["location"]?.trim() || null,
-            row["gst_number"]?.trim() || null,
-            "in_review",
-            row["registered_name"]?.trim() || null,
-            row["zone"]?.trim() || null,
-            row["bank_name"]?.trim() || null,
-            row["ifsc_number"]?.trim() || null,
-            row["account_number"]?.trim() || null,
-            row["email"]?.trim() || null,
-          ])
-          const approvalId = await insertApprovalWithItems(conn, userId, "MFG", mfgId, [
-            ["code", code],
-            ["name", name],
-            ["registered_name", row["registered_name"]?.trim() || ""],
-            ["location", row["location"]?.trim() || ""],
-            ["zone", row["zone"]?.trim() || ""],
-            ["gst_number", row["gst_number"]?.trim() || ""],
-            ["bank_name", row["bank_name"]?.trim() || ""],
-            ["ifsc_number", row["ifsc_number"]?.trim() || ""],
-            ["account_number", row["account_number"]?.trim() || ""],
-            ["email", row["email"]?.trim() || ""],
-          ])
-          logger.debug({ ...logCtx, mfgId, code, approvalId, message: "Row inserted, submitted for approval" })
-          inserted++
+          if (dup) { skipped++; continue }
+          staged++
         }
+
+        const filename = key.split("/").pop() ?? key
+        await conn.beginTransaction()
+        const approvalId = await stageBulkUploadApproval(conn, {
+          userId, module: "MFG_BULK", s3Key: key, filename, rowCount: rawRows.length,
+        })
         await conn.commit()
-        logger.info({ ...logCtx, inserted, skipped, message: "Transaction committed successfully" })
-        recordProcessedEvent("MFG_BULK", eventId, { source: "s3", s3Key: key, inserted, skipped })
-        return NextResponse.json({ inserted, skipped })
+        logger.info({ ...logCtx, approvalId, staged, skipped, message: "Manufacturer bulk upload (S3) staged for approval" })
+        recordProcessedEvent("MFG_BULK", eventId, { source: "s3", s3Key: key, staged, skipped, approvalId })
+        return NextResponse.json({ ok: true, approval_id: approvalId, staged, skipped, total: rawRows.length })
       } catch (err: any) {
         await conn.rollback()
-        logger.warn({ ...logCtx, inserted, skipped, message: "Transaction rolled back" })
+        logger.warn({ ...logCtx, staged, skipped, message: "Transaction rolled back" })
         recordFailedEvent("MFG_BULK", eventId, { source: "s3", s3Key: key }, err.message)
-        logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Manufacturer bulk insert failed" })
+        logger.error({ ...logCtx, err: err.message, stack: err.stack, message: "Manufacturer bulk upload (S3) failed" })
         throw new ApiError(500, "internal", "Import failed: " + err.message)
       } finally {
         conn.release()

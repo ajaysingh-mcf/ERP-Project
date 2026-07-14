@@ -1,4 +1,6 @@
 import { approvalsSql } from "@/lib/queries/approvals"
+import { rawMaterials } from "@/lib/queries/raw-materials"
+import { packingMaterials } from "@/lib/queries/packing-materials"
 import { ApiError } from "@/lib/gateway/errors"
 import type { PoolConnection } from "mysql2/promise"
 
@@ -20,6 +22,83 @@ export async function generateMaterialCode(
   const [rows] = await conn.execute(countSql)
   const total = (rows as any[])[0].total as number
   return `${prefix}${String(total + 1).padStart(3, "0")}`
+}
+
+/**
+ * Auto-generates a vendor code as VEN-<serial>-<XX> (XX = first 2 letters of
+ * the vendor name) and inserts the vendor row with it, retrying with the
+ * next serial on a rare collision — vendors.code is UNIQUE.
+ */
+export async function insertVendorWithGeneratedCode(
+  conn: PoolConnection,
+  insertVendorSql: string,
+  countTotalSql: string,
+  name: string,
+  type: string,
+): Promise<{ vendorId: number; code: string }> {
+  const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
+  const [countRows] = await conn.execute(countTotalSql)
+  let serial = (countRows as any[])[0].total as number
+
+  for (; ; serial++) {
+    const code = `VEN-${String(serial).padStart(3, "0")}-${suffix}`
+    try {
+      const [result] = await conn.execute(insertVendorSql, [code, name, type])
+      return { vendorId: (result as { insertId: number }).insertId, code }
+    } catch (err: any) {
+      if (err.code === "ER_DUP_ENTRY") continue
+      throw err
+    }
+  }
+}
+
+/**
+ * Auto-generates a manufacturer code as MFG-<serial>-<XX> (XX = first 2
+ * letters of the name) and inserts the manufacturer row with it, retrying
+ * with the next serial on a rare collision — master_mfgs.code is UNIQUE.
+ */
+export async function insertMfgWithGeneratedCode(
+  conn: PoolConnection,
+  insertMfgSql: string,
+  countTotalSql: string,
+  name: string,
+): Promise<{ mfgId: number; code: string }> {
+  const suffix = name.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "X")
+  const [countRows] = await conn.execute(countTotalSql)
+  let serial = (countRows as any[])[0].total as number
+
+  for (; ; serial++) {
+    const code = `MFG-${String(serial).padStart(3, "0")}-${suffix}`
+    try {
+      const [result] = await conn.execute(insertMfgSql, [code, name])
+      return { mfgId: (result as { insertId: number }).insertId, code }
+    } catch (err: any) {
+      if (err.code === "ER_DUP_ENTRY") continue
+      throw err
+    }
+  }
+}
+
+/** Builds params for rawMaterials.insert/update. `status` defaults to
+ *  "in_review" for the normal create-then-approve flow; bulk-approval
+ *  handlers pass "active" since the insert IS the approval being applied. */
+export async function toRmParams(conn: PoolConnection, r: any, status = "in_review"): Promise<any[]> {
+  return [
+    r.rm_code?.trim() || await generateMaterialCode(conn, rawMaterials.countTotal, "RM"), r.name.trim(),
+    r.make?.trim() || null, r.type?.trim() || null,
+    r.uom?.trim() || null, status,
+    r.hsn_code?.trim() || null, r.inci_name?.trim() || null,
+  ]
+}
+
+/** Builds params for packingMaterials.insert/update. See toRmParams above for the `status` note. */
+export async function toPmParams(conn: PoolConnection, r: any, status = "in_review"): Promise<any[]> {
+  return [
+    r.pm_code?.trim() || await generateMaterialCode(conn, packingMaterials.countTotal, "PM"), r.name.trim(),
+    r.type?.trim() || null, r.hsn_code?.trim() || null,
+    r.uom?.trim() || null, status,
+    r.pantone_color?.trim() || null,
+  ]
 }
 
 type BankingFieldSql = {

@@ -42,12 +42,15 @@ export const PM_BASE_EXPORT_COLUMNS: ExportColumn[] = [
 // ── SKUs ─────────────────────────────────────────────────────────────────────
 
 export const SKU_EXPORT_COLUMNS: ExportColumn[] = [
-  { key: "sku_code",   label: "SKU Code",   type: "text" },
-  { key: "name",       label: "Name",       type: "text" },
-  { key: "brand",      label: "Brand",      type: "text" },
-  { key: "category",   label: "Category",   type: "text" },
-  { key: "status",     label: "Status",     type: "text" },
-  { key: "created_at", label: "Created At", type: "date" },
+  { key: "sku_code",     label: "SKU Code",     type: "text"   },
+  { key: "name",         label: "Name",         type: "text"   },
+  { key: "brand",        label: "Brand",        type: "text"   },
+  { key: "category",     label: "Category",     type: "text"   },
+  { key: "sub_category", label: "Sub-Category", type: "text"   },
+  { key: "mrp",          label: "MRP",          type: "number" },
+  { key: "status",       label: "Status",       type: "text"   },
+  { key: "hsn",          label: "HSN",          type: "text"   },
+  { key: "launch_date",  label: "Launch Date",  type: "text"   },
 ]
 
 // ── Raw Materials — Vendor view ───────────────────────────────────────────────

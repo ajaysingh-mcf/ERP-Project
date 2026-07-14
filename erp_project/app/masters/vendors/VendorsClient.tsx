@@ -54,7 +54,7 @@ const VENDOR_CSV_FIELDS: MasterField[] = [
     options: [
       { value: "rm",   label: "RM"   },
       { value: "pm",   label: "PM"   },
-      { value: "both", label: "Both" },
+      { value: "both", label: "BOTH" },
     ],
   },
   { key: "registered_name", label: "Registered Name", placeholder: "Legal registered name", sample: "Acme Pvt Ltd" },
@@ -136,7 +136,7 @@ export default function VendorsClient({
           <option value="all">All Types</option>
           <option value="rm">RM</option>
           <option value="pm">PM</option>
-          <option value="both">Both</option>
+          <option value="both">BOTH</option>
         </select>
 
         <select
@@ -225,7 +225,7 @@ export default function VendorsClient({
                     <TableCell className="font-medium">{row.name}</TableCell>
                     <TableCell>{row.registered_name ?? "—"}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="capitalize">{row.type}</Badge>
+                      <Badge variant="outline">{row.type?.toUpperCase()}</Badge>
                     </TableCell>
                     <TableCell>{row.location ?? "—"}</TableCell>
                     <TableCell>{row.zone ?? "—"}</TableCell>

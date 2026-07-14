@@ -5,18 +5,9 @@ import { approvalsSql } from "@/lib/queries/approvals"
 import { parseS3Import } from "@/lib/import-s3"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
-import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval, generateMaterialCode } from "../../../../lib/master-routes/material-utils"
+import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval, generateMaterialCode, toRmParams } from "../../../../lib/master-routes/material-utils"
+import { uploadRowsAsCsv, stageBulkUploadApproval } from "@/lib/master-routes/bulk-approval"
 import { roundToWholeNumber, roundToTwoDecimals } from "@/lib/numeric"
-import type { PoolConnection } from "mysql2/promise"
-
-async function toRmParams(conn: PoolConnection, r: any, status = "in_review"): Promise<any[]> {
-  return [
-    r.rm_code?.trim() || await generateMaterialCode(conn, rawMaterials.countTotal, "RM"), r.name.trim(),
-    r.make?.trim() || null, r.type?.trim() || null,
-    r.uom?.trim() || null, status,
-    r.hsn_code?.trim() || null, r.inci_name?.trim() || null,
-  ]
-}
 
 function toRmVendorRateParams(rmId: number, r: any, today: string): any[] {
   return [
@@ -287,57 +278,52 @@ export async function rmAddRates(body: any, userId: number, ctx: object): Promis
   }
 }
 
+// Stages the WHOLE batch as one pending approval — nothing is inserted into
+// master_rm until an admin approves (see the RM_BULK handler in
+// lib/approvals/module-handlers.ts).
 export async function rmBulk(body: any, userId: number, ctx: object): Promise<NextResponse> {
   const { rows } = body
   if (!Array.isArray(rows) || rows.length === 0)
     return NextResponse.json({ error: "No rows provided" }, { status: 400 })
 
   const logCtx = { ...ctx, eventId: makeEventId("RM_BULK", "bulk"), module: "RM_Bulk" }
-  logger.info({ ...logCtx, rowCount: rows.length, message: "RM Bulk Insert Started" })
+  logger.info({ ...logCtx, rowCount: rows.length, message: "RM bulk upload started" })
   recordRawEvent("RM_BULK", logCtx.eventId, { rowCount: rows.length })
 
+  const staged = rows.filter((r: any) => r.name?.trim()).length
+  const skipped = rows.length - staged
+
   const conn = await pool.getConnection()
-  await conn.beginTransaction()
-  let inserted = 0, skipped = 0
   try {
-    for (const row of rows) {
-      if (!row.name?.trim()) continue
-      try {
-        const [rmResult] = await conn.execute(rawMaterials.insert, await toRmParams(conn, row))
-        const rmId = (rmResult as any).insertId
-        await insertApprovalWithItems(conn, userId, "RM_MAT", rmId, [
-          ["name", row.name.trim()],
-          ["make", row.make?.trim() || ""],
-          ["type", row.type?.trim() || ""],
-          ["uom", row.uom?.trim() || ""],
-          ["hsn_code", row.hsn_code?.trim() || ""],
-          ["inci_name", row.inci_name?.trim() || ""],
-        ])
-        inserted++
-      } catch (err: any) {
-        if (err.code === "ER_DUP_ENTRY") { skipped++ } else { throw err }
-      }
-    }
+    const yyyymm = new Date().toISOString().slice(0, 7)
+    const { key, filename } = await uploadRowsAsCsv(rows, `imports/raw-materials/${yyyymm}`, "rm_bulk")
+
+    await conn.beginTransaction()
+    const approvalId = await stageBulkUploadApproval(conn, {
+      userId, module: "RM_BULK", s3Key: key, filename, rowCount: rows.length,
+    })
     await conn.commit()
-    recordProcessedEvent("RM_BULK", logCtx.eventId, { inserted, skipped })
-    logger.info({ ...logCtx, inserted, skipped, message: "RM bulk completed" })
-    return NextResponse.json({ inserted, skipped })
+    recordProcessedEvent("RM_BULK", logCtx.eventId, { staged, skipped, approvalId })
+    logger.info({ ...logCtx, approvalId, staged, skipped, message: "RM bulk upload staged for approval" })
+    return NextResponse.json({ ok: true, approval_id: approvalId, staged, skipped, total: rows.length })
   } catch (err: any) {
     await conn.rollback()
     recordFailedEvent("RM_BULK", logCtx.eventId, { rowCount: rows.length }, err.message)
-    logger.error({ ...logCtx, error: err.message, message: "Raw material bulk insert error" })
-    return NextResponse.json({ error: "Bulk insert failed: " + err.message }, { status: 500 })
+    logger.error({ ...logCtx, error: err.message, message: "Raw material bulk upload error" })
+    return NextResponse.json({ error: "Bulk upload failed: " + err.message }, { status: 500 })
   } finally {
     conn.release()
   }
 }
 
+// Same staging-only behaviour as rmBulk above — the file is already in S3,
+// so we just parse it for a preview count and stage ONE approval.
 export async function rmS3Bulk(body: any, userId: number, ctx: object): Promise<NextResponse> {
   const { key } = body
   if (!key?.trim()) return NextResponse.json({ error: "key is required" }, { status: 400 })
 
   const logCtx = { ...ctx, eventId: makeEventId("RM_S3BULK", "bulk-s3"), module: "RM_S3Bulk" }
-  logger.info({ ...logCtx, s3Key: key, message: "RM S3 Bulk Import Started" })
+  logger.info({ ...logCtx, s3Key: key, message: "RM bulk upload (S3) started" })
   recordRawEvent("RM_S3BULK", logCtx.eventId, { s3Key: key, rowCount: null })
 
   let rawRows: any[]
@@ -355,36 +341,24 @@ export async function rmS3Bulk(body: any, userId: number, ctx: object): Promise<
     return NextResponse.json({ error: "File is empty or has no data rows" }, { status: 400 })
   }
 
+  const staged = rawRows.filter((r) => r["name"]?.trim()).length
+  const skipped = rawRows.length - staged
+
   const conn = await pool.getConnection()
-  await conn.beginTransaction()
-  let inserted = 0, skipped = 0
   try {
-    for (const row of rawRows) {
-      if (!row["name"]?.trim()) continue
-      try {
-        const [rmResult] = await conn.execute(rawMaterials.insert, await toRmParams(conn, row))
-        const rmId = (rmResult as any).insertId
-        await insertApprovalWithItems(conn, userId, "RM_MAT", rmId, [
-          ["name", row["name"].trim()],
-          ["make", row["make"]?.trim() || ""],
-          ["type", row["type"]?.trim() || ""],
-          ["uom", row["uom"]?.trim() || ""],
-          ["hsn_code", row["hsn_code"]?.trim() || ""],
-          ["inci_name", row["inci_name"]?.trim() || ""],
-        ])
-        inserted++
-      } catch (err: any) {
-        if (err.code === "ER_DUP_ENTRY") { skipped++ } else { throw err }
-      }
-    }
+    const filename = key.split("/").pop() ?? key
+    await conn.beginTransaction()
+    const approvalId = await stageBulkUploadApproval(conn, {
+      userId, module: "RM_BULK", s3Key: key, filename, rowCount: rawRows.length,
+    })
     await conn.commit()
-    recordProcessedEvent("RM_S3BULK", logCtx.eventId, { s3Key: key, inserted, skipped })
-    logger.info({ ...logCtx, inserted, skipped, message: "RM S3 bulk completed" })
-    return NextResponse.json({ inserted, skipped })
+    recordProcessedEvent("RM_S3BULK", logCtx.eventId, { s3Key: key, staged, skipped, approvalId })
+    logger.info({ ...logCtx, approvalId, staged, skipped, message: "RM bulk upload (S3) staged for approval" })
+    return NextResponse.json({ ok: true, approval_id: approvalId, staged, skipped, total: rawRows.length })
   } catch (err: any) {
     await conn.rollback()
     recordFailedEvent("RM_S3BULK", logCtx.eventId, { s3Key: key }, err.message)
-    logger.error({ ...logCtx, error: err.message, message: "Raw material S3 bulk error" })
+    logger.error({ ...logCtx, error: err.message, message: "Raw material bulk upload (S3) error" })
     return NextResponse.json({ error: "Import failed: " + err.message }, { status: 500 })
   } finally {
     conn.release()

@@ -4,18 +4,9 @@ import { packingMaterials } from "@/lib/queries/packing-materials"
 import { parseS3Import } from "@/lib/import-s3"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
-import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval, generateMaterialCode } from "@/lib/master-routes/material-utils"
+import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval, generateMaterialCode, toPmParams } from "@/lib/master-routes/material-utils"
+import { uploadRowsAsCsv, stageBulkUploadApproval } from "@/lib/master-routes/bulk-approval"
 import { roundToWholeNumber, roundToTwoDecimals } from "@/lib/numeric"
-import type { PoolConnection } from "mysql2/promise"
-
-async function toPmParams(conn: PoolConnection, r: any, status = "in_review"): Promise<any[]> {
-  return [
-    r.pm_code?.trim() || await generateMaterialCode(conn, packingMaterials.countTotal, "PM"), r.name.trim(),
-    r.type?.trim() || null, r.hsn_code?.trim() || null,
-    r.uom?.trim() || null, status,
-    r.pantone_color?.trim() || null,
-  ]
-}
 
 function toPmMfgRateParams(pmId: number, m: any, today: string): any[] {
   return [
@@ -339,62 +330,50 @@ export async function pmAddRates(body: any, userId: number, ctx: object): Promis
   }
 }
 
+// Stages the WHOLE batch as one pending approval — nothing is inserted into
+// master_pm until an admin approves (see the PM_BULK handler in
+// lib/approvals/module-handlers.ts).
 export async function pmBulk(body: any, userId: number, ctx: object): Promise<NextResponse> {
   const { rows } = body
   const eventId = makeEventId("PM_BULK", "bulk")
   const logCtx = { ...ctx, action: "bulk", eventId }
 
   if (!Array.isArray(rows) || rows.length === 0) {
-    logger.warn({ ...logCtx, message: "Bulk insert rejected: no rows provided" })
+    logger.warn({ ...logCtx, message: "Bulk upload rejected: no rows provided" })
     return NextResponse.json({ error: "No rows provided" }, { status: 400 })
   }
 
-  logger.info({ ...logCtx, message: "Bulk insert started", rowCount: rows.length })
+  logger.info({ ...logCtx, message: "Bulk upload started", rowCount: rows.length })
   recordRawEvent("PM_BULK", eventId, { source: "csv", rowCount: rows.length })
 
+  const staged = rows.filter((r: any) => r.name?.trim()).length
+  const skipped = rows.length - staged
+
   const conn = await pool.getConnection()
-  await conn.beginTransaction()
-  let inserted = 0, skipped = 0, invalid = 0
   try {
-    for (const [index, row] of rows.entries()) {
-      if (!row.name?.trim()) {
-        invalid++
-        logger.warn({ ...logCtx, message: "Bulk row skipped: missing name", rowIndex: index })
-        continue
-      }
-      try {
-        const [pmResult] = await conn.execute(packingMaterials.insert, await toPmParams(conn, row))
-        const pmId = (pmResult as any).insertId
-        await insertApprovalWithItems(conn, userId, "PM_MAT", pmId, [
-          ["name", row.name.trim()],
-          ["type", row.type?.trim() || ""],
-          ["uom", row.uom?.trim() || ""],
-          ["hsn_code", row.hsn_code?.trim() || ""],
-        ])
-        inserted++
-      } catch (err: any) {
-        if (err.code === "ER_DUP_ENTRY") {
-          skipped++
-          logger.info({ ...logCtx, message: "Bulk row skipped: duplicate", rowIndex: index, name: row.name?.trim() })
-        } else {
-          throw err
-        }
-      }
-    }
+    const yyyymm = new Date().toISOString().slice(0, 7)
+    const { key, filename } = await uploadRowsAsCsv(rows, `imports/packing-materials/${yyyymm}`, "pm_bulk")
+
+    await conn.beginTransaction()
+    const approvalId = await stageBulkUploadApproval(conn, {
+      userId, module: "PM_BULK", s3Key: key, filename, rowCount: rows.length,
+    })
     await conn.commit()
-    recordProcessedEvent("PM_BULK", eventId, { source: "csv", inserted, skipped })
-    logger.info({ ...logCtx, message: "Bulk insert committed", rowCount: rows.length, inserted, skipped, invalid })
-    return NextResponse.json({ inserted, skipped })
+    recordProcessedEvent("PM_BULK", eventId, { source: "csv", staged, skipped, approvalId })
+    logger.info({ ...logCtx, message: "Bulk upload staged for approval", rowCount: rows.length, staged, skipped, approvalId })
+    return NextResponse.json({ ok: true, approval_id: approvalId, staged, skipped, total: rows.length })
   } catch (err: any) {
     await conn.rollback()
     recordFailedEvent("PM_BULK", eventId, { source: "csv", rowCount: rows.length }, err.message)
-    logger.error({ ...logCtx, message: "Bulk insert error", error: err.message, code: err.code, inserted, skipped })
-    return NextResponse.json({ error: "Bulk insert failed: " + err.message }, { status: 500 })
+    logger.error({ ...logCtx, message: "Bulk upload error", error: err.message, code: err.code })
+    return NextResponse.json({ error: "Bulk upload failed: " + err.message }, { status: 500 })
   } finally {
     conn.release()
   }
 }
 
+// Same staging-only behaviour as pmBulk above — the file is already in S3,
+// so we just parse it for a preview count and stage ONE approval.
 export async function pmS3Bulk(body: any, userId: number, ctx: object): Promise<NextResponse> {
   const { key } = body
   const eventId = makeEventId("PM_S3BULK", "bulk-s3")
@@ -422,43 +401,24 @@ export async function pmS3Bulk(body: any, userId: number, ctx: object): Promise<
   }
 
   logger.info({ ...logCtx, message: "bulk_from_s3 started", rowCount: rawRows.length })
+  const staged = rawRows.filter((r) => r["name"]?.trim()).length
+  const skipped = rawRows.length - staged
+
   const conn = await pool.getConnection()
-  await conn.beginTransaction()
-  let inserted = 0, skipped = 0, invalid = 0
   try {
-    for (const [index, row] of rawRows.entries()) {
-      if (!row["name"]?.trim()) {
-        invalid++
-        logger.warn({ ...logCtx, message: "bulk_from_s3 row skipped: missing name", rowIndex: index })
-        continue
-      }
-      try {
-        const [pmResult] = await conn.execute(packingMaterials.insert, await toPmParams(conn, row))
-        const pmId = (pmResult as any).insertId
-        await insertApprovalWithItems(conn, userId, "PM_MAT", pmId, [
-          ["name", row["name"].trim()],
-          ["type", row["type"]?.trim() || ""],
-          ["uom", row["uom"]?.trim() || ""],
-          ["hsn_code", row["hsn_code"]?.trim() || ""],
-        ])
-        inserted++
-      } catch (err: any) {
-        if (err.code === "ER_DUP_ENTRY") {
-          skipped++
-          logger.info({ ...logCtx, message: "bulk_from_s3 row skipped: duplicate", rowIndex: index, name: row["name"]?.trim() })
-        } else {
-          throw err
-        }
-      }
-    }
+    const filename = key.split("/").pop() ?? key
+    await conn.beginTransaction()
+    const approvalId = await stageBulkUploadApproval(conn, {
+      userId, module: "PM_BULK", s3Key: key, filename, rowCount: rawRows.length,
+    })
     await conn.commit()
-    recordProcessedEvent("PM_S3BULK", eventId, { source: "s3", s3Key: key, inserted, skipped })
-    logger.info({ ...logCtx, message: "bulk_from_s3 committed", rowCount: rawRows.length, inserted, skipped, invalid })
-    return NextResponse.json({ inserted, skipped })
+    recordProcessedEvent("PM_S3BULK", eventId, { source: "s3", s3Key: key, staged, skipped, approvalId })
+    logger.info({ ...logCtx, message: "bulk_from_s3 staged for approval", rowCount: rawRows.length, staged, skipped, approvalId })
+    return NextResponse.json({ ok: true, approval_id: approvalId, staged, skipped, total: rawRows.length })
   } catch (err: any) {
     await conn.rollback()
     recordFailedEvent("PM_S3BULK", eventId, { source: "s3", s3Key: key }, err.message)
-    logger.error({ ...logCtx, message: "bulk_from_s3 import failed", error: err.message, code: err.code, inserted, skipped })
+    logger.error({ ...logCtx, message: "bulk_from_s3 staging failed", error: err.message, code: err.code })
     return NextResponse.json({ error: "Import failed: " + err.message }, { status: 500 })
   } finally {
     conn.release()

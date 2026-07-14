@@ -1,0 +1,83 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrAuth",
+      "Effect": "Allow",
+      "Action": ["ecr:GetAuthorizationToken"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EcrRepoErpApp",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:PutImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:DescribeRepositories",
+        "ecr:CreateRepository"
+      ],
+      "Resource": "arn:aws:ecr:ap-south-1:157320387454:repository/erp-app"
+    },
+    {
+      "Sid": "SsmAppSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:PutParameter",
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath",
+        "ssm:DescribeParameters",
+        "ssm:DeleteParameter"
+      ],
+      "Resource": "arn:aws:ssm:ap-south-1:157320387454:parameter/erp-app/*"
+    },
+    {
+      "Sid": "SsmRunCommand",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:SendCommand",
+        "ssm:GetCommandInvocation",
+        "ssm:ListCommandInvocations",
+        "ssm:DescribeInstanceInformation"
+      ],
+      "Resource": [
+        "arn:aws:ec2:ap-south-1:157320387454:instance/i-0d269978588f3c2da",
+        "arn:aws:ec2:ap-south-1:157320387454:instance/i-0a249d3d470e693d3",
+        "arn:aws:ssm:ap-south-1:157320387454:document/AWS-RunShellScript"
+      ]
+    },
+    {
+      "Sid": "SgOpenPorts",
+      "Effect": "Allow",
+      "Action": ["ec2:AuthorizeSecurityGroupIngress", "ec2:DescribeSecurityGroupRules"],
+      "Resource": [
+        "arn:aws:ec2:ap-south-1:157320387454:security-group/sg-0ed005f62f2449112",
+        "arn:aws:ec2:ap-south-1:157320387454:security-group/sg-0b47822934473fe9f"
+      ]
+    },
+    {
+      "Sid": "Ec2DescribeForTargeting",
+      "Effect": "Allow",
+      "Action": ["ec2:DescribeInstances", "ec2:DescribeTags", "ec2:DescribeImages"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudWatchReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "logs:GetLogEvents",
+        "logs:DescribeLogStreams",
+        "logs:DescribeLogGroups",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:ListMetrics",
+        "cloudwatch:DescribeAlarms"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

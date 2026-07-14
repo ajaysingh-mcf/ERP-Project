@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import type { Approval } from "./approvals-types"
-import { MODULE_LABEL, MODULE_COLOR, HISTORY_STATUS_COLOR, getInitials, fmtDate } from "./approvals-types"
+import { MODULE_LABEL, MODULE_COLOR, BULK_MODULES, HISTORY_STATUS_COLOR, getInitials, fmtDate } from "./approvals-types"
 
 /** RM/PM id → { code, name }, used to resolve a BOM line's bare mtrl_id.
  *  Split by type since rm/pm ids are independent sequences and can collide. */
@@ -341,8 +341,9 @@ export default function ApprovalCard({
   materialMap?:   MaterialMap
 }) {
   const moduleColor = MODULE_COLOR[approval.module] ?? "bg-slate-50 text-slate-700 border-slate-200"
-  const isBulk      = approval.module === "PO_BULK"
+  const isBulk      = BULK_MODULES.has(approval.module)
   const isBom       = approval.module === "BOM"
+  const rowCount    = approval.items.find(i => i.field_name === "row_count")?.new_value
 
   return (
     <div className={`rounded-xl border border-border bg-card overflow-hidden transition-all ${isExpanded ? "ring-1 ring-primary/20 shadow-sm" : ""}`}>
@@ -362,7 +363,7 @@ export default function ApprovalCard({
               )}
               {isBulk ? (
                 <Badge variant="secondary" className="gap-1 text-[10px] h-4">
-                  <FileText className="h-2.5 w-2.5" /> 1 CSV file
+                  <FileText className="h-2.5 w-2.5" /> {rowCount ? `${rowCount} rows` : "1 CSV file"}
                 </Badge>
               ) : (
                 <Badge variant="secondary" className="text-[10px] h-4">

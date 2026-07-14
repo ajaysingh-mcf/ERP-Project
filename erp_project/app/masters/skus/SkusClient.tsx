@@ -13,7 +13,7 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
-import { useEffect, useMemo , useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -39,6 +39,7 @@ export default function SkusClient({
   pageSize,
   currentSearch,
   currentStatus,
+  currentBrand,
 }: {
   rows: Sku[]
   total: number
@@ -46,6 +47,7 @@ export default function SkusClient({
   pageSize: number
   currentSearch: string
   currentStatus: string
+  currentBrand: string
 }) {
   const router       = useRouter()
   const pathname     = usePathname()
@@ -61,22 +63,12 @@ export default function SkusClient({
     params.set("page", "1")
     router.push(`${pathname}?${params.toString()}`)
   }
-  const [brandFilter, setBrandFilter] = useState("all");
   // Draft status — the select only updates this locally; the actual server
-  // refetch fires only when "Apply" is clicked. Brand filtering happens
-  // entirely client-side already, so it stays instant.
+  // refetch fires only when "Apply" is clicked.
   const [draftStatus, setDraftStatus] = useState(currentStatus)
   useEffect(() => setDraftStatus(currentStatus), [currentStatus])
   const draftDirty = draftStatus !== currentStatus
-  const hasFilters = !!currentSearch || !!currentStatus || brandFilter !== "all";
-  const filteredRows = useMemo(() => {
-  if (brandFilter === "all") return rows
-
-  return rows.filter(
-    (row) =>
-      row.brand?.toLowerCase() === brandFilter.toLowerCase()
-  )
-}, [rows, brandFilter])
+  const hasFilters = !!currentSearch || !!currentStatus || !!currentBrand
   return (
     <>
       {/* ── Toolbar ── */}
@@ -105,15 +97,17 @@ export default function SkusClient({
         >
           Apply
         </button>
-          {/* Search Based on Brands. */}
+          {/* Search Based on Brands. Applied immediately (server-side filter, whole DB). */}
         <select
-          value={brandFilter}
-          onChange={(e) => setBrandFilter(e.target.value)}
+          value={currentBrand || "all"}
+          onChange={(e) => navigate({ brand: e.target.value === "all" ? "" : e.target.value })}
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="all">All Brands</option>
           <option value="mCaffeine">mCaffeine</option>
-          <option value="hyphen">Hyphen</option>
+          <option value="mCaffeine Shades">mCaffeine Shades</option>
+          <option value="HYPHEN">HYPHEN</option>
+          <option value="FIEN">FIEN</option>
         </select>
 
 
@@ -134,8 +128,7 @@ export default function SkusClient({
               <button
                 onClick={() => {
                   setDraftStatus("")
-                  setBrandFilter("all")
-                  navigate({ search: "", status: "" , brand:""})
+                  navigate({ search: "", status: "", brand: "" })
                 }}
                 className="ml-2 text-xs text-primary hover:underline"
               >
@@ -152,25 +145,31 @@ export default function SkusClient({
                 <TableHead>Name</TableHead>
                 <TableHead>Brand</TableHead>
                 <TableHead>Category</TableHead>
+                <TableHead>Sub-Category</TableHead>
+                <TableHead>MRP</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Created By</TableHead>
+                <TableHead>HSN</TableHead>
+                <TableHead>Launch Date</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRows.length === 0 ? (
+              {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
                     {hasFilters ? "No SKUs match your filters." : "No records found."}
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredRows.map((row) => (
+                rows.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell className="font-mono text-xs font-medium">{row.sku_code}</TableCell>
                     <TableCell className="font-medium text-wrap">{row.name}</TableCell>
                     <TableCell className="text-muted-foreground">{row.brand ?? "—"}</TableCell>
                     <TableCell className="text-muted-foreground">{row.category ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{row.sub_category ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {row.mrp != null ? `₹${row.mrp}` : "—"}
+                    </TableCell>
                     <TableCell>
                       {row.status === "in_review" ? (
                         <Badge variant="warning" className="capitalize">In Review</Badge>
@@ -188,12 +187,10 @@ export default function SkusClient({
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
-                      {row.created_at
-                        ? new Date(row.created_at).toLocaleDateString("en-IN")
-                        : "—"}
+                      {row.hsn ?? "—"}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
-                      {row.created_by ?? "—"}
+                      {row.launch_date?.split(" ")[0] ?? "—"}
                     </TableCell>
                   </TableRow>
                 ))
