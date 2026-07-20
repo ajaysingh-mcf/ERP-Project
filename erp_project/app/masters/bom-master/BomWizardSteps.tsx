@@ -7,6 +7,7 @@
  */
 
 import { Button } from "@/components/ui/button"
+import { FuzzySelect } from "@/components/ui/FuzzySelect"
 import { BomLineEditorGrid, rmTotal, type BomLineRow, type BomMaterialOption } from "./BomLineEditorGrid"
 import { BomArtifactsEditor } from "./BomArtifactsEditor"
 import { CSV_HEADER } from "./bom-csv"
@@ -29,19 +30,16 @@ export function Step1SkuSelect({
       <label className="block text-xs font-medium mb-1">
         SKU <span className="text-destructive">*</span>
       </label>
-      <select
-        className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        value={skuId ?? ""}
-        onChange={(e) => e.target.value && onSelect(Number(e.target.value))}
+      <FuzzySelect
+        options={skus}
+        value={skuId != null ? String(skuId) : ""}
+        onChange={(v) => v && onSelect(Number(v))}
+        getValue={(s) => String(s.id)}
+        getLabel={(s) => `${s.sku_code} — ${s.name}`}
+        searchKeys={["sku_code", "name"]}
+        placeholder="Search SKU code or name…"
         disabled={loading}
-      >
-        <option value="">Select SKU…</option>
-        {skus.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.sku_code} — {s.name}
-          </option>
-        ))}
-      </select>
+      />
       {loading && <p className="text-xs text-muted-foreground">Checking for an existing BOM…</p>}
     </div>
   )

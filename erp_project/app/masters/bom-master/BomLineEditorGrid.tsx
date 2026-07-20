@@ -14,6 +14,7 @@
 
 import { Plus, Trash2 } from "lucide-react"
 import { isRmTotalValid } from "@/lib/validation/bom"
+import { FuzzySelect } from "@/components/ui/FuzzySelect"
 import { cn } from "@/lib/utils"
 
 export type BomLineRow = {
@@ -99,14 +100,15 @@ function LineRowCard({
       </div>
 
       <Field label="Material" required>
-        <select className={inputCls} value={row.mtrl_id ?? ""} onChange={(e) => selectMaterial(Number(e.target.value))}>
-          <option value="">Select {row.mtrl_type.toUpperCase()}…</option>
-          {materials.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name} ({m.code ?? m.id})
-            </option>
-          ))}
-        </select>
+        <FuzzySelect
+          options={materials}
+          value={row.mtrl_id != null ? String(row.mtrl_id) : ""}
+          onChange={(v) => v && selectMaterial(Number(v))}
+          getValue={(m) => String(m.id)}
+          getLabel={(m) => `${m.name} (${m.code ?? m.id})`}
+          searchKeys={["name", "code"]}
+          placeholder={`Search ${row.mtrl_type.toUpperCase()} name or code…`}
+        />
       </Field>
 
       <div className="grid grid-cols-2 gap-3">

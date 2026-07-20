@@ -87,6 +87,27 @@ export const bomCreateFullSchema = z
     }
   })
 
+export const bomBulkSchema = z.object({
+  action: z.literal("bulk", {
+    message: "Action must be 'bulk'.",
+  }),
+
+  rows: z
+    .array(z.record(z.string(), z.string()))
+    .min(1, {
+      message: "At least one row is required for bulk upload.",
+    }),
+})
+
+// CsvImportDialog's preview-time check (enableDuplicateCheck) — reuses the
+// same generic "give me extra remarks for these parsed rows" hook the other
+// masters use for duplicate detection, but here it flags SKU groups whose RM
+// lines don't total ~100% (see the check_duplicates branch in route.ts).
+export const bomCheckDuplicatesSchema = z.object({
+  action: z.literal("check_duplicates"),
+  rows: z.array(z.record(z.string(), z.string())),
+})
+
 // Direct, immediate status change — no approval gate. Kept separate from
 // create-full's line edits, which still go through the approval flow.
 export const bomUpdateStatusSchema = z.object({
@@ -99,9 +120,12 @@ export const bomActionSchema = z.discriminatedUnion("action", [
   bomCheckExistingSchema,
   bomCreateFullSchema,
   bomUpdateStatusSchema,
+  bomBulkSchema,
+  bomCheckDuplicatesSchema,
 ])
 
 export type BomLine = z.infer<typeof bomLineSchema>
 export type BomCreateFull = z.infer<typeof bomCreateFullSchema>
 export type BomUpdateStatus = z.infer<typeof bomUpdateStatusSchema>
 export type BomAction = z.infer<typeof bomActionSchema>
+export type BomBulk = z.infer<typeof bomBulkSchema>

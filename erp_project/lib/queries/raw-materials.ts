@@ -47,6 +47,9 @@ export const rawMaterials = {
     INNER JOIN master_rm AS r ON r.id = rmv.rm_id
   `,
 
+  /** Select a raw material by its code for bulk import purposes. Parameters: [rm_code] */
+  selectByCode: `SELECT id, uom, status FROM master_rm WHERE rm_code = ? LIMIT 1`,
+
   // ============ PAGINATED BASE TABLE QUERIES (material-master page) ============
 
   /**

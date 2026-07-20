@@ -44,6 +44,7 @@ export const MODULE_LABEL: Record<string, string> = {
   RM_BULK: "Bulk RM Upload",
   PM_BULK: "Bulk PM Upload",
   BOM: "BOM",
+  BOM_BULK: "Bulk BOM Upload",
 }
 
 /** Modules whose approval_items store {s3_key, filename, row_count} for a
@@ -51,7 +52,7 @@ export const MODULE_LABEL: Record<string, string> = {
  *  branch in ApprovalCard.tsx and the *_BULK handlers in
  *  lib/approvals/module-handlers.ts. */
 export const BULK_MODULES = new Set([
-  "PO_BULK", "VENDOR_BULK", "MFG_BULK", "RM_BULK", "PM_BULK",
+  "PO_BULK", "VENDOR_BULK", "MFG_BULK", "RM_BULK", "PM_BULK", "BOM_BULK",
 ])
 
 export const MODULE_COLOR: Record<string, string> = {
@@ -71,6 +72,7 @@ export const MODULE_COLOR: Record<string, string> = {
   RM_BULK: "bg-rose-50 text-rose-700 border-rose-200",
   PM_BULK: "bg-violet-50 text-violet-700 border-violet-200",
   BOM: "bg-lime-50 text-lime-700 border-lime-200",
+  BOM_BULK: "bg-lime-50 text-lime-700 border-lime-200",
 }
 
 export function getInitials(name: string) {

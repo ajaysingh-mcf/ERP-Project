@@ -26,11 +26,16 @@ import type { PoolConnection } from "mysql2/promise"
 import { pool, query } from "@/lib/db"
 import { withGateway } from "@/lib/gateway/with-gateway"
 import { ApiError } from "@/lib/gateway/errors"
-import { bomActionSchema } from "@/lib/validation/bom"
+import { bomActionSchema, isRmTotalValid, RM_TOTAL_MIN, RM_TOTAL_MAX } from "@/lib/validation/bom"
 import { bom as bomSql, BOM_STATUS_IN_REVIEW } from "@/lib/queries/bom"
+import { skus as skuSql } from "@/lib/queries/skus"
+import { rawMaterials as rmSql } from "@/lib/queries/raw-materials"
+import { packingMaterials as pmSql } from "@/lib/queries/packing-materials"
 import { approvalsSql } from "@/lib/queries/approvals"
+import { STATUS } from "@/lib/constants"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
+import { stageBulkUploadApproval, uploadRowsAsCsv } from "@/lib/master-routes/bulk-approval"
 
 export const POST = withGateway({
   schema: bomActionSchema,
@@ -217,6 +222,170 @@ export const POST = withGateway({
         logger.error({ ...logCtx, err: err.message, message: "BOM status update failed" })
         if (err instanceof ApiError) throw err
         throw new ApiError(500, "internal", "Database error: " + err.message)
+      } finally {
+        conn.release()
+      }
+    }
+
+    // ── check_duplicates: CsvImportDialog's preview-time deep check ────────
+    // Not actually about duplicates — reuses the same generic hook (POST
+    // parsed rows, get back { duplicates: { rowIndex: [msg] } }) to run the
+    // SAME resolution checks BOM_BULK's applyAndArchive runs at approval
+    // time (SKU exists & active, material code resolves & active, RM lines
+    // total ~100% per SKU group), so a bad row is caught here — before the
+    // user can submit at all — instead of silently being skipped later.
+    // CsvImportDialog is wired with requireAllValid for BOM, so ANY flagged
+    // row here blocks the whole upload; see this route's `bulk` action and
+    // BOM_BULK's applyAndArchive for the authoritative re-check at approval
+    // time (data can still drift between this preview and an admin's approval).
+    if (body.action === "check_duplicates") {
+      const { rows } = body
+      const duplicates: Record<number, string[]> = {}
+
+      // Cache resolved codes so a code repeated across many rows/lines only
+      // hits the DB once.
+      const skuCache = new Map<string, any>()
+      const rmCache = new Map<string, any>()
+      const pmCache = new Map<string, any>()
+      async function resolveSku(code: string) {
+        if (!skuCache.has(code)) {
+          const found = await query<any>(skuSql.selectByCode, [code])
+          skuCache.set(code, found[0] ?? null)
+        }
+        return skuCache.get(code)
+      }
+      async function resolveMaterial(type: "rm" | "pm", code: string) {
+        const cache = type === "rm" ? rmCache : pmCache
+        if (!cache.has(code)) {
+          const found = await query<any>(type === "rm" ? rmSql.selectByCode : pmSql.selectByCode, [code])
+          cache.set(code, found[0] ?? null)
+        }
+        return cache.get(code)
+      }
+
+      const groups = new Map<string, number[]>() // sku_code -> row indices in `rows`
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]
+        const skuCode = String(row.sku_code ?? "").trim()
+        if (!skuCode) continue
+        if (!groups.has(skuCode)) groups.set(skuCode, [])
+        groups.get(skuCode)!.push(i)
+
+        const sku = await resolveSku(skuCode)
+        if (!sku) { (duplicates[i] ??= []).push(`SKU "${skuCode}" not found`); continue }
+        if (sku.status !== STATUS.ACTIVE) { (duplicates[i] ??= []).push(`SKU "${skuCode}" is not active`); continue }
+
+        const mtrlType = String(row.mtrl_type ?? "").trim().toLowerCase()
+        if (mtrlType !== "rm" && mtrlType !== "pm") continue // already flagged by the mtrl_type field's validate hook
+
+        const mtrlCode = String(row.mtrl_code ?? "").trim()
+        if (!mtrlCode) continue // already flagged as a missing required field
+        const material = await resolveMaterial(mtrlType, mtrlCode)
+        if (!material) { (duplicates[i] ??= []).push(`Material code "${mtrlCode}" not found`); continue }
+        if (material.status !== STATUS.ACTIVE) { (duplicates[i] ??= []).push(`Material code "${mtrlCode}" is not active`) }
+      }
+
+      for (const [skuCode, indices] of groups) {
+        const rmTotal = indices
+          .map((i) => rows[i])
+          .filter((r) => String(r.mtrl_type).trim().toLowerCase() === "rm")
+          .reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
+        if (!isRmTotalValid(rmTotal)) {
+          const msg = `SKU ${skuCode}: RM total ${rmTotal.toFixed(2)}% (needs ${RM_TOTAL_MIN}-${RM_TOTAL_MAX}%)`
+          for (const i of indices) (duplicates[i] ??= []).push(msg)
+        }
+      }
+
+      // Duplicate material line within one SKU group — same mtrl_type+mtrl_code
+      // listed twice for the same SKU is almost always a copy-paste mistake;
+      // BOM_BULK's applyAndArchive would otherwise insert it as two separate
+      // details_bom rows with no unique constraint to catch it.
+      for (const [skuCode, indices] of groups) {
+        const seen = new Map<string, number[]>() // "rm:CODE" -> row indices
+        for (const i of indices) {
+          const row = rows[i]
+          const key = `${String(row.mtrl_type).trim().toLowerCase()}:${String(row.mtrl_code).trim().toLowerCase()}`
+          if (!seen.has(key)) seen.set(key, [])
+          seen.get(key)!.push(i)
+        }
+        for (const [key, idxs] of seen) {
+          if (idxs.length <= 1) continue
+          const [type, code] = key.split(":")
+          const msg = `Duplicate ${type.toUpperCase()} code "${code}" appears ${idxs.length} times for SKU ${skuCode}`
+          for (const i of idxs) (duplicates[i] ??= []).push(msg)
+        }
+      }
+
+      // Inconsistent bom_code within one SKU group — a group can only ever
+      // produce ONE BOM; BOM_BULK's applyAndArchive silently uses only the
+      // first row's bom_code, so conflicting values elsewhere in the group
+      // would otherwise be dropped without the user ever knowing.
+      for (const [skuCode, indices] of groups) {
+        const codes = new Set<string>()
+        for (const i of indices) {
+          const c = String(rows[i].bom_code ?? "").trim()
+          if (c) codes.add(c)
+        }
+        if (codes.size > 1) {
+          const msg = `Inconsistent bom_code for SKU ${skuCode}: found ${[...codes].map((c) => `"${c}"`).join(", ")} — a SKU group can only produce one BOM`
+          for (const i of indices) (duplicates[i] ??= []).push(msg)
+        }
+      }
+
+      // Duplicate bom_code used by more than one SKU group — bom_code has no
+      // unique constraint in the schema, so two different BOMs could
+      // silently share the same code.
+      const bomCodeToSkus = new Map<string, Set<string>>()
+      for (const [skuCode, indices] of groups) {
+        for (const i of indices) {
+          const c = String(rows[i].bom_code ?? "").trim()
+          if (!c) continue
+          if (!bomCodeToSkus.has(c)) bomCodeToSkus.set(c, new Set())
+          bomCodeToSkus.get(c)!.add(skuCode)
+        }
+      }
+      for (const [bomCode, skuCodes] of bomCodeToSkus) {
+        if (skuCodes.size <= 1) continue
+        const msg = `bom_code "${bomCode}" is used by multiple SKUs (${[...skuCodes].join(", ")})`
+        for (const skuCode of skuCodes) {
+          for (const i of groups.get(skuCode)!) {
+            if (String(rows[i].bom_code ?? "").trim() === bomCode) (duplicates[i] ??= []).push(msg)
+          }
+        }
+      }
+
+      return NextResponse.json({ duplicates })
+    }
+
+    // ── bulk: stage the WHOLE uploaded file as ONE pending approval ────────
+    // Nothing is inserted into master_bom/details_bom here — the real per-SKU
+    // grouping, validation, and insert happens in BOM_BULK's applyAndArchive
+    // (lib/approvals/module-handlers.ts) once an admin approves.
+    if (body.action === "bulk") {
+      const { rows } = body
+      const eventId = makeEventId("BOM_BULK", "bulk")
+      const logCtx = { ...ctx, eventId, module: "BOM_BULK" }
+      logger.info({ ...logCtx, rowCount: rows.length, message: "BOM bulk upload started" })
+      recordRawEvent("BOM_BULK", eventId, { rowCount: rows.length, source: "csv" })
+
+      const conn: PoolConnection = await pool.getConnection()
+      try {
+        const yyyymm = new Date().toISOString().slice(0, 7)
+        const { key, filename } = await uploadRowsAsCsv(rows, `imports/bom-bulk/${yyyymm}`, "bom_bulk")
+
+        await conn.beginTransaction()
+        const approvalId = await stageBulkUploadApproval(conn, {
+          userId, module: "BOM_BULK", s3Key: key, filename, rowCount: rows.length,
+        })
+        await conn.commit()
+        logger.info({ ...logCtx, approvalId, message: "BOM bulk upload staged for approval" })
+        recordProcessedEvent("BOM_BULK", eventId, { rowCount: rows.length, source: "csv", approvalId })
+        return NextResponse.json({ ok: true, approval_id: approvalId, staged: rows.length, skipped: 0 })
+      } catch (err: any) {
+        await conn.rollback()
+        recordFailedEvent("BOM_BULK", eventId, { rowCount: rows.length, source: "csv" }, err.message)
+        logger.error({ ...logCtx, err: err.message, message: "BOM bulk upload failed" })
+        throw new ApiError(500, "internal", "Bulk upload failed: " + err.message)
       } finally {
         conn.release()
       }

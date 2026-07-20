@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { isRmTotalValid } from "@/lib/validation/bom"
+import { FuzzySelect } from "@/components/ui/FuzzySelect"
 import { cn } from "@/lib/utils"
 import { emptyBomLine, rmTotal, type BomLineRow, type BomMaterialOption } from "./BomLineEditorGrid"
 
@@ -82,15 +83,15 @@ function LineTable({
               <TableHead className="min-w-55">Material</TableHead>
               <TableHead className="w-28">{mtrlType === "rm" ? "Amount (%)" : "Amount"}</TableHead>
               <TableHead className="w-24">UOM</TableHead>
-              {/* <TableHead className="w-36">Effective From</TableHead> */}
-              {/* <TableHead className="w-36">Effective Till</TableHead> */}
+              <TableHead className="w-36">Effective From</TableHead>
+              <TableHead className="w-36">Effective Till</TableHead>
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground py-6 text-sm">
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-6 text-sm">
                   No {mtrlType.toUpperCase()} lines yet.
                 </TableCell>
               </TableRow>
@@ -98,18 +99,16 @@ function LineTable({
               rows.map((row, i) => (
                 <TableRow key={i}>
                   <TableCell>
-                    <select
+                    <FuzzySelect
+                      options={materials}
+                      value={row.mtrl_id != null ? String(row.mtrl_id) : ""}
+                      onChange={(v) => v && selectMaterial(i, Number(v))}
+                      getValue={(m) => String(m.id)}
+                      getLabel={(m) => `${m.name} (${m.code ?? m.id})`}
+                      searchKeys={["name", "code"]}
+                      placeholder={`Search ${mtrlType.toUpperCase()}…`}
                       className={cellInputCls}
-                      value={row.mtrl_id ?? ""}
-                      onChange={(e) => selectMaterial(i, Number(e.target.value))}
-                    >
-                      <option value="">Select {mtrlType.toUpperCase()}…</option>
-                      {materials.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name} ({m.code ?? m.id})
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </TableCell>
                   <TableCell>
                     <input
@@ -130,22 +129,22 @@ function LineTable({
                       onChange={(e) => updateRow(i, { uom: e.target.value })}
                     />
                   </TableCell>
-                  {/* <TableCell>
+                  <TableCell>
                     <input
                       type="date"
                       className={cellInputCls}
                       value={row.effective_from}
                       onChange={(e) => updateRow(i, { effective_from: e.target.value })}
                     />
-                  </TableCell> */}
-                  {/* <TableCell>
+                  </TableCell>
+                  <TableCell>
                     <input
                       type="date"
                       className={cellInputCls}
                       value={row.effective_till}
                       onChange={(e) => updateRow(i, { effective_till: e.target.value })}
                     />
-                  </TableCell> */}
+                  </TableCell>
                   <TableCell>
                     <button
                       type="button"

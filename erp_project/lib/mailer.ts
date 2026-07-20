@@ -5,6 +5,7 @@ import { generatePoPdf, type PoEmailData } from "@/lib/pdf/po-document"
 import { uploadFile, getFileBuffer } from "@/lib/s3"
 import { s3FilesSql } from "@/lib/queries/s3-files"
 import { purchaseOrdersSql } from "@/lib/queries/purchase-orders"
+import { entityEmails } from "@/lib/queries/entity-emails"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
 import crypto from "crypto"
@@ -49,6 +50,27 @@ export async function fetchPoData(poId: number): Promise<PoEmailData | null> {
 }
 
 /**
+ * All email addresses to notify for a manufacturer: the single primary
+ * contact on details_mfg.email (if set) plus every address entered against
+ * this manufacturer in the entity_emails contact list (/po-tracking/
+ * po-procurement/entity-emails) — deduped case-insensitively.
+ */
+async function resolveMfgRecipients(mfgCode: string, primaryEmail: string | null): Promise<string[]> {
+  const rows = await query<{ email: string }>(entityEmails.selectByEntity, ["mfg", mfgCode])
+  const seen = new Set<string>()
+  const recipients: string[] = []
+  for (const raw of [primaryEmail, ...rows.map((r) => r.email)]) {
+    const email = raw?.trim()
+    if (!email) continue
+    const key = email.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    recipients.push(email)
+  }
+  return recipients
+}
+
+/**
  * Returns true if the email was sent, false if the manufacturer has no email on file.
  * Throws on actual send/PDF failures.
  */
@@ -62,7 +84,8 @@ export async function sendPoEmail(
     console.warn(`[mailer] sendPoEmail: PO id=${poId} not found`)
     return false
   }
-  if (!data.mfg_email) {
+  const recipients = await resolveMfgRecipients(data.mfg_code, data.mfg_email)
+  if (recipients.length === 0) {
     console.warn(`[mailer] sendPoEmail: PO id=${poId} — manufacturer has no email on file, skipping`)
     return false
   }
@@ -72,7 +95,7 @@ export async function sendPoEmail(
     poId,
     po_no:     data.po_no,
     mfg_name:  data.mfg_name,
-    mfg_email: data.mfg_email,
+    mfg_email: recipients.join(", "),
     trigger,
   })
 
@@ -106,7 +129,7 @@ export async function sendPoEmail(
   try {
     await transporter.sendMail({
       from: `mcaffeine ERP <${from}>`,
-      to: data.mfg_email,
+      to: recipients.join(", "),
       subject: `Purchase Order ${data.po_no} — mcaffeine`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:auto;color:#111">
@@ -146,12 +169,12 @@ export async function sendPoEmail(
     recordFailedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no }, sendErr.message)
     throw sendErr
   }
-  logger.info({ ...ctx, eventId, poId, po_no: data.po_no, mfg_email: data.mfg_email, message: "PO email sent successfully" })
-  // console.log(`[mailer] PO ${data.po_no} sent to ${data.mfg_email}`)
+  logger.info({ ...ctx, eventId, poId, po_no: data.po_no, mfg_email: recipients.join(", "), message: "PO email sent successfully" })
+  // console.log(`[mailer] PO ${data.po_no} sent to ${recipients.join(", ")}`)
   recordProcessedEvent("PO_EMAIL", eventId, {
     poId,
     po_no:     data.po_no,
-    mfg_email: data.mfg_email,
+    mfg_email: recipients.join(", "),
     s3PdfKey:  s3Key,
   })
   return true
@@ -174,7 +197,8 @@ export async function sendPoCancellationEmail(poId: number, reason?: string): Pr
     console.warn(`[mailer] sendPoCancellationEmail: PO id=${poId} not found`)
     return false
   }
-  if (!data.mfg_email) {
+  const recipients = await resolveMfgRecipients(data.mfg_code, data.mfg_email)
+  if (recipients.length === 0) {
     logger.warn({ ...ctx, poId, message: "sendPoCancellationEmail - manufacturer has no email on file, skipping" })
     console.warn(`[mailer] sendPoCancellationEmail: PO id=${poId} — manufacturer has no email on file, skipping`)
     return false
@@ -185,7 +209,7 @@ export async function sendPoCancellationEmail(poId: number, reason?: string): Pr
     poId,
     po_no:     data.po_no,
     mfg_name:  data.mfg_name,
-    mfg_email: data.mfg_email,
+    mfg_email: recipients.join(", "),
     trigger:   "cancellation",
   })
 
@@ -203,7 +227,7 @@ export async function sendPoCancellationEmail(poId: number, reason?: string): Pr
   try {
     await transporter.sendMail({
       from: `mcaffeine ERP <${GMAIL_USER}>`,
-      to: data.mfg_email,
+      to: recipients.join(", "),
       subject: `CANCELLED - Purchase Order ${data.po_no}`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:auto;color:#111">
@@ -233,7 +257,7 @@ export async function sendPoCancellationEmail(poId: number, reason?: string): Pr
     throw sendErr
   }
 
-  logger.info({ ...ctx, eventId, poId, po_no: data.po_no, mfg_email: data.mfg_email, message: "PO cancellation email sent successfully" })
-  recordProcessedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no, mfg_email: data.mfg_email })
+  logger.info({ ...ctx, eventId, poId, po_no: data.po_no, mfg_email: recipients.join(", "), message: "PO cancellation email sent successfully" })
+  recordProcessedEvent("PO_EMAIL", eventId, { poId, po_no: data.po_no, mfg_email: recipients.join(", ") })
   return true
 }

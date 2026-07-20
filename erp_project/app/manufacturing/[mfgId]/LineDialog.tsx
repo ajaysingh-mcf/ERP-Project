@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { FuzzySelect } from "@/components/ui/FuzzySelect"
 import type { MfgLine, MfgLineStatus } from "@/types/masters"
 
 export type BomOption = { id: number; bom_code: string; sku_code: string | null; sku_name: string | null }
@@ -130,14 +131,15 @@ export default function LineDialog({
           {!editData && (
             <div className="grid gap-1.5">
               <Label htmlFor="ml-bom">SKU / BOM <span className="text-destructive">*</span></Label>
-              <select id="ml-bom" value={form.bom_id} onChange={(e) => set("bom_id", e.target.value)} className={selectCls}>
-                <option value="">— Select SKU —</option>
-                {bomOptions.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.sku_code ?? "—"} — {b.sku_name ?? b.bom_code} ({b.bom_code})
-                  </option>
-                ))}
-              </select>
+              <FuzzySelect
+                options={bomOptions}
+                value={form.bom_id}
+                onChange={(v) => set("bom_id", v)}
+                getValue={(b) => String(b.id)}
+                getLabel={(b) => `${b.sku_code ?? "—"} — ${b.sku_name ?? b.bom_code} (${b.bom_code})`}
+                searchKeys={["sku_code", "sku_name", "bom_code"]}
+                placeholder="Search SKU code or name…"
+              />
             </div>
           )}
 

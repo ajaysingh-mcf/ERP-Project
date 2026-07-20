@@ -15,6 +15,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import { useToast } from "@/components/ui/toast"
+import { cn } from "@/lib/utils"
 import type { BadgeVariant, PoRow } from "./po-types"
 import { STATUS_CONFIG } from "./po-types"
 import { fmtDate, fmtInt, fmtMoney, fmtRate, isImpromptu, num } from "./po-utils"
@@ -266,6 +267,7 @@ type MenuAction = {
 
 function ActionMenu({ actions }: { actions: MenuAction[] }) {
   const [open, setOpen]         = useState(false)
+  const [openUp, setOpenUp]     = useState(false)
   const ref                     = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -285,10 +287,22 @@ function ActionMenu({ actions }: { actions: MenuAction[] }) {
     destructive: "text-destructive hover:bg-destructive/10",
   }
 
+  function toggle() {
+    if (!open && ref.current) {
+      // Flip upward when there isn't enough room below (e.g. the last rows
+      // of a table) so the menu doesn't get cut off / hidden behind the
+      // pagination bar.
+      const rect = ref.current.getBoundingClientRect()
+      const estimatedMenuHeight = actions.length * 36 + 16
+      setOpenUp(window.innerHeight - rect.bottom < estimatedMenuHeight)
+    }
+    setOpen((v) => !v)
+  }
+
   return (
     <div ref={ref} className="relative inline-block">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-input hover:bg-accent transition-colors"
         aria-label="More actions"
       >
@@ -296,7 +310,12 @@ function ActionMenu({ actions }: { actions: MenuAction[] }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 min-w-45 rounded-md border border-border bg-popover shadow-md">
+        <div
+          className={cn(
+            "absolute right-0 z-50 min-w-45 rounded-md border border-border bg-popover shadow-md",
+            openUp ? "bottom-full mb-1" : "top-full mt-1"
+          )}
+        >
           {actions.map((action, i) => (
             action.disabled ? (
               <div

@@ -1,13 +1,14 @@
 "use client"
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Filter, Mail, Plus, Upload, X } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
 import { PaginationBar } from "@/components/ui/pagination-bar"
+import { FuzzySelect } from "@/components/ui/FuzzySelect"
 import { cn } from "@/lib/utils"
 
 import type { MfgOption, PoRow, SkuOption, TabKey, WarehouseOption } from "./po-types"
@@ -95,6 +96,11 @@ export default function PoProcurementClient({
   const [draftDateTo,      setDraftDateTo]      = useState(currentDateTo)
   const [draftSku,         setDraftSku]         = useState(currentSku)
   const [draftDestination, setDraftDestination] = useState(currentDestination)
+
+  const skuFilterOptions = useMemo(
+    () => [{ id: 0, sku_code: "", name: "All SKUs", status: "active" }, ...skuOptions],
+    [skuOptions]
+  )
 
   function navigate(updates: Record<string, string>) {
     const params = new URLSearchParams(searchParams.toString())
@@ -246,18 +252,15 @@ export default function PoProcurementClient({
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs">SKU</Label>
-                <select
+                <FuzzySelect
+                  options={skuFilterOptions}
                   value={draftSku}
-                  onChange={(e) => setDraftSku(e.target.value)}
-                  className={selectCls}
-                >
-                  <option value="">All SKUs</option>
-                  {skuOptions.map((s) => (
-                    <option key={s.id} value={s.sku_code}>
-                      {s.sku_code} — {s.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setDraftSku}
+                  getValue={(s) => s.sku_code}
+                  getLabel={(s) => (s.sku_code ? `${s.sku_code} — ${s.name}` : s.name)}
+                  searchKeys={["sku_code", "name"]}
+                  placeholder="Search SKU code or name…"
+                />
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs">Destination</Label>

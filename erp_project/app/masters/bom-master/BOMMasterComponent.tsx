@@ -13,7 +13,7 @@
  * current page.
  */
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { History } from "lucide-react"
 import { UrlSearchInput } from "@/components/masters/UrlSearchInput"
@@ -22,9 +22,11 @@ import {
   MasterToolbarActions,
 } from "@/components/masters/MasterToolbar"
 import { DownloadButton } from "@/components/masters/DownloadButton"
+import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { BomCreationWizard } from "./BomCreationWizard"
+import { BOM_BULK_CSV_FIELDS } from "./bom-bulk-fields"
 import { type BomMaterialOption } from "./BomLineEditorGrid"
 import { BomTable } from "./BomTable"
 import { BomDetailPanel } from "./BomDetailPanel"
@@ -76,9 +78,15 @@ export default function BOMMasterComponent({
   const refresh    = () => router.refresh()
 
   // Draft status — the select only updates this locally; the actual server
-  // refetch fires only when "Apply" is clicked.
+  // refetch fires only when "Apply" is clicked. Resynced from the URL-driven
+  // prop during render (not an effect) when it changes underneath us — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
   const [draftStatus, setDraftStatus] = useState(currentStatus)
-  useEffect(() => setDraftStatus(currentStatus), [currentStatus])
+  const [prevStatus, setPrevStatus] = useState(currentStatus)
+  if (currentStatus !== prevStatus) {
+    setPrevStatus(currentStatus)
+    setDraftStatus(currentStatus)
+  }
   const draftDirty = draftStatus !== currentStatus
 
   const panel = useBomDetailPanel()
@@ -131,13 +139,25 @@ export default function BOMMasterComponent({
             label="BOM Master"
           />
           {canEdit && (
-            <BomCreationWizard
-              skus={skus}
-              rmMaterials={rmMaterials}
-              pmMaterials={pmMaterials}
-              onSuccess={refresh}
-              onEditExisting={panel.openEditMode}
-            />
+            <>
+              <CsvImportDialog
+                entityLabel="BOM"
+                title="Bulk Upload BOMs via CSV"
+                endpoint="/api/masters/bom-master"
+                templateFilename="bom_bulk_template.csv"
+                fields={BOM_BULK_CSV_FIELDS}
+                enableDuplicateCheck
+                requireAllValid
+                onSuccess={refresh}
+              />
+              <BomCreationWizard
+                skus={skus}
+                rmMaterials={rmMaterials}
+                pmMaterials={pmMaterials}
+                onSuccess={refresh}
+                onEditExisting={panel.openEditMode}
+              />
+            </>
           )}
         </MasterToolbarActions>
       </MasterToolbar>

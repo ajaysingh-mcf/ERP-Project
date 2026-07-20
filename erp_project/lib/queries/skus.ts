@@ -30,6 +30,12 @@ export const skus = {
     SELECT id, sku_code, name, brand, category, status
     FROM master_skus WHERE id = ? LIMIT 1
   `,
+  /**
+   * Fetch a single SKU by sku_code (used before update to snapshot for history).
+   * Parameters: [sku_code]
+   */
+  selectByCode: ` SELECT id, sku_code, status FROM master_skus WHERE sku_code = ? LIMIT 1
+  `,
 
   // ============ PAGINATED SELECT QUERIES ============
 

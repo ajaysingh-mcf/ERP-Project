@@ -230,7 +230,7 @@ export default function MaterialMasterClient({
             navigate({
               status: draftStatus,
               make: draftMake,
-              [material === "pm" ? "make" : "type"]: draftType,
+              type: draftType,
             })
           }
           disabled={!draftDirty}

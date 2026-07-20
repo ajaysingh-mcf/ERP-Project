@@ -33,6 +33,12 @@ export const entityEmails = {
     VALUES (?, ?, ?, ?)
   `,
 
+  /** All emails on file for one entity (e.g. a manufacturer's PO recipients). Params: [entity_type, entity_code] */
+  selectByEntity: `
+    SELECT email FROM entity_emails
+    WHERE entity_type = ? AND entity_code = ?
+  `,
+
   /** Lightweight code/name list for the "vendor" entity type dropdown. */
   vendorOptions: `SELECT id, code, name FROM master_vendors ORDER BY code ASC`,
 

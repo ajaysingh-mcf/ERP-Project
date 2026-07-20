@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/toast"
+import { FuzzySelect } from "@/components/ui/FuzzySelect"
 import type { ImpromptuForm, MfgOption, SkuOption, WarehouseOption } from "./po-types"
 import { EMPTY_FORM } from "./po-types"
 import { useQuotedRate } from "./useQuotedRate"
@@ -142,14 +143,15 @@ export default function AddPODialog({
           {/* SKU */}
           <div className="grid gap-1.5">
             <Label htmlFor="apo-sku">SKU <span className="text-destructive">*</span></Label>
-            <select id="apo-sku" value={form.sku_code} onChange={(e) => set("sku_code", e.target.value)} className={selectCls}>
-              <option value="">— Select SKU —</option>
-              {skuOptions.map((s) => (
-                <option key={s.id} value={s.sku_code}>
-                  {s.sku_code} — {s.name}{s.status !== "active" ? ` [${s.status.replace(/_/g, " ")}]` : ""}
-                </option>
-              ))}
-            </select>
+            <FuzzySelect
+              options={skuOptions}
+              value={form.sku_code}
+              onChange={(v) => set("sku_code", v)}
+              getValue={(s) => s.sku_code}
+              getLabel={(s) => `${s.sku_code} — ${s.name}${s.status !== "active" ? ` [${s.status.replace(/_/g, " ")}]` : ""}`}
+              searchKeys={["sku_code", "name"]}
+              placeholder="Search SKU code or name…"
+            />
             {errors.sku_code && <p className="text-xs text-destructive">{errors.sku_code}</p>}
             {skuNotActive && (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">

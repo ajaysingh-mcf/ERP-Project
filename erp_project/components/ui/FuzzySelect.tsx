@@ -6,13 +6,18 @@ import { cn } from "@/lib/utils"
 
 /**
  * Text input + fuzzy-filtered dropdown, for large option lists (Makes, INCI
- * Names) where users only remember a few characters and exact substring
- * matching in a plain <select> makes finding the right entry slow.
+ * Names, SKUs) where users only remember a few characters and exact
+ * substring matching in a plain <select> makes finding the right entry slow.
  *
  * Drop-in replacement for a plain <select>: pass `onAddNew` to keep the
  * existing "+ Add new…" free-text fallback pattern used across the app.
+ *
+ * Defaults to plain string options. For object options (e.g. SKU rows),
+ * pass `getLabel`/`getValue`/`searchKeys` — `value`/`onChange` still deal
+ * only in the resolved string value, so callers don't need to change how
+ * they store the selected value.
  */
-export function FuzzySelect({
+export function FuzzySelect<T = string>({
   options,
   value,
   onChange,
@@ -21,8 +26,11 @@ export function FuzzySelect({
   addNewLabel = "+ Add new…",
   className,
   disabled,
+  getLabel = (opt: T) => String(opt),
+  getValue = (opt: T) => String(opt),
+  searchKeys,
 }: {
-  options: string[]
+  options: T[]
   value: string
   onChange: (value: string) => void
   onAddNew?: () => void
@@ -30,6 +38,10 @@ export function FuzzySelect({
   addNewLabel?: string
   className?: string
   disabled?: boolean
+  getLabel?: (opt: T) => string
+  getValue?: (opt: T) => string
+  /** Fuse.js `keys` — required for object options, ignored for plain strings. */
+  searchKeys?: string[]
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
@@ -37,14 +49,20 @@ export function FuzzySelect({
   const containerRef = useRef<HTMLDivElement>(null)
 
   const fuse = useMemo(
-    () => new Fuse(options, { threshold: 0.4, ignoreLocation: true }),
-    [options]
+    () => new Fuse(options, searchKeys ? { threshold: 0.4, ignoreLocation: true, keys: searchKeys } : { threshold: 0.4, ignoreLocation: true }),
+    [options, searchKeys]
   )
 
   const filtered = useMemo(() => {
     if (!query) return options
     return fuse.search(query).map((r) => r.item)
   }, [query, fuse, options])
+
+  const selectedOption = useMemo(
+    () => options.find((opt) => getValue(opt) === value),
+    [options, value, getValue]
+  )
+  const displayValue = selectedOption ? getLabel(selectedOption) : value
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -57,8 +75,8 @@ export function FuzzySelect({
     return () => document.removeEventListener("mousedown", onClickOutside)
   }, [])
 
-  function selectOption(opt: string) {
-    onChange(opt)
+  function selectOption(opt: T) {
+    onChange(getValue(opt))
     setQuery("")
     setOpen(false)
   }
@@ -95,7 +113,7 @@ export function FuzzySelect({
           className
         )}
         placeholder={placeholder}
-        value={open ? query : value}
+        value={open ? query : displayValue}
         disabled={disabled}
         onFocus={() => {
           setOpen(true)
@@ -115,7 +133,7 @@ export function FuzzySelect({
           )}
           {filtered.map((opt, i) => (
             <div
-              key={opt}
+              key={getValue(opt)}
               className={cn(
                 "px-3 py-1.5 text-sm cursor-pointer",
                 i === highlighted ? "bg-muted text-foreground" : "hover:bg-muted/60"
@@ -126,7 +144,7 @@ export function FuzzySelect({
               }}
               onMouseEnter={() => setHighlighted(i)}
             >
-              {opt}
+              {getLabel(opt)}
             </div>
           ))}
           {onAddNew && (

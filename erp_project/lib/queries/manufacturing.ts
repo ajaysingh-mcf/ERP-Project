@@ -223,8 +223,21 @@ export const manufacturingSql = {
   // ── Agreed Final Costing (read-only, computed) ────────────────────────────
 
   /**
-   * Per-bom RM/PM material cost for this manufacturer's active lines —
-   * details_bom quantity × this manufacturer's agreed rm/pm rate.
+   * Per-bom RM/PM material cost for this manufacturer's active lines.
+   *
+   * RM lines (details_bom.amount) are a formulation PERCENTAGE, not a
+   * quantity — the BOM editor requires all RM lines on a SKU to sum to
+   * ~100% (see lib/validation/bom.ts). RM rates (rm_mrm_fixed.curr_rate)
+   * are agreed per KG, while the SKU's fill weight (details_sku.filling) is
+   * in grams. So the RM grams actually used per unit = filling * pct/100,
+   * converted to kg (/1000) before multiplying by the per-kg rate:
+   *   rm_cost = filling(g) * amount(%) * curr_rate(/kg) / 100 / 1000
+   * A SKU with no filling recorded contributes 0 for that line (SUM skips
+   * the resulting NULL), same as a missing rate does today.
+   *
+   * PM lines are unit-wise (details_bom.amount is a plain per-unit qty), so
+   * PM cost stays a straight quantity × rate multiplication.
+   *
    * Rate joins are pinned to status='active' AND this exact mfg_id so a
    * material with multiple rate rows (draft/inactive history, or rates for
    * other manufacturers) can't fan out the join and inflate the SUM.
@@ -232,9 +245,11 @@ export const manufacturingSql = {
    */
   selectMaterialCostByMfg: `
     SELECT mbm.bom_id,
-      COALESCE(SUM(CASE WHEN db.mtrl_type = 'rm' THEN db.amount * rmm.curr_rate ELSE 0 END), 0) AS rm_cost,
+      COALESCE(SUM(CASE WHEN db.mtrl_type = 'rm' THEN (db.amount * ds.filling * rmm.curr_rate) / 100000 ELSE 0 END), 0) AS rm_cost,
       COALESCE(SUM(CASE WHEN db.mtrl_type = 'pm' THEN db.amount * pmm.curr_rate ELSE 0 END), 0) AS pm_cost
     FROM master_bom_mfg mbm
+    INNER JOIN master_bom  b  ON b.id = mbm.bom_id
+    LEFT  JOIN details_sku ds ON ds.sku_id = b.sku_id
     INNER JOIN details_bom db ON db.bom_id = mbm.bom_id AND db.status = 'active'
     LEFT  JOIN rm_mrm_fixed rmm ON rmm.rm_id = db.mtrl_id AND rmm.mfg_id = ? AND rmm.status = 'active' AND db.mtrl_type = 'rm'
     LEFT  JOIN pm_mrm_fixed pmm ON pmm.pm_id = db.mtrl_id AND pmm.mfg_id = ? AND pmm.status = 'active' AND db.mtrl_type = 'pm'

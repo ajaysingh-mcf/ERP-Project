@@ -14,29 +14,52 @@
  *
  * Runs against `queryDwh` (lib/db-sku.ts), NOT the primary `query`/`execute`
  * from lib/db.ts. SKU writes/approvals still target master_skus unchanged.
+ *
+ * The DWH table has MULTIPLE rows per Sku_code — one per external
+ * marketplace/channel mapping key (ASIN, Shopify id, ...), plus historical
+ * price rows keyed by [start_date, end_date] (see scripts/sync-skus-from-dwh.ts,
+ * which hit the same shape). Without deduping, this page showed every
+ * duplicate instead of just the current one. LATEST_SKU below picks, per
+ * Sku_code, the row(s) from the latest end_date window (the currently-
+ * effective period), then MAX()-collapses any remaining duplicate rows in
+ * that window — their core fields agree in all but a handful of known
+ * source data-quality exceptions.
  */
 
 const STATUS_EXPR = `
   CASE
-    WHEN Enabled = 'Yes' THEN 'active'
-    WHEN Enabled = 'No' AND end_date < NOW() THEN 'discontinued'
+    WHEN d.Enabled = 'Yes' THEN 'active'
+    WHEN d.Enabled = 'No' AND d.end_date < NOW() THEN 'discontinued'
     ELSE 'inactive'
   END
 `
 
+const LATEST_SKU = `(
+  SELECT
+    d.Sku_code             AS sku_code,
+    MAX(d.\`Index\`)        AS id,
+    MAX(d.SKU_Name_Fixed)   AS name,
+    MAX(d.Brand)            AS brand,
+    MAX(d.Category)         AS category,
+    MAX(${STATUS_EXPR})     AS status,
+    MAX(d.Sub_category)     AS sub_category,
+    MAX(d.MRP)              AS mrp,
+    MAX(d.HSN)              AS hsn,
+    MAX(d.Launch_Date)      AS launch_date
+  FROM All_Product_Name_MRP_Mapping d
+  INNER JOIN (
+    SELECT Sku_code, MAX(end_date) AS max_end
+    FROM All_Product_Name_MRP_Mapping
+    GROUP BY Sku_code
+  ) latest ON latest.Sku_code = d.Sku_code AND latest.max_end <=> d.end_date
+  GROUP BY d.Sku_code
+)`
+
 const SELECT_COLUMNS = `
-  \`Index\`       AS id,
-  Sku_code        AS sku_code,
-  SKU_Name_Fixed  AS name,
-  Brand           AS brand,
-  Category        AS category,
-  ${STATUS_EXPR}  AS status,
-  NULL            AS created_at,
-  NULL            AS created_by,
-  Sub_category    AS sub_category,
-  MRP             AS mrp,
-  HSN             AS hsn,
-  Launch_Date     AS launch_date
+  id, sku_code, name, brand, category, status,
+  NULL AS created_at,
+  NULL AS created_by,
+  sub_category, mrp, hsn, launch_date
 `
 
 export const skuDetails = {
@@ -49,11 +72,11 @@ export const skuDetails = {
    */
   selectPaginated: `
     SELECT ${SELECT_COLUMNS}
-    FROM All_Product_Name_MRP_Mapping
-    WHERE (? IS NULL OR Sku_code LIKE ? OR SKU_Name_Fixed LIKE ? OR Brand LIKE ?)
-      AND (? IS NULL OR ${STATUS_EXPR} = ?)
-      AND (? IS NULL OR Brand = ?)
-    ORDER BY Sku_code ASC
+    FROM ${LATEST_SKU} latest_sku
+    WHERE (? IS NULL OR sku_code LIKE ? OR name LIKE ? OR brand LIKE ?)
+      AND (? IS NULL OR status = ?)
+      AND (? IS NULL OR brand = ?)
+    ORDER BY sku_code ASC
     LIMIT ? OFFSET ?
   `,
 
@@ -63,11 +86,11 @@ export const skuDetails = {
    */
   selectAllFiltered: `
     SELECT ${SELECT_COLUMNS}
-    FROM All_Product_Name_MRP_Mapping
-    WHERE (? IS NULL OR Sku_code LIKE ? OR SKU_Name_Fixed LIKE ? OR Brand LIKE ?)
-      AND (? IS NULL OR ${STATUS_EXPR} = ?)
-      AND (? IS NULL OR Brand = ?)
-    ORDER BY Sku_code ASC
+    FROM ${LATEST_SKU} latest_sku
+    WHERE (? IS NULL OR sku_code LIKE ? OR name LIKE ? OR brand LIKE ?)
+      AND (? IS NULL OR status = ?)
+      AND (? IS NULL OR brand = ?)
+    ORDER BY sku_code ASC
   `,
 
   /**
@@ -76,9 +99,9 @@ export const skuDetails = {
    */
   countAll: `
     SELECT COUNT(*) AS total
-    FROM All_Product_Name_MRP_Mapping
-    WHERE (? IS NULL OR Sku_code LIKE ? OR SKU_Name_Fixed LIKE ? OR Brand LIKE ?)
-      AND (? IS NULL OR ${STATUS_EXPR} = ?)
-      AND (? IS NULL OR Brand = ?)
+    FROM ${LATEST_SKU} latest_sku
+    WHERE (? IS NULL OR sku_code LIKE ? OR name LIKE ? OR brand LIKE ?)
+      AND (? IS NULL OR status = ?)
+      AND (? IS NULL OR brand = ?)
   `,
 }

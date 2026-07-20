@@ -40,6 +40,9 @@ export const packingMaterials = {
     FROM pm_mrm_fixed AS pmm
     INNER JOIN master_pm AS p ON pmm.pm_id = p.id
   `,
+
+  /** Select a packing material by its code for bulk import purposes. */
+  selectByCode: `select id , uom, status from master_pm where pm_code = ? limit 1`,
   // ============ PAGINATED BASE TABLE QUERIES (material-master page) ============
 
   /**

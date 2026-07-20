@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { FuzzySelect } from "@/components/ui/FuzzySelect"
 import type { MfgLineOption, MiscCostLine, MiscCostType } from "@/types/masters"
 
 const TYPE_LABEL: Record<MiscCostType, string> = {
@@ -122,14 +123,15 @@ export default function MiscCostDialog({
           {!editData && (
             <div className="grid gap-1.5">
               <Label htmlFor="mc-bom">SKU / BOM <span className="text-destructive">*</span></Label>
-              <select id="mc-bom" value={form.bom_id} onChange={(e) => set("bom_id", e.target.value)} className={selectCls}>
-                <option value="">— Select SKU —</option>
-                {options.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.sku_code ?? "—"} — {o.sku_name ?? o.bom_code} ({o.bom_code})
-                  </option>
-                ))}
-              </select>
+              <FuzzySelect
+                options={options}
+                value={form.bom_id}
+                onChange={(v) => set("bom_id", v)}
+                getValue={(o) => String(o.id)}
+                getLabel={(o) => `${o.sku_code ?? "—"} — ${o.sku_name ?? o.bom_code} (${o.bom_code})`}
+                searchKeys={["sku_code", "sku_name", "bom_code"]}
+                placeholder="Search SKU code or name…"
+              />
             </div>
           )}
 

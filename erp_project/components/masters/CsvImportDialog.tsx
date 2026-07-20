@@ -33,6 +33,7 @@ export function CsvImportDialog({
   onSuccess,
   enableDuplicateCheck,
   previewExcel,
+  requireAllValid,
 }: {
   /** Singular label, e.g. "SKU". */
   entityLabel: string
@@ -54,6 +55,10 @@ export function CsvImportDialog({
    *  rows are submitted (via the "bulk" action) — instead of the default
    *  upload-to-S3-then-insert-everything "bulk_from_s3" flow. */
   previewExcel?: boolean
+  /** When true, ANY flagged row blocks the Upload button entirely — no
+   *  partial upload of just the valid rows. Defaults to false (existing
+   *  behavior: valid rows upload, invalid rows are silently excluded). */
+  requireAllValid?: boolean
 }) {
   const cols = csvFields(fields)
   const plural = entityLabelPlural ?? `${entityLabel}s`
@@ -77,6 +82,7 @@ export function CsvImportDialog({
 
   const valid = rows.filter((r) => !isFlagged(r))
   const invalid = rows.filter(isFlagged)
+  const blockedByInvalid = !!requireAllValid && invalid.length > 0
 
   const requiredKeys = cols.filter((f) => f.required).map((f) => f.key)
   const optionalKeys = cols.filter((f) => !f.required).map((f) => f.key)
@@ -180,10 +186,16 @@ export function CsvImportDialog({
   async function checkDuplicates(parsed: ParsedRow[]) {
     setCheckingDuplicates(true)
     try {
+      // Strip _error/_remarks before sending — the server's rows schema is
+      // Record<string,string>, and a row already flagged by a field-level
+      // validate() carries _remarks as a string[], which fails that schema
+      // for the WHOLE array and 400s the request (silently, via the catch
+      // below) if left in.
+      const plainRows = parsed.map(({ _error, _remarks, ...fields }) => fields)
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "check_duplicates", rows: parsed }),
+        body: JSON.stringify({ action: "check_duplicates", rows: plainRows }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Duplicate check failed")
@@ -272,7 +284,7 @@ export function CsvImportDialog({
       </Button>
 
       <Dialog open={open} onOpenChange={(o) => !loading && setOpen(o)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-[95vw] lg:max-w-7xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{title ?? `Upload ${plural} via CSV`}</DialogTitle>
           </DialogHeader>
@@ -350,6 +362,7 @@ export function CsvImportDialog({
                     <span className="text-destructive">
                       {" "}
                       · {invalid.length} invalid
+                      {blockedByInvalid && " — fix all flagged rows before uploading"}
                     </span>
                   )}
                 </p>
@@ -375,7 +388,7 @@ export function CsvImportDialog({
                     Preview — {rows.length} row{rows.length !== 1 ? "s" : ""}
                   </span>
                 </div>
-                <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                <div className="overflow-x-auto max-h-[55vh] overflow-y-auto">
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 bg-background border-b border-border">
                       <tr>
@@ -456,7 +469,7 @@ export function CsvImportDialog({
               Cancel
             </Button>
             <Button
-              disabled={(useClientRows ? valid.length === 0 : !s3Key) || loading || parsingExcel}
+              disabled={(useClientRows ? valid.length === 0 : !s3Key) || loading || parsingExcel || blockedByInvalid}
               onClick={handleUpload}
             >
               {loading

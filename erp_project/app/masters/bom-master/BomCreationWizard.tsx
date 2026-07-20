@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { cn } from "@/lib/utils"
 import { type BomMaterialOption } from "./BomLineEditorGrid"
 import { useBomWizard } from "./useBomWizard"
 import {
@@ -77,7 +78,15 @@ export function BomCreationWizard({
                 </div>
               )}
 
-              <div className="overflow-y-auto flex-1 min-h-0">
+              {/*
+                Steps 1-3 are short (a single field / a couple of buttons) and
+                must NOT scroll -- overflow-y-auto clips absolutely-positioned
+                popups (e.g. Step1SkuSelect's searchable dropdown) at its own
+                box edge, which is barely taller than the field itself here.
+                Steps 4/5 (line grid, review) can genuinely get long, so they
+                keep the scrolling wrapper.
+              */}
+              <div className={cn("flex-1 min-h-0", (step === 4 || step === 5) && "overflow-y-auto")}>
                 {step === 1 && (
                   <Step1SkuSelect
                     skus={skus}
