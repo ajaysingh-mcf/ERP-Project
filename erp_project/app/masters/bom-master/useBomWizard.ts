@@ -48,6 +48,7 @@ export function useBomWizard({
   const [skuId, setSkuId] = useState<number | null>(null)
   const [existingBomId, setExistingBomId] = useState<number | null>(null)
   const [existingBomCode, setExistingBomCode] = useState<string | null>(null)
+  const [bomCount, setBomCount] = useState(0)
   const [bomCode, setBomCode] = useState("")
   const [entryMethod, setEntryMethod] = useState<EntryMethod | null>(null)
   const [csvParsed, setCsvParsed] = useState(false)
@@ -65,6 +66,7 @@ export function useBomWizard({
     setSkuId(null)
     setExistingBomId(null)
     setExistingBomCode(null)
+    setBomCount(0)
     setBomCode("")
     setEntryMethod(null)
     setCsvParsed(false)
@@ -99,12 +101,13 @@ export function useBomWizard({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to check existing BOMs")
 
+      setBomCount(data.bom_count ?? 0)
       if (data.hasActive) {
         setExistingBomId(data.bom_id)
         setExistingBomCode(data.bom_code)
         setStep(2)
       } else {
-        setBomCode(sku ? `${sku.sku_code}-BOM` : "")
+        setBomCode(sku ? `${sku.sku_code}-BOM-V${(data.bom_count ?? 0) + 1}` : "")
         setStep(3)
       }
     } catch (e: any) {
@@ -122,7 +125,7 @@ export function useBomWizard({
 
   function handleCreateNewVersion() {
     const sku = skus.find((s) => s.id === skuId)
-    setBomCode(sku ? `${sku.sku_code}-V2` : "")
+    setBomCode(sku ? `${sku.sku_code}-BOM-V${bomCount + 1}` : "")
     setStep(3)
   }
 

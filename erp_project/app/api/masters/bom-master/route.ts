@@ -45,15 +45,19 @@ export const POST = withGateway({
 
     // ── check-existing: dry-run, no mutation ──────────────────────────────
     if (body.action === "check-existing") {
-      const rows = await query<{ bom_id: number; bom_code: string; status: string }>(
-        bomSql.selectActiveBomBySkuId,
-        [body.sku_id]
-      )
+      const [rows, allBoms] = await Promise.all([
+        query<{ bom_id: number; bom_code: string; status: string }>(
+          bomSql.selectActiveBomBySkuId,
+          [body.sku_id]
+        ),
+        query(bomSql.selectBomsBySkuId, [body.sku_id]),
+      ])
       const active = rows[0] ?? null
       return NextResponse.json({
         hasActive: !!active,
         bom_id: active?.bom_id ?? null,
         bom_code: active?.bom_code ?? null,
+        bom_count: allBoms.length,
       })
     }
 

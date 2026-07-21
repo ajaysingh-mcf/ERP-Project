@@ -29,19 +29,23 @@ const rateStatusBadge = (row: AnyRow) => {
   return <Badge variant={s === "active" ? "success" : "secondary"} className="capitalize">{s ?? "—"}</Badge>
 }
 
-const MFG_COLUMNS: ColumnDef[] = [
+function buildMfgColumns(vendors: Vendor[], manufacturers: Mfg[]): ColumnDef[] {
+  const nameByVendorId = new Map(vendors.map((v) => [v.vendor_id, v.name]))
+  const nameByMfgId = new Map(manufacturers.map((m) => [m.mfg_id, m.name]))
+  return [
   { key: "rm_code",              label: "RM Code",         sortAs: "text", className: "font-mono text-xs font-medium" },
   { key: "name",                 label: "Name",            sortAs: "text", className: "font-medium text-wrap" },
   { key: "inci_name",            label: "INCI Name",       sortAs: "text", className: "font-medium text-wrap" },
   { key: "make",                 label: "Make",            sortAs: "text" },
   { key: "type",                 label: "Type",            sortAs: "text" },
   { key: "curr_rate",            label: "Current Rate",    sortAs: "num",  render: (r) => r.curr_rate != null ? Number(r.curr_rate).toFixed(2) : "—" },
-  { key: "mfg_code",             label: "MFG Code",        sortAs: "text" },
-  { key: "approved_vendor_code", label: "Approved Vendor", sortAs: "text" },
+  { key: "mfg_code",             label: "Manufacturer",    sortAs: "text", render: (r) => nameByMfgId.get(r.mfg_id as number) ?? (r.mfg_code as string | null) ?? "—" },
+  { key: "approved_vendor_code", label: "Approved Vendor", sortAs: "text", render: (r) => nameByVendorId.get(r.approved_vendor_id as number) ?? (r.approved_vendor_code as string | null) ?? "—" },
   { key: "rate_status",          label: "Status",          sortAs: "text", render: rateStatusBadge },
   { key: "uom",                  label: "UOM",             sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
   { key: "effective_from",       label: "Effective From",  sortAs: "date", render: (r) => fmtDate(r.effective_from) },
-]
+  ]
+}
 
 export default function ManufacturerRawMaterialsClient({
   rows,
@@ -81,7 +85,7 @@ export default function ManufacturerRawMaterialsClient({
     <>
       <RmRateTable
         rows={rows as unknown as AnyRow[]}
-        columns={MFG_COLUMNS}
+        columns={buildMfgColumns(vendors, manufacturers)}
         vendors={vendors}
         manufacturers={manufacturers}
         total={total}

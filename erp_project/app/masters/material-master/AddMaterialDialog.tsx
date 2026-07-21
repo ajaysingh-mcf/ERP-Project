@@ -88,6 +88,7 @@ export default function AddMaterialDialog({
   const [inciOptions, setInciOptions] = useState<string[]>([])
   const [makeIsNew, setMakeIsNew] = useState(false)
   const [inciIsNew, setInciIsNew] = useState(false)
+  const [makeSuggestion, setMakeSuggestion] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open || material !== "rm") return
@@ -112,6 +113,7 @@ export default function AddMaterialDialog({
     setPmExtra(defaultPmExtra())
     setMakeIsNew(false)
     setInciIsNew(false)
+    setMakeSuggestion(null)
     setError(null)
   }
 
@@ -148,7 +150,7 @@ export default function AddMaterialDialog({
 
   // ─── Submit ────────────────────────────────────────────────────────────────
 
-  async function handleSubmit() {
+  async function handleSubmit(skipFuzzyCheck = false) {
     // Run client-side validation before hitting the network.
     const validationError = validate()
     if (validationError) {
@@ -160,6 +162,27 @@ export default function AddMaterialDialog({
     setError(null)
 
     try {
+      // Only a freshly-typed make (not one picked from FuzzySelect) can be a
+      // typo of an existing one — flag it before creating a near-duplicate.
+      // Skipped when the user already confirmed "keep as new" once.
+      if (material === "rm" && makeIsNew && !skipFuzzyCheck) {
+        const fuzzyRes = await fetch("/api/masters/raw-materials", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "check-make-fuzzy",
+            name: base.name.trim(),
+            type: base.type.trim(),
+            make: rmExtra.make.trim(),
+          }),
+        })
+        const fuzzyData = await fuzzyRes.json()
+        if (fuzzyRes.ok && fuzzyData.suggestion) {
+          setMakeSuggestion(fuzzyData.suggestion)
+          setLoading(false)
+          return
+        }
+      }
       // Single unified endpoint for both RM and PM base inserts.
       // The "material" field tells the route which table to insert into.
       const endpoint = "/api/masters/material-master"
@@ -211,6 +234,20 @@ export default function AddMaterialDialog({
     } finally {
       setLoading(false)
     }
+  }
+
+  /** User confirmed the typo'd make is really a new one — submit as-is. */
+  function keepMakeAsNew() {
+    setMakeSuggestion(null)
+    handleSubmit(true)
+  }
+
+  /** User picked the suggested existing make instead of their typo. */
+  function useMakeSuggestion() {
+    if (!makeSuggestion) return
+    setRmField("make", makeSuggestion)
+    setMakeIsNew(false)
+    setMakeSuggestion(null)
   }
 
   // ─── Labels ────────────────────────────────────────────────────────────────
@@ -396,20 +433,43 @@ export default function AddMaterialDialog({
             <p className="text-sm text-destructive -mt-1">{error}</p>
           )}
 
+          {/* Fuzzy "did you mean?" banner for a freshly-typed make */}
+          {makeSuggestion && (
+            <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-800">
+              Make "{rmExtra.make}" looks similar to an existing make — did you mean "{makeSuggestion}"?
+            </div>
+          )}
+
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setOpen(false)
-                reset()
-              }}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} disabled={loading}>
-              {loading ? "Saving…" : "Save Material"}
-            </Button>
+            {makeSuggestion ? (
+              <>
+                <Button variant="outline" onClick={() => setMakeSuggestion(null)} disabled={loading}>
+                  Edit make
+                </Button>
+                <Button variant="ghost" onClick={keepMakeAsNew} disabled={loading}>
+                  Keep "{rmExtra.make}" as new
+                </Button>
+                <Button onClick={useMakeSuggestion} disabled={loading}>
+                  Use "{makeSuggestion}"
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setOpen(false)
+                    reset()
+                  }}
+                  disabled={loading}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={() => handleSubmit()} disabled={loading}>
+                  {loading ? "Saving…" : "Save Material"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

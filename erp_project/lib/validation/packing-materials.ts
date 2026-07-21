@@ -70,6 +70,10 @@ export const pmBulkFromS3Schema = z.object({
   key: z.string().optional(),
 }).passthrough()
 
+export const pmGetMaterialsSchema = z.object({
+  action: z.literal("get-materials"),
+}).passthrough()
+
 export const pmMaterialImpactSchema = z.object({
   action: z.literal("material-impact"),
   pm_id: numericish.optional(),
@@ -85,6 +89,7 @@ export const pmActionSchema = z.discriminatedUnion("action", [
   pmAddRatesSchema,
   pmBulkSchema,
   pmBulkFromS3Schema,
+  pmGetMaterialsSchema,
   pmMaterialImpactSchema,
 ])
 

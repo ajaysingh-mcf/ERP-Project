@@ -12,18 +12,20 @@ import {
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import type { Vendor, Mfg } from "@/types/masters"
-import { QuickCreateVendorModal } from "@/components/masters/QuickCreateVendorModal"
-import { QuickCreateManufacturerModal } from "@/components/masters/QuickCreateManufacturerModal"
 import { useToast } from "@/components/ui/toast"
 
-type RmFormData = {
+// Existing RM material — the wizard only connects vendors/manufacturers to
+// one of these; creating a brand-new material happens on the Material
+// Master page (/masters/material-master), never here.
+type RmMaterialOption = {
+  id: number
+  rm_code: string | null
   name: string
-  make: string
-  inci_name: string
-  type: string
-  uom: string
-  hsn_code: string
-  status: string
+  make: string | null
+  type: string | null
+  uom: string | null
+  hsn_code: string | null
+  inci_name: string | null
 }
 
 type VendorEntry = {
@@ -32,6 +34,9 @@ type VendorEntry = {
   curr_rate: string
   moq: string
   rate_uom: string
+  /** Optional tag: "this vendor supplies to this manufacturer" — informational
+   *  only, stored on the rm_vrm_dynamic row, does not create an mrm_fixed row. */
+  mfg_id: number | null
 }
 
 type MfgEntry = {
@@ -46,12 +51,8 @@ type MfgEntry = {
 
 const UOM_OPTIONS = ["kg", "g", "l", "ml", "pcs", "m"]
 
-const DEFAULT_RM: RmFormData = {
-  name: "", make: "", inci_name: "", type: "", uom: "kg", hsn_code: "", status: "active",
-}
-
 const DEFAULT_VENDOR_ENTRY: VendorEntry = {
-  vendor_id: null, vendor_code: "", curr_rate: "", moq: "", rate_uom: "kg",
+  vendor_id: null, vendor_code: "", curr_rate: "", moq: "", rate_uom: "kg", mfg_id: null,
 }
 
 const DEFAULT_MFG_ENTRY: MfgEntry = {
@@ -59,7 +60,11 @@ const DEFAULT_MFG_ENTRY: MfgEntry = {
   curr_rate: "", rate_uom: "kg", effective_from: "",
 }
 
-const STEPS = ["Material Details", "Vendor Pricing", "Approved At"]
+const STEPS: { label: string; tag?: string; tagCls?: string }[] = [
+  { label: "Select Material" },
+  { label: "Vendor Pricing", tag: "Procurement Price", tagCls: "bg-blue-100 text-blue-700" },
+  { label: "Manufacturer Pricing", tag: "Agreed Rates", tagCls: "bg-teal-100 text-teal-700" },
+]
 
 export function AddRawMaterialWizard({
   vendors,
@@ -75,59 +80,40 @@ export function AddRawMaterialWizard({
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [wizardMode, setWizardMode] = useState<"create" | "add-rates">("create")
-  const [showDuplicateOptions, setShowDuplicateOptions] = useState(false)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
-  const [rmData, setRmData] = useState<RmFormData>(DEFAULT_RM)
+  const [materials, setMaterials] = useState<RmMaterialOption[]>([])
+  const [material, setMaterial] = useState<RmMaterialOption | null>(null)
   const [vendorEntries, setVendorEntries] = useState<VendorEntry[]>([{ ...DEFAULT_VENDOR_ENTRY }])
   const [mfgEntries, setMfgEntries] = useState<MfgEntry[]>([{ ...DEFAULT_MFG_ENTRY }])
   const [existingRates, setExistingRates] = useState<Record<number, { curr_rate: string; moq: string } | null>>({})
-  const [vendorOptions, setVendorOptions] = useState<Vendor[]>(vendors)
-  const [mfgOptions, setMfgOptions] = useState<Mfg[]>(manufacturers)
-  const [quickVendorOpen, setQuickVendorOpen] = useState(false)
-  const [quickMfgOpen, setQuickMfgOpen] = useState(false)
-
-  const [makeOptions, setMakeOptions] = useState<string[]>([])
-  const [inciOptions, setInciOptions] = useState<string[]>([])
-  const [makeIsNew, setMakeIsNew] = useState(false)
-  const [inciIsNew, setInciIsNew] = useState(false)
+  const [moqSlabPricing, setMoqSlabPricing] = useState(false)
+  const vendorOptions = vendors
+  const mfgOptions = manufacturers
 
   useEffect(() => {
     if (!open) return
     fetch("/api/masters/raw-materials", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "get-makes" }),
+      body: JSON.stringify({ action: "get-materials" }),
     })
       .then((r) => r.json())
-      .then((d) => setMakeOptions(d.makes ?? []))
-      .catch(() => {})
-    fetch("/api/masters/raw-materials", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "get-inci-names" }),
-    })
-      .then((r) => r.json())
-      .then((d) => setInciOptions(d.inciNames ?? []))
+      .then((d) => setMaterials(d.materials ?? []))
       .catch(() => {})
   }, [open])
 
-  const isDirty =
-    rmData.name !== "" || rmData.make !== "" || rmData.inci_name !== "" || step > 1
+  const isDirty = material !== null || step > 1
 
   function resetAll() {
     setStep(1)
     setError(null)
-    setWizardMode("create")
-    setShowDuplicateOptions(false)
     setShowCloseConfirm(false)
-    setRmData(DEFAULT_RM)
+    setMaterial(null)
     setVendorEntries([{ ...DEFAULT_VENDOR_ENTRY }])
     setMfgEntries([{ ...DEFAULT_MFG_ENTRY }])
     setExistingRates({})
+    setMoqSlabPricing(false)
     setLoading(false)
-    setMakeIsNew(false)
-    setInciIsNew(false)
   }
 
   function closeWizard() {
@@ -143,36 +129,13 @@ export function AddRawMaterialWizard({
     }
   }
 
-  async function handleStep1Next() {
+  function handleStep1Next() {
     setError(null)
-    if (!rmData.name.trim() || !rmData.make.trim() || !rmData.inci_name.trim()) {
-      setError("Name, Make and INCI Name are required.")
+    if (!material) {
+      setError("Select a material to continue.")
       return
     }
-    setLoading(true)
-    try {
-      const res = await fetch("/api/masters/raw-materials", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "check-RM",
-          name: rmData.name.trim(),
-          make: rmData.make.trim(),
-          inci_name: rmData.inci_name.trim(),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Check failed")
-      if (data.exists) {
-        setShowDuplicateOptions(true)
-        return
-      }
-      setStep(2)
-    } catch (e: any) {
-      setError(e.message || "An error occurred")
-    } finally {
-      setLoading(false)
-    }
+    setStep(2)
   }
 
   function handleStep2Next() {
@@ -184,10 +147,20 @@ export function AddRawMaterialWizard({
         return
       }
     }
-    const ids = filled.map((v) => v.vendor_id)
-    if (new Set(ids).size !== ids.length) {
-      setError("The same vendor cannot be added twice. Remove the duplicate entry.")
-      return
+    if (moqSlabPricing) {
+      // Slab pricing: the same vendor may repeat with a different MOQ, but not
+      // the exact same vendor + MOQ + rate combination twice.
+      const keys = filled.map((v) => `${v.vendor_id}-${v.moq.trim()}-${v.curr_rate.trim()}`)
+      if (new Set(keys).size !== keys.length) {
+        setError("Duplicate vendor + MOQ + rate combination. Remove the duplicate entry.")
+        return
+      }
+    } else {
+      const ids = filled.map((v) => v.vendor_id)
+      if (new Set(ids).size !== ids.length) {
+        setError("The same vendor cannot be added twice. Remove the duplicate entry.")
+        return
+      }
     }
     setVendorEntries(filled)
     setStep(3)
@@ -202,8 +175,9 @@ export function AddRawMaterialWizard({
 
   async function handleSubmit() {
     setError(null)
+    if (!material) return
     const filledMfgs = mfgEntries.filter((m) => m.mfg_id !== null)
-    if (wizardMode === "add-rates" && vendorEntries.length === 0 && filledMfgs.length === 0) {
+    if (vendorEntries.length === 0 && filledMfgs.length === 0) {
       setError("Add at least one vendor rate or manufacturer to proceed.")
       return
     }
@@ -233,34 +207,22 @@ export function AddRawMaterialWizard({
     }))
     setLoading(true)
     try {
-      const payload =
-        wizardMode === "add-rates"
-          ? {
-              action: "add-rates",
-              name: rmData.name.trim(),
-              make: rmData.make.trim(),
-              inci_name: rmData.inci_name.trim(),
-              vendors: vendorEntries.map((v) => ({
-                vendor_id: v.vendor_id,
-                vendor_code: v.vendor_code,
-                curr_rate: Number(v.curr_rate),
-                moq: Number(v.moq),
-                rate_uom: v.rate_uom,
-              })),
-              manufacturers: mfgPayload,
-            }
-          : {
-              action: "create-full",
-              rm: rmData,
-              vendors: vendorEntries.map((v) => ({
-                vendor_id: v.vendor_id,
-                vendor_code: v.vendor_code,
-                curr_rate: Number(v.curr_rate),
-                moq: Number(v.moq),
-                rate_uom: v.rate_uom,
-              })),
-              manufacturers: mfgPayload,
-            }
+      const payload = {
+        action: "add-rates",
+        rm_id: material.id,
+        name: material.name,
+        make: material.make ?? "",
+        inci_name: material.inci_name ?? "",
+        vendors: vendorEntries.map((v) => ({
+          vendor_id: v.vendor_id,
+          vendor_code: v.vendor_code,
+          curr_rate: Number(v.curr_rate),
+          moq: Number(v.moq),
+          rate_uom: v.rate_uom,
+          mfg_id: v.mfg_id,
+        })),
+        manufacturers: mfgPayload,
+      }
 
       const res = await fetch("/api/masters/raw-materials", {
         method: "POST",
@@ -268,11 +230,11 @@ export function AddRawMaterialWizard({
         body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Failed to save material")
+      if (!res.ok) throw new Error(data.error || "Failed to save rates")
       closeWizard()
       toast({
-        title: wizardMode === "add-rates" ? "Rates added" : "Raw material created",
-        description: rmData.name.trim(),
+        title: "Rates added",
+        description: material.name,
         variant: "success",
       })
       onSuccess()
@@ -285,27 +247,20 @@ export function AddRawMaterialWizard({
 
   const rmVendors = vendorOptions.filter((v) => v.type === "rm" || v.type === "both")
 
-  async function selectVendor(index: number, vendorId: number) {
-    const vendor = vendorOptions.find((v) => v.vendor_id === vendorId)
-    setVendorEntries((prev) =>
-      prev.map((e, i) =>
-        i === index
-          ? { ...e, vendor_id: vendorId || null, vendor_code: vendor?.code ?? "" }
-          : e
-      )
-    )
+  async function checkExistingRate(index: number, vendorId: number | null, moq: string) {
     setExistingRates((prev) => ({ ...prev, [index]: null }))
-    if (!vendorId) return
+    if (!vendorId || !moq.trim() || !material) return
     try {
       const res = await fetch("/api/masters/raw-materials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "check-vendor",
-          name: rmData.name.trim(),
-          make: rmData.make.trim(),
-          inci_name: rmData.inci_name.trim(),
+          name: material.name,
+          make: material.make ?? "",
+          inci_name: material.inci_name ?? "",
           vendor_id: vendorId,
+          moq,
         }),
       })
       const data = await res.json()
@@ -318,6 +273,25 @@ export function AddRawMaterialWizard({
     } catch {
       // Non-fatal — skip warning if check fails
     }
+  }
+
+  function selectVendor(index: number, vendorId: number) {
+    const vendor = vendorOptions.find((v) => v.vendor_id === vendorId)
+    setVendorEntries((prev) =>
+      prev.map((e, i) =>
+        i === index
+          ? { ...e, vendor_id: vendorId || null, vendor_code: vendor?.code ?? "" }
+          : e
+      )
+    )
+    const moq = vendorEntries[index]?.moq ?? ""
+    checkExistingRate(index, vendorId || null, moq)
+  }
+
+  function selectMfgForVendor(index: number, mfgId: number) {
+    setVendorEntries((prev) =>
+      prev.map((e, i) => (i === index ? { ...e, mfg_id: mfgId || null } : e))
+    )
   }
 
   function updateVendorEntry(index: number, field: keyof VendorEntry, value: string) {
@@ -373,51 +347,20 @@ export function AddRawMaterialWizard({
     <>
       <Button size="sm" onClick={() => setOpen(true)}>
         <Plus className="h-4 w-4 mr-1.5" />
-        Add Raw Material
+        Add Rates
       </Button>
 
-      <QuickCreateVendorModal
-        open={quickVendorOpen}
-        defaultType="rm"
-        onClose={() => setQuickVendorOpen(false)}
-        onSuccess={(v) => {
-          setVendorOptions((prev) => [...prev, v])
-          setVendorEntries((prev) => {
-            const allBlank = prev.every((e) => !e.vendor_id)
-            const newEntry = { ...DEFAULT_VENDOR_ENTRY, vendor_id: v.vendor_id, vendor_code: v.code }
-            return allBlank ? [newEntry] : [...prev, newEntry]
-          })
-          setQuickVendorOpen(false)
-        }}
-      />
-
-      <QuickCreateManufacturerModal
-        open={quickMfgOpen}
-        onClose={() => setQuickMfgOpen(false)}
-        onSuccess={(m) => {
-          setMfgOptions((prev) => [...prev, m])
-          setMfgEntries((prev) => {
-            const allBlank = prev.every((e) => !e.mfg_id)
-            const newEntry = { ...DEFAULT_MFG_ENTRY, mfg_id: m.mfg_id, mfg_code: m.code }
-            return allBlank ? [newEntry] : [...prev, newEntry]
-          })
-          setQuickMfgOpen(false)
-        }}
-      />
-
       <Dialog open={open} onOpenChange={(v) => { if (!v) requestClose() }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-5xl">
           <DialogHeader>
             <DialogTitle>
-              {wizardMode === "add-rates"
-                ? `Add Rates to Existing Material — Step ${step} of 3`
-                : `Add New Material — Step ${step} of 3`}
+              Add Vendor / Manufacturer Rates — Step {step} of 3
             </DialogTitle>
           </DialogHeader>
 
           {/* Progress stepper */}
           <div className="flex items-center mb-1">
-            {STEPS.map((label, i) => {
+            {STEPS.map(({ label, tag, tagCls }, i) => {
               const s = (i + 1) as 1 | 2 | 3
               const done = step > s
               const active = step === s
@@ -437,6 +380,11 @@ export function AddRawMaterialWizard({
                     <span className={cn("text-sm whitespace-nowrap", active ? "font-medium" : "text-muted-foreground")}>
                       {label}
                     </span>
+                    {tag && (
+                      <span className={cn("text-xs font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap", tagCls)}>
+                        {tag}
+                      </span>
+                    )}
                   </div>
                   {i < STEPS.length - 1 && (
                     <div className="h-px w-6 bg-border mx-3 shrink-0" />
@@ -468,173 +416,80 @@ export function AddRawMaterialWizard({
                 </div>
               )}
 
-              {/* ── Step 1: Material Details ── */}
+              {/* ── Step 1: Select an existing material ── */}
               {step === 1 && (
-                showDuplicateOptions ? (
-                  <div className="space-y-4 py-2">
-                    <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-800">
-                      A material with this name, make and INCI name already exists.
-                    </div>
-                    <p className="text-sm text-muted-foreground">What would you like to do?</p>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => { setShowDuplicateOptions(false); setError(null) }}
-                      >
-                        Edit fields
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setShowDuplicateOptions(false)
-                          setWizardMode("add-rates")
-                          setStep(2)
-                        }}
-                      >
-                        Add vendors / manufacturers to this material →
-                      </Button>
-                    </div>
+                <div className="space-y-3 py-2">
+                  <div>
+                    <label className={labelCls}>
+                      Material <span className="text-destructive">*</span>
+                    </label>
+                    <FuzzySelect
+                      options={materials}
+                      value={material ? String(material.id) : ""}
+                      onChange={(v) => setMaterial(materials.find((m) => String(m.id) === v) ?? null)}
+                      getValue={(m) => String(m.id)}
+                      getLabel={(m) => `${m.rm_code ?? "—"} — ${m.name}${m.make ? ` (${m.make})` : ""}`}
+                      searchKeys={["rm_code", "name", "make"]}
+                      placeholder="Search RM code, name or make…"
+                    />
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      Material not listed? Add it in <strong>Material Master</strong> first, then come back here to connect a vendor or manufacturer.
+                    </p>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-3 gap-4">
-                    <Field label="Name" required className="col-span-2">
-                      <input
-                        className={inputCls}
-                        placeholder="Material name"
-                        value={rmData.name}
-                        onChange={(e) => setRmData((p) => ({ ...p, name: e.target.value }))}
-                      />
-                    </Field>
-                    <Field label="Make" required>
-                      {makeIsNew ? (
-                        <div className="flex gap-1">
-                          <input
-                            className={inputCls}
-                            placeholder="Enter new make"
-                            autoFocus
-                            value={rmData.make}
-                            onChange={(e) => setRmData((p) => ({ ...p, make: e.target.value }))}
-                          />
-                          <button
-                            type="button"
-                            className="text-xs text-muted-foreground hover:text-foreground shrink-0"
-                            onClick={() => { setMakeIsNew(false); setRmData((p) => ({ ...p, make: "" })) }}
-                          >✕</button>
-                        </div>
-                      ) : (
-                        <FuzzySelect
-                          options={makeOptions}
-                          value={rmData.make}
-                          onChange={(v) => setRmData((p) => ({ ...p, make: v }))}
-                          onAddNew={() => { setMakeIsNew(true); setRmData((p) => ({ ...p, make: "" })) }}
-                          placeholder="Select make…"
-                        />
-                      )}
-                    </Field>
-                    <Field label="INCI Name" required className="col-span-2">
-                      {inciIsNew ? (
-                        <div className="flex gap-1">
-                          <input
-                            className={inputCls}
-                            placeholder="Enter new INCI name"
-                            autoFocus
-                            value={rmData.inci_name}
-                            onChange={(e) => setRmData((p) => ({ ...p, inci_name: e.target.value }))}
-                          />
-                          <button
-                            type="button"
-                            className="text-xs text-muted-foreground hover:text-foreground shrink-0"
-                            onClick={() => { setInciIsNew(false); setRmData((p) => ({ ...p, inci_name: "" })) }}
-                          >✕</button>
-                        </div>
-                      ) : (
-                        <FuzzySelect
-                          options={inciOptions}
-                          value={rmData.inci_name}
-                          onChange={(v) => setRmData((p) => ({ ...p, inci_name: v }))}
-                          onAddNew={() => { setInciIsNew(true); setRmData((p) => ({ ...p, inci_name: "" })) }}
-                          placeholder="Select INCI name…"
-                        />
-                      )}
-                    </Field>
-                    <Field label="Type">
-                      <select
-                        className={inputCls}
-                        value={rmData.type}
-                        onChange={(e) => setRmData((p) => ({ ...p, type: e.target.value }))}
-                      >
-                        <option value="">Select type…</option>
-                        {["API", "Excipient", "Fragrance", "Surfactant", "Preservative"].map((t) => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="UOM">
-                      <select
-                        className={inputCls}
-                        value={rmData.uom}
-                        onChange={(e) => setRmData((p) => ({ ...p, uom: e.target.value }))}
-                      >
-                        {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="HSN Code">
-                      <input
-                        className={inputCls}
-                        placeholder="e.g. 33081000"
-                        value={rmData.hsn_code}
-                        onChange={(e) => setRmData((p) => ({ ...p, hsn_code: e.target.value }))}
-                      />
-                    </Field>
-                  </div>
-                )
+
+                  {material && (
+                    <div className="rounded-lg border border-border bg-muted/30 p-3 grid grid-cols-3 gap-3 text-sm">
+                      <div><span className="text-xs text-muted-foreground block">RM Code</span>{material.rm_code ?? "—"}</div>
+                      <div><span className="text-xs text-muted-foreground block">Make</span>{material.make ?? "—"}</div>
+                      <div><span className="text-xs text-muted-foreground block">Type</span>{material.type ?? "—"}</div>
+                      <div><span className="text-xs text-muted-foreground block">UOM</span>{material.uom ?? "—"}</div>
+                      <div><span className="text-xs text-muted-foreground block">HSN Code</span>{material.hsn_code ?? "—"}</div>
+                      <div><span className="text-xs text-muted-foreground block">INCI Name</span>{material.inci_name ?? "—"}</div>
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* ── Step 2: Vendor Pricing ── */}
               {step === 2 && (
                 <div className="space-y-3">
-                  {wizardMode === "add-rates" && (
+                  {material && (
                     <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-800">
-                      Adding rates to: <strong>{rmData.name}</strong> ({rmData.make})
+                      Adding rates to: <strong>{material.name}</strong> ({material.make})
                     </div>
                   )}
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">Add vendor pricing (optional).</p>
-                    <button
-                      type="button"
-                      onClick={() => setQuickVendorOpen(true)}
-                      className="text-xs text-primary hover:underline flex items-center gap-1"
-                    >
-                      <Plus className="h-3 w-3" />
-                      New Vendor
-                    </button>
-                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Add vendor pricing (optional). Vendor not listed?{" "}
+                    <a href="/masters/vendors" className="text-primary hover:underline">Add it in Vendor Master</a> first.
+                  </p>
+
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={moqSlabPricing}
+                      onChange={(e) => setMoqSlabPricing(e.target.checked)}
+                      className="h-4 w-4 rounded border-input"
+                    />
+                    Vendor offers different rates by MOQ slab (allow the same vendor more than once)
+                  </label>
 
                   {rmVendors.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-6 border border-dashed rounded-lg">
-                      No vendors available. Use <strong>New Vendor</strong> above to create one.
+                      No vendors available. Add one in <strong>Vendor Master</strong> first.
                     </p>
                   ) : (
-                    <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                      <div className={cn(vendorRowGridCls, "px-1 text-xs font-medium text-muted-foreground")}>
+                        <span>Vendor *</span>
+                        <span>Manufacturer</span>
+                        <span>Rate (₹) *</span>
+                        <span>MOQ *</span>
+                        <span>UOM</span>
+                        <span />
+                      </div>
                       {vendorEntries.map((entry, i) => (
-                        <div key={i} className="rounded-lg border bg-card p-3 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                              Vendor {i + 1}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeVendorEntry(i)}
-                              className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                          <div>
-                            <label className={labelCls}>
-                              Vendor <span className="text-destructive">*</span>
-                            </label>
+                        <div key={i} className="space-y-1.5">
+                          <div className={cn(vendorRowGridCls, "items-center")}>
                             <select
                               className={inputCls}
                               value={entry.vendor_id ?? ""}
@@ -647,45 +502,57 @@ export function AddRawMaterialWizard({
                                 </option>
                               ))}
                             </select>
-                            {existingRates[i] && (
-                              <p className="mt-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                                ⚠ Existing rate: ₹{existingRates[i]!.curr_rate} · MOQ {existingRates[i]!.moq} — old values will be archived and updated.
-                              </p>
-                            )}
+                            <select
+                              className={inputCls}
+                              value={entry.mfg_id ?? ""}
+                              onChange={(e) => selectMfgForVendor(i, Number(e.target.value))}
+                            >
+                              <option value="">None</option>
+                              {mfgOptions.map((m) => (
+                                <option key={m.mfg_id} value={m.mfg_id}>
+                                  {m.name} ({m.code})
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              className={inputCls}
+                              placeholder="0.00"
+                              value={entry.curr_rate}
+                              onChange={(e) => updateVendorEntry(i, "curr_rate", e.target.value)}
+                            />
+                            <input
+                              type="number"
+                              step="1"
+                              min="1"
+                              className={inputCls}
+                              placeholder="Min qty"
+                              value={entry.moq}
+                              onChange={(e) => updateVendorEntry(i, "moq", e.target.value.replace(/[^\d]/g, ""))}
+                              onBlur={(e) => checkExistingRate(i, entry.vendor_id, e.target.value)}
+                            />
+                            <select
+                              className={inputCls}
+                              value={entry.rate_uom}
+                              onChange={(e) => updateVendorEntry(i, "rate_uom", e.target.value)}
+                            >
+                              {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => removeVendorEntry(i)}
+                              className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors justify-self-center"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
                           </div>
-                          <div className="grid grid-cols-3 gap-3">
-                            <Field label="Rate (₹)" required>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                className={inputCls}
-                                placeholder="0.00"
-                                value={entry.curr_rate}
-                                onChange={(e) => updateVendorEntry(i, "curr_rate", e.target.value)}
-                              />
-                            </Field>
-                            <Field label="MOQ" required>
-                              <input
-                                type="number"
-                                step="1"
-                                min="1"
-                                className={inputCls}
-                                placeholder="Min qty"
-                                value={entry.moq}
-                                onChange={(e) => updateVendorEntry(i, "moq", e.target.value.replace(/[^\d]/g, ""))}
-                              />
-                            </Field>
-                            <Field label="Rate UOM">
-                              <select
-                                className={inputCls}
-                                value={entry.rate_uom}
-                                onChange={(e) => updateVendorEntry(i, "rate_uom", e.target.value)}
-                              >
-                                {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
-                              </select>
-                            </Field>
-                          </div>
+                          {existingRates[i] && (
+                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                              ⚠ Existing rate: ₹{existingRates[i]!.curr_rate} · MOQ {existingRates[i]!.moq} — old values will be archived and updated.
+                            </p>
+                          )}
                         </div>
                       ))}
                       <button
@@ -704,97 +571,80 @@ export function AddRawMaterialWizard({
               {/* ── Step 3: Approved Manufacturers ── */}
               {step === 3 && (
                 <div className="space-y-3">
-                  {wizardMode === "add-rates" && (
+                  {material && (
                     <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-800">
-                      Adding rates to: <strong>{rmData.name}</strong> ({rmData.make})
+                      Adding rates to: <strong>{material.name}</strong> ({material.make})
                     </div>
                   )}
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">Add manufacturer rates (optional). Each manufacturer maps to one vendor.</p>
-                    <button
-                      type="button"
-                      onClick={() => setQuickMfgOpen(true)}
-                      className="text-xs text-primary hover:underline flex items-center gap-1"
-                    >
-                      <Plus className="h-3 w-3" />
-                      New Manufacturer
-                    </button>
-                  </div>
-                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                  <p className="text-sm text-muted-foreground">
+                    Add manufacturer rates (optional). Each manufacturer maps to one vendor.
+                    Manufacturer not listed?{" "}
+                    <a href="/masters/manufacturers" className="text-primary hover:underline">Add it in Manufacturer Master</a> first.
+                  </p>
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    <div className={cn(mfgRowGridCls, "px-1 text-xs font-medium text-muted-foreground")}>
+                      <span>Manufacturer *</span>
+                      <span>Approved Vendor *</span>
+                      <span>Rate (₹) *</span>
+                      <span>UOM</span>
+                      <span>Effective From</span>
+                      <span />
+                    </div>
                     {mfgEntries.map((entry, i) => (
-                      <div key={i} className="rounded-lg border bg-card p-3 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            Manufacturer {i + 1}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => removeMfgEntry(i)}
-                            className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <Field label="Manufacturer" required>
-                            <select
-                              className={inputCls}
-                              value={entry.mfg_id ?? ""}
-                              onChange={(e) => selectMfgInEntry(i, Number(e.target.value))}
-                            >
-                              <option value="">Select manufacturer…</option>
-                              {mfgOptions.map((m) => (
-                                <option key={m.mfg_id} value={m.mfg_id}>
-                                  {m.name} ({m.code})
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
-                          <Field label="Approved Vendor" required>
-                            <select
-                              className={inputCls}
-                              value={entry.approved_vendor_id ?? ""}
-                              onChange={(e) => selectVendorForMfg(i, Number(e.target.value))}
-                            >
-                              <option value="">Select vendor…</option>
-                              {rmVendors.map((v) => (
-                                <option key={v.vendor_id} value={v.vendor_id}>
-                                  {v.name} ({v.code})
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3">
-                          <Field label="Rate (₹)" required>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              className={inputCls}
-                              placeholder="0.00"
-                              value={entry.curr_rate}
-                              onChange={(e) => updateMfgEntry(i, "curr_rate", e.target.value)}
-                            />
-                          </Field>
-                          <Field label="Rate UOM">
-                            <select
-                              className={inputCls}
-                              value={entry.rate_uom}
-                              onChange={(e) => updateMfgEntry(i, "rate_uom", e.target.value)}
-                            >
-                              {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
-                            </select>
-                          </Field>
-                          <Field label="Effective From">
-                            <input
-                              type="date"
-                              className={inputCls}
-                              value={entry.effective_from}
-                              onChange={(e) => updateMfgEntry(i, "effective_from", e.target.value)}
-                            />
-                          </Field>
-                        </div>
+                      <div key={i} className={cn(mfgRowGridCls, "items-center")}>
+                        <select
+                          className={inputCls}
+                          value={entry.mfg_id ?? ""}
+                          onChange={(e) => selectMfgInEntry(i, Number(e.target.value))}
+                        >
+                          <option value="">Select manufacturer…</option>
+                          {mfgOptions.map((m) => (
+                            <option key={m.mfg_id} value={m.mfg_id}>
+                              {m.name} ({m.code})
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          className={inputCls}
+                          value={entry.approved_vendor_id ?? ""}
+                          onChange={(e) => selectVendorForMfg(i, Number(e.target.value))}
+                        >
+                          <option value="">Select vendor…</option>
+                          {rmVendors.map((v) => (
+                            <option key={v.vendor_id} value={v.vendor_id}>
+                              {v.name} ({v.code})
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className={inputCls}
+                          placeholder="0.00"
+                          value={entry.curr_rate}
+                          onChange={(e) => updateMfgEntry(i, "curr_rate", e.target.value)}
+                        />
+                        <select
+                          className={inputCls}
+                          value={entry.rate_uom}
+                          onChange={(e) => updateMfgEntry(i, "rate_uom", e.target.value)}
+                        >
+                          {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                        <input
+                          type="date"
+                          className={inputCls}
+                          value={entry.effective_from}
+                          onChange={(e) => updateMfgEntry(i, "effective_from", e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeMfgEntry(i)}
+                          className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors justify-self-center"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     ))}
                     <button
@@ -827,9 +677,9 @@ export function AddRawMaterialWizard({
                   <Button variant="outline" size="sm" onClick={requestClose} disabled={loading}>
                     Cancel
                   </Button>
-                  {step === 1 && !showDuplicateOptions && (
+                  {step === 1 && (
                     <Button size="sm" onClick={handleStep1Next} disabled={loading}>
-                      {loading ? "Checking…" : "Next →"}
+                      Next →
                     </Button>
                   )}
                   {step === 2 && (
@@ -844,7 +694,7 @@ export function AddRawMaterialWizard({
                   )}
                   {step === 3 && (
                     <Button size="sm" onClick={handleSubmit} disabled={loading}>
-                      {loading ? "Saving…" : wizardMode === "add-rates" ? "Save Rates" : "Create Material"}
+                      {loading ? "Saving…" : "Save Rates"}
                     </Button>
                   )}
                 </div>
@@ -864,24 +714,8 @@ const inputCls =
 
 const labelCls = "block text-xs font-medium mb-1"
 
-function Field({
-  label,
-  required,
-  className,
-  children,
-}: {
-  label: string
-  required?: boolean
-  className?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className={className}>
-      <label className={labelCls}>
-        {label}
-        {required && <span className="text-destructive ml-0.5">*</span>}
-      </label>
-      {children}
-    </div>
-  )
-}
+// Single-line row grid: Vendor | Manufacturer | Rate | MOQ | UOM | remove-button
+const vendorRowGridCls = "grid grid-cols-[2fr_2fr_1fr_1fr_0.8fr_auto] gap-2"
+
+// Single-line row grid: Manufacturer | Approved Vendor | Rate | UOM | Effective From | remove-button
+const mfgRowGridCls = "grid grid-cols-[2fr_2fr_1fr_0.8fr_1fr_auto] gap-2"

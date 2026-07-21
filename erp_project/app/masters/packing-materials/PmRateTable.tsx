@@ -36,8 +36,9 @@ import {
 } from "@/components/masters/MasterToolbar"
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import { DownloadButton } from "@/components/masters/DownloadButton"
-import type { MasterField } from "@/components/masters/field-config"
 import { AddPackingMaterialWizard } from "./AddPackingMaterialWizard"
+import { PM_VRM_BULK_FIELDS } from "./pm-vrm-bulk-fields"
+import { PM_MRM_BULK_FIELDS } from "./pm-mrm-bulk-fields"
 import type { Vendor, Mfg } from "@/types/masters"
 
 export type AnyRow = Record<string, unknown>
@@ -66,15 +67,6 @@ export const statusBadge = (row: AnyRow) => (
     {(row.status as string) ?? "—"}
   </Badge>
 )
-
-// ── PM form fields (shared by Add dialog and CSV importer) ──────────────────
-const PM_FIELDS: MasterField[] = [
-  { key: "pm_code", label: "PM Code", aliases: ["code"], placeholder: "e.g. PM-001", sample: "PM-001" },
-  { key: "name",    label: "Name",    required: true, placeholder: "Material name", sample: "Label 100ml" },
-  { key: "type",    label: "Type",    placeholder: "e.g. Label / Carton", sample: "Label" },
-  { key: "hsn_code", label: "HSN Code", placeholder: "e.g. 48191000", sample: "48191000" },
-  { key: "uom",     label: "UOM",     placeholder: "e.g. pcs", sample: "pcs" },
-]
 
 // ── Component ───────────────────────────────────────────────────────────────
 
@@ -135,6 +127,10 @@ export function PmRateTable({
   const router       = useRouter()
   const pathname     = usePathname()
   const searchParams = useSearchParams()
+
+  // Only the mfg view passes currentMfgCode — distinguishes which rate-bulk
+  // CSV (vendor vs manufacturer) the toolbar should offer.
+  const isMfgView = currentMfgCode !== undefined
 
   // Client-side sort (within the current DB page only).
   const [sortKey, setSortKey] = useState<string | null>(null)
@@ -510,14 +506,29 @@ export function PmRateTable({
             endpoint="/api/masters/packing-materials/export"
             label="Packing Materials"
           />
-          {/* <CsvImportDialog
-            entityLabel="Packing Material"
-            entityLabelPlural="Packing Materials"
-            endpoint="/api/masters/packing-materials"
-            templateFilename="packing_material_template.csv"
-            fields={PM_FIELDS}
-            onSuccess={refresh}
-          /> */}
+          {isMfgView ? (
+            <CsvImportDialog
+              entityLabel="Manufacturer Rate"
+              entityLabelPlural="Manufacturer Rates"
+              endpoint="/api/masters/packing-materials/mrm-bulk"
+              templateFilename="pm_manufacturer_rate_template.csv"
+              fields={PM_MRM_BULK_FIELDS}
+              enableDuplicateCheck
+              requireAllValid
+              onSuccess={refresh}
+            />
+          ) : (
+            <CsvImportDialog
+              entityLabel="Vendor Rate"
+              entityLabelPlural="Vendor Rates"
+              endpoint="/api/masters/packing-materials/vrm-bulk"
+              templateFilename="pm_vendor_rate_template.csv"
+              fields={PM_VRM_BULK_FIELDS}
+              enableDuplicateCheck
+              requireAllValid
+              onSuccess={refresh}
+            />
+          )}
           <AddPackingMaterialWizard
             vendors={vendors}
             manufacturers={manufacturers}

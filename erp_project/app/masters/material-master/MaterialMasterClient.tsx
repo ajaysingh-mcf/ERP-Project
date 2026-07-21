@@ -36,8 +36,29 @@ import {
 } from "@/components/masters/MasterToolbar"
 import { cn } from "@/lib/utils"
 import { DownloadButton } from "@/components/masters/DownloadButton"
+import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
+import type { MasterField } from "@/components/masters/field-config"
 import AddMaterialDialog from "./AddMaterialDialog"
 import EditMaterialDialog, { EditButton } from "./EditMaterialDialog"
+
+const RM_CSV_FIELDS: MasterField[] = [
+  { key: "rm_code",   label: "RM Code",   aliases: ["code"], placeholder: "e.g. RM-001",  sample: "RM-001" },
+  { key: "name",      label: "Name",      required: true,    placeholder: "Material name", sample: "Glycerin" },
+  { key: "make",      label: "Make",      required: true,     placeholder: "Make",          sample: "Brand X" },
+  { key: "type",      label: "Type",      required: true,      placeholder: "Type",          sample: "Liquid" },
+  { key: "uom",       label: "UOM",                           placeholder: "e.g. kg",       sample: "kg" },
+  { key: "hsn_code",  label: "HSN Code",  placeholder: "e.g. 33081000", sample: "33081000" },
+  { key: "inci_name", label: "INCI Name", placeholder: "e.g. Glycerin", sample: "Glycerin" },
+]
+
+const PM_CSV_FIELDS: MasterField[] = [
+  { key: "pm_code",       label: "PM Code",      aliases: ["code"], placeholder: "e.g. PM-001", sample: "PM-001" },
+  { key: "name",          label: "Name",         required: true,    placeholder: "Material name", sample: "Bottle 100ml" },
+  { key: "type",          label: "Type",                             placeholder: "Type",          sample: "Bottle" },
+  { key: "uom",           label: "UOM",                               placeholder: "e.g. pcs",      sample: "pcs" },
+  { key: "hsn_code",      label: "HSN Code",     placeholder: "e.g. 39235010", sample: "39235010" },
+  { key: "pantone_color", label: "Pantone Color", placeholder: "e.g. PMS 185 C", sample: "PMS 185 C" },
+]
 
 type AnyRow = Record<string, unknown>
 type ColumnDef = {
@@ -244,6 +265,26 @@ export default function MaterialMasterClient({
             endpoint="/api/masters/material-master/export"
             label="Materials"
           />
+          {material === "rm" ? (
+            <CsvImportDialog
+              entityLabel="Raw Material"
+              entityLabelPlural="Raw Materials"
+              endpoint="/api/masters/raw-materials"
+              templateFilename="raw_material_template.csv"
+              fields={RM_CSV_FIELDS}
+              enableDuplicateCheck
+              onSuccess={refresh}
+            />
+          ) : (
+            <CsvImportDialog
+              entityLabel="Packing Material"
+              entityLabelPlural="Packing Materials"
+              endpoint="/api/masters/packing-materials"
+              templateFilename="packing_material_template.csv"
+              fields={PM_CSV_FIELDS}
+              onSuccess={refresh}
+            />
+          )}
           <AddMaterialDialog material={material} onSuccess={refresh} />
         </MasterToolbarActions>
       </MasterToolbar>

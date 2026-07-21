@@ -81,7 +81,7 @@ export default async function BOMMasterPage({
   return (
     <div className="p-6">
       <div className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight">BOM Master</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Recipe Master</h1>
         <p className="text-muted-foreground text-sm mt-1">
           Bill of Materials — all active component definitions
         </p>

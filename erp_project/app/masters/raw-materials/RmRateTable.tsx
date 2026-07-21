@@ -36,8 +36,9 @@ import {
 } from "@/components/masters/MasterToolbar"
 import { CsvImportDialog } from "@/components/masters/CsvImportDialog"
 import { DownloadButton } from "@/components/masters/DownloadButton"
-import type { MasterField } from "@/components/masters/field-config"
 import { AddRawMaterialWizard } from "./AddRawMaterialWizard"
+import { RM_VRM_BULK_FIELDS } from "./rm-vrm-bulk-fields"
+import { RM_MRM_BULK_FIELDS } from "./rm-mrm-bulk-fields"
 import type { Vendor, Mfg } from "@/types/masters"
 
 /* ────────────────────────── Column config ──────────────────────────────────
@@ -67,24 +68,6 @@ export const statusBadge = (row: AnyRow) => (
   </Badge>
 )
 
-// ── RM form fields (shared by Add dialog and CSV importer) ──────────────────
-// Targets the `rm` table itself — the same regardless of which rate view is active.
-const RM_FIELDS: MasterField[] = [
-  { key: "rm_code",   label: "RM Code",   aliases: ["code"], placeholder: "e.g. RM-001",     sample: "RM-001" },
-  { key: "name",      label: "Name",      required: true,    placeholder: "Material name",    sample: "Glycerin" },
-  { key: "make",      label: "Make",                         placeholder: "Make",             sample: "Brand X" },
-  { key: "type",      label: "Type",                         placeholder: "Type",             sample: "Liquid" },
-  { key: "uom",       label: "UOM",                          placeholder: "e.g. kg",          sample: "kg" },
-  {
-    key: "status", label: "Status", type: "select", default: "active", colSpan: 2, sample: "active",
-    options: [
-      { value: "active",       label: "Active"       },
-      { value: "discontinued", label: "Discontinued" },
-    ],
-  },
-  { key: "hsn_code",  label: "HSN Code",  placeholder: "e.g. 33081000",  sample: "33081000" },
-  { key: "inci_name", label: "INCI Name", placeholder: "e.g. Glycerin",  sample: "Glycerin" },
-]
 
 // ── Component ───────────────────────────────────────────────────────────────
 
@@ -145,6 +128,10 @@ export function RmRateTable({
   const router       = useRouter()
   const pathname     = usePathname()
   const searchParams = useSearchParams()
+
+  // Only the mfg view passes currentMfgCode — distinguishes which rate-bulk
+  // CSV (vendor vs manufacturer) the toolbar should offer.
+  const isMfgView = currentMfgCode !== undefined
 
   // Client-side sort state (sorts within the current DB page only).
   const [sortKey, setSortKey] = useState<string | null>(null)
@@ -519,14 +506,29 @@ export function RmRateTable({
             endpoint="/api/masters/raw-materials/export"
             label="Raw Materials"
           />
-          {/* <CsvImportDialog
-            entityLabel="Raw Material"
-            entityLabelPlural="Raw Materials"
-            endpoint="/api/masters/raw-materials"
-            templateFilename="raw_material_template.csv"
-            fields={RM_FIELDS}
-            onSuccess={refresh}
-          /> */}
+          {isMfgView ? (
+            <CsvImportDialog
+              entityLabel="Manufacturer Rate"
+              entityLabelPlural="Manufacturer Rates"
+              endpoint="/api/masters/raw-materials/mrm-bulk"
+              templateFilename="rm_manufacturer_rate_template.csv"
+              fields={RM_MRM_BULK_FIELDS}
+              enableDuplicateCheck
+              requireAllValid
+              onSuccess={refresh}
+            />
+          ) : (
+            <CsvImportDialog
+              entityLabel="Vendor Rate"
+              entityLabelPlural="Vendor Rates"
+              endpoint="/api/masters/raw-materials/vrm-bulk"
+              templateFilename="rm_vendor_rate_template.csv"
+              fields={RM_VRM_BULK_FIELDS}
+              enableDuplicateCheck
+              requireAllValid
+              onSuccess={refresh}
+            />
+          )}
           <AddRawMaterialWizard
             vendors={vendors}
             manufacturers={manufacturers}

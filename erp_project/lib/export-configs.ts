@@ -64,6 +64,7 @@ export const RM_VENDOR_EXPORT_COLUMNS: ExportColumn[] = [
   { key: "uom",            label: "UOM",            type: "text"   },
   { key: "status",         label: "Status",         type: "text"   },
   { key: "vendor_code",    label: "Vendor Code",    type: "text"   },
+  { key: "mfg_name",       label: "Manufacturer",   type: "text"   },
   { key: "curr_rate",      label: "Current Rate",   type: "number" },
   { key: "moq",            label: "MOQ",            type: "number" },
   { key: "effective_from", label: "Effective From", type: "date"   },

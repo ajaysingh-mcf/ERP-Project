@@ -28,18 +28,21 @@ const vrmStatusBadge = (row: AnyRow) => {
   return <Badge variant={s === "active" ? "success" : "secondary"} className="capitalize">{s ?? "—"}</Badge>
 }
 
-const VENDOR_COLUMNS: ColumnDef[] = [
+function buildVendorColumns(vendors: Vendor[]): ColumnDef[] {
+  const nameByVendorId = new Map(vendors.map((v) => [v.vendor_id, v.name]))
+  return [
   { key: "pm_code",        label: "PM Code",        sortAs: "text", className: "font-mono text-xs font-medium" },
   { key: "name",           label: "Name",           sortAs: "text", className: "font-medium" },
   { key: "type",           label: "Type",           sortAs: "text" },
-  { key: "vendor_code",    label: "Vendor Code",    sortAs: "text" },
+  { key: "vendor_code",    label: "Vendor",         sortAs: "text", render: (r) => nameByVendorId.get(r.vendor_id as number) ?? (r.vendor_code as string | null) ?? "—" },
   { key: "curr_rate",      label: "Current Rate",   sortAs: "num",  render: (r) => r.curr_rate != null ? Number(r.curr_rate).toFixed(2) : "—" },
   { key: "moq",            label: "MOQ",            sortAs: "num",  render: (r) => r.moq != null ? String(Math.round(Number(r.moq))) : "—" },
   { key: "uom",            label: "UOM",            sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
   { key: "status",         label: "Status",         sortAs: "text", render: vrmStatusBadge },
   { key: "effective_from", label: "Effective From", sortAs: "date", render: (r) => fmtDate(r.effective_from) },
   { key: "effective_to",   label: "Effective To",   sortAs: "date", render: (r) => fmtDate(r.effective_to) },
-]
+  ]
+}
 
 export default function VendorPackingMaterialsClient({
   rows,
@@ -79,7 +82,7 @@ export default function VendorPackingMaterialsClient({
     <>
       <PmRateTable
         rows={rows as unknown as AnyRow[]}
-        columns={VENDOR_COLUMNS}
+        columns={buildVendorColumns(vendors)}
         vendors={vendors}
         manufacturers={manufacturers}
         total={total}

@@ -1,8 +1,34 @@
+import Fuse from "fuse.js"
+import { query } from "@/lib/db"
 import { approvalsSql } from "@/lib/queries/approvals"
 import { rawMaterials } from "@/lib/queries/raw-materials"
 import { packingMaterials } from "@/lib/queries/packing-materials"
 import { ApiError } from "@/lib/gateway/errors"
 import type { PoolConnection } from "mysql2/promise"
+
+const MAKE_FUZZY_THRESHOLD = 0.3
+
+/**
+ * Fuzzy-matches a newly typed RM make against makes already used for the
+ * same name + type. Returns the closest existing make if it's a near-typo
+ * of `candidateMake` (and not already an exact match), else null.
+ */
+export async function findFuzzyMakeMatch(
+  name: string,
+  type: string | null | undefined,
+  candidateMake: string,
+): Promise<string | null> {
+  const candidate = candidateMake.trim()
+  if (!name.trim() || !candidate) return null
+
+  const rows = await query<{ make: string }>(rawMaterials.selectMakesByNameType, [name.trim(), type?.trim() || ""])
+  const makes = rows.map((r) => r.make).filter((m) => m.toLowerCase() !== candidate.toLowerCase())
+  if (makes.length === 0) return null
+
+  const fuse = new Fuse(makes, { threshold: MAKE_FUZZY_THRESHOLD, ignoreLocation: true })
+  const [best] = fuse.search(candidate)
+  return best?.item ?? null
+}
 
 /**
  * Auto-generates the next RM/PM business code (e.g. "RM001", "PM014") when
@@ -18,10 +44,19 @@ export async function generateMaterialCode(
   conn: PoolConnection,
   countSql: string,
   prefix: "RM" | "PM",
+  name?: string,
+  make?:string
 ): Promise<string> {
   const [rows] = await conn.execute(countSql)
   const total = (rows as any[])[0].total as number
-  return `${prefix}${String(total + 1).padStart(3, "0")}`
+  if(prefix == "PM") {
+    return `${prefix}-${String(total + 1).padStart(4, "0")}`
+  }
+  else {
+    const namePart =( name ?? "" ).replace(/[^a-zA-Z]/g , "").slice(0, 4).toUpperCase()
+    const makePart =( make ?? "" ).replace(/[^a-zA-Z]/g , "").slice(0, 4).toUpperCase()
+    return `${prefix}-${namePart}-${makePart}-${String(total + 1).padStart(4, "0")}`
+  }
 }
 
 /**
@@ -83,7 +118,7 @@ export async function insertMfgWithGeneratedCode(
  *  handlers pass "active" since the insert IS the approval being applied. */
 export async function toRmParams(conn: PoolConnection, r: any, status = "in_review"): Promise<any[]> {
   return [
-    r.rm_code?.trim() || await generateMaterialCode(conn, rawMaterials.countTotal, "RM"), r.name.trim(),
+    r.rm_code?.trim() || await generateMaterialCode(conn, rawMaterials.countTotal, "RM", r.name, r.make), r.name.trim(),
     r.make?.trim() || null, r.type?.trim() || null,
     r.uom?.trim() || null, status,
     r.hsn_code?.trim() || null, r.inci_name?.trim() || null,
@@ -191,6 +226,9 @@ export async function applyVendorRateApproval(
     ["moq", existing.moq, v.moq],
     ["uom", existing.uom, v.rate_uom],
     ["effective_from", existing.effective_from, v.effective_from ?? today],
+    // mfg_id only exists on rm_vrm_dynamic (informational vendor→manufacturer
+    // tag) — pm_vrm_dynamic has no such column, so skip it for PM_VRM.
+    ...(moduleVrm === "RM_VRM" ? [["mfg_id", existing.mfg_id, v.mfg_id] as [string, unknown, unknown]] : []),
   ] as [string, unknown, unknown][]).filter(([, o, n]) => String(o ?? "") !== String(n ?? ""))
   if (diff.length === 0) return
 

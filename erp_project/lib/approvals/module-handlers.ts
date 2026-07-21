@@ -16,8 +16,8 @@
  */
 
 import { skuHandler } from "./handlers/sku"
-import { rmRateHandler, rmVrmHandler, rmMatHandler, rmBulkHandler } from "./handlers/raw-materials"
-import { pmRateHandler, pmVrmHandler, pmMatHandler, pmBulkHandler } from "./handlers/packing-materials"
+import { rmRateHandler, rmVrmHandler, rmMatHandler, rmBulkHandler, rmVrmBulkHandler, rmRateBulkHandler } from "./handlers/raw-materials"
+import { pmRateHandler, pmVrmHandler, pmMatHandler, pmBulkHandler, pmVrmBulkHandler, pmRateBulkHandler } from "./handlers/packing-materials"
 import { vendorHandler, vendorBulkHandler } from "./handlers/vendors"
 import { mfgHandler, mfgBulkHandler } from "./handlers/manufacturers"
 import { poHandler, poBulkHandler } from "./handlers/purchase-orders"
@@ -44,6 +44,10 @@ export const MODULE_HANDLERS: Record<string, ModuleHandler> = {
   MFG_BULK: mfgBulkHandler,
   RM_BULK: rmBulkHandler,
   PM_BULK: pmBulkHandler,
+  RM_VRM_BULK: rmVrmBulkHandler,
+  RM_RATE_BULK: rmRateBulkHandler,
+  PM_VRM_BULK: pmVrmBulkHandler,
+  PM_RATE_BULK: pmRateBulkHandler,
   BOM:     bomHandler,
   BOM_BULK: bomBulkHandler,
 }

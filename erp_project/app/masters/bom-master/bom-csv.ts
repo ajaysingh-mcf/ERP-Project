@@ -8,6 +8,15 @@ import type { BomLineRow, BomMaterialOption } from "./BomLineEditorGrid"
 
 export const CSV_HEADER = ["mtrl_type", "mtrl_code", "amount", "uom", "effective_from", "effective_till"]
 
+/** Downloadable template for Step 4's "Upload CSV" entry method — header + one sample row per material type. */
+export function buildBomCsvTemplate(): string {
+  const sampleRows = [
+    ["rm", "RM-0001", "10", "kg", "2026-01-01", ""],
+    ["pm", "PM-0001", "5", "pcs", "2026-01-01", ""],
+  ]
+  return [CSV_HEADER, ...sampleRows].map((row) => row.join(",")).join("\n")
+}
+
 export function parseBomCsv(
   text: string,
   rmMaterials: BomMaterialOption[],

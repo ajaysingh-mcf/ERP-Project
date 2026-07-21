@@ -6,7 +6,7 @@ import { withGateway } from "@/lib/gateway/with-gateway"
 import { pmActionSchema } from "@/lib/validation/packing-materials"
 import {
   pmCreate, pmCheckDuplicate, pmCheckVendor,
-  pmCreateFull, pmAddRates, pmBulk, pmS3Bulk,
+  pmCreateFull, pmAddRates, pmBulk, pmS3Bulk, pmGetMaterials,
 } from "@/app/api/masters/packing-materials/pm-handler"
 
 export const POST = withGateway({
@@ -24,6 +24,7 @@ export const POST = withGateway({
       case "add-rates":    return pmAddRates(body, userId, ctx)
       case "bulk":         return pmBulk(body, userId, ctx)
       case "bulk_from_s3": return pmS3Bulk(body, userId, ctx)
+      case "get-materials": return pmGetMaterials(ctx)
 
       case "material-impact": {
         const { pm_id, scope, mfg_id } = body

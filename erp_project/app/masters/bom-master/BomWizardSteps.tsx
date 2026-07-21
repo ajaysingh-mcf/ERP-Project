@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { FuzzySelect } from "@/components/ui/FuzzySelect"
 import { BomLineEditorGrid, rmTotal, type BomLineRow, type BomMaterialOption } from "./BomLineEditorGrid"
 import { BomArtifactsEditor } from "./BomArtifactsEditor"
-import { CSV_HEADER } from "./bom-csv"
+import { CSV_HEADER, buildBomCsvTemplate } from "./bom-csv"
 import type { EntryMethod } from "./useBomWizard"
 import type { Sku } from "@/types/masters"
 
@@ -95,6 +95,16 @@ export function Step3EntryMethod({ onChoose }: { onChoose: (method: EntryMethod)
   )
 }
 
+function downloadBomCsvTemplate() {
+  const blob = new Blob([buildBomCsvTemplate()], { type: "text/csv" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = "bom_lines_template.csv"
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export function Step4LineEntry({
   bomCode,
   onChangeBomCode,
@@ -142,9 +152,17 @@ export function Step4LineEntry({
 
       {entryMethod === "csv" && !csvParsed ? (
         <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-3sm text-muted-foreground">
             Columns required (all mandatory except effective_till):{" "}
-            <code className="text-xs">{CSV_HEADER.join(", ")}</code>
+            <code className="text-3sm">{CSV_HEADER.join(", ")}</code>
+            {" · "}
+            <button
+              type="button"
+              onClick={downloadBomCsvTemplate}
+              className="text-primary hover:underline"
+            >
+              Download template
+            </button>
           </p>
           <input
             type="file"

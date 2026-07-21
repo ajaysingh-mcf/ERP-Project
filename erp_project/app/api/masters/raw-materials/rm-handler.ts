@@ -5,7 +5,7 @@ import { approvalsSql } from "@/lib/queries/approvals"
 import { parseS3Import } from "@/lib/import-s3"
 import { recordRawEvent, recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import logger from "@/lib/logger"
-import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval, generateMaterialCode, toRmParams } from "../../../../lib/master-routes/material-utils"
+import { insertApprovalWithItems, applyVendorRateApproval, applyMfgRateApproval, generateMaterialCode, toRmParams, findFuzzyMakeMatch } from "../../../../lib/master-routes/material-utils"
 import { uploadRowsAsCsv, stageBulkUploadApproval } from "@/lib/master-routes/bulk-approval"
 import { roundToWholeNumber, roundToTwoDecimals } from "@/lib/numeric"
 
@@ -17,6 +17,7 @@ function toRmVendorRateParams(rmId: number, r: any, today: string): any[] {
     r.moq ? roundToWholeNumber(r.moq) : null,
     r.rate_uom?.trim() || null,
     r.effective_from?.trim() || today, null, "in_review",
+    r.mfg_id ? Number(r.mfg_id) : null,
   ]
 }
 
@@ -106,15 +107,15 @@ export async function rmCheckDuplicate(body: any, ctx: object): Promise<NextResp
 }
 
 export async function rmCheckVendor(body: any, ctx: object): Promise<NextResponse> {
-  const { name, make, inci_name, vendor_id } = body
-  if (!name?.trim() || !vendor_id)
-    return NextResponse.json({ error: "name and vendor_id are required" }, { status: 400 })
+  const { name, make, inci_name, vendor_id, moq } = body
+  if (!name?.trim() || !vendor_id || !moq)
+    return NextResponse.json({ error: "name, vendor_id and moq are required" }, { status: 400 })
   try {
     const rms = await query<{ id: number }>(rawMaterials.checkDuplicate, [
       name.trim(), make?.trim() || "", inci_name?.trim() || "",
     ])
     if (rms.length === 0) return NextResponse.json({ exists: false })
-    const rates = await query<any>(rawMaterials.checkVendorRate, [rms[0].id, Number(vendor_id)])
+    const rates = await query<any>(rawMaterials.checkVendorRate, [rms[0].id, Number(vendor_id), Number(moq)])
     if (rates.length === 0) return NextResponse.json({ exists: false })
     const r = rates[0]
     return NextResponse.json({
@@ -123,6 +124,56 @@ export async function rmCheckVendor(body: any, ctx: object): Promise<NextRespons
     })
   } catch (err: any) {
     logger.error({ ...ctx, error: err.message, message: "Vendor rate check error" })
+    return NextResponse.json({ error: "Database error" }, { status: 500 })
+  }
+}
+
+// Active RM materials for the cost-master "Add Rates" wizard's material
+// picker — users pick an EXISTING material here; creating a new one only
+// happens on the Material Master page.
+export async function rmGetMaterials(ctx: object): Promise<NextResponse> {
+  try {
+    const rows = await query<any>(rawMaterials.selectActiveFull)
+    return NextResponse.json({ materials: rows })
+  } catch (err: any) {
+    logger.error({ ...ctx, error: err.message, message: "RM get-materials error" })
+    return NextResponse.json({ error: "Database error" }, { status: 500 })
+  }
+}
+
+// Single-row "did you mean?" check used by the Add-material wizard when the
+// user types a brand-new make instead of picking one from FuzzySelect.
+export async function rmCheckMakeFuzzy(body: any, ctx: object): Promise<NextResponse> {
+  const { name, type, make } = body
+  if (!name?.trim() || !make?.trim()) return NextResponse.json({ suggestion: null })
+  try {
+    const suggestion = await findFuzzyMakeMatch(name, type, make)
+    return NextResponse.json({ suggestion })
+  } catch (err: any) {
+    logger.error({ ...ctx, error: err.message, message: "RM fuzzy make check error" })
+    return NextResponse.json({ suggestion: null })
+  }
+}
+
+// Read-only CSV-preview helper for CsvImportDialog's enableDuplicateCheck —
+// same "did you mean?" fuzzy check as rmCheckMakeFuzzy, run per row.
+export async function rmCheckDuplicatesBulk(body: any, ctx: object): Promise<NextResponse> {
+  const { rows } = body
+  const duplicates: Record<number, string[]> = {}
+  if (!Array.isArray(rows)) return NextResponse.json({ duplicates })
+
+  try {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      const make = String(row.make ?? "").trim()
+      const name = String(row.name ?? "").trim()
+      if (!name || !make) continue
+      const suggestion = await findFuzzyMakeMatch(name, row.type, make)
+      if (suggestion) duplicates[i] = [`Make "${make}" is close to existing "${suggestion}" for this material — did you mean "${suggestion}"?`]
+    }
+    return NextResponse.json({ duplicates })
+  } catch (err: any) {
+    logger.error({ ...ctx, error: err.message, message: "RM bulk duplicate check error" })
     return NextResponse.json({ error: "Database error" }, { status: 500 })
   }
 }
@@ -155,7 +206,7 @@ export async function rmCreateFull(body: any, userId: number, ctx: object): Prom
 
     for (const v of vendorList) {
       const vendorId = v.vendor_id ? Number(v.vendor_id) : null
-      const [existingRows] = await conn.execute(rawMaterials.checkVendorRate, [rmId, vendorId])
+      const [existingRows] = await conn.execute(rawMaterials.checkVendorRate, [rmId, vendorId, v.moq ? Number(v.moq) : null])
       const existing = (existingRows as any[])[0]
       if (existing) {
         await applyVendorRateApproval(conn, userId, "RM_VRM", existing, v, today, rawMaterials.setVendorRateStatus)
@@ -203,23 +254,28 @@ export async function rmCreateFull(body: any, userId: number, ctx: object): Prom
 }
 
 export async function rmAddRates(body: any, userId: number, ctx: object): Promise<NextResponse> {
-  const { name, make, inci_name } = body
-  if (!name?.trim()) return NextResponse.json({ error: "name is required" }, { status: 400 })
+  const { rm_id, name, make, inci_name } = body
+  if (!rm_id && !name?.trim()) return NextResponse.json({ error: "rm_id or name is required" }, { status: 400 })
   const vendorList = Array.isArray(body.vendors) ? body.vendors : []
   const mfgList = Array.isArray(body.manufacturers) ? body.manufacturers : []
   if (vendorList.length === 0 && mfgList.length === 0)
     return NextResponse.json({ error: "Provide at least one vendor rate or manufacturer" }, { status: 400 })
 
   const logCtx = { ...ctx, eventId: makeEventId("RM_RATES", "add-rates"), module: "RM_AddRates" }
-  logger.info({ ...logCtx, name: name.trim(), message: "RM Add Rates Started" })
-  recordRawEvent("RM_RATES", logCtx.eventId, { name: name.trim() })
+  logger.info({ ...logCtx, rm_id, name: name?.trim(), message: "RM Add Rates Started" })
+  recordRawEvent("RM_RATES", logCtx.eventId, { rm_id, name: name?.trim() })
 
   try {
-    const rms = await query<{ id: number }>(rawMaterials.checkDuplicate, [
-      name.trim(), make?.trim() || "", inci_name?.trim() || "",
-    ])
-    if (rms.length === 0) return NextResponse.json({ error: "Material not found" }, { status: 404 })
-    const rmId = rms[0].id
+    let rmId: number
+    if (rm_id) {
+      rmId = Number(rm_id)
+    } else {
+      const rms = await query<{ id: number }>(rawMaterials.checkDuplicate, [
+        name.trim(), make?.trim() || "", inci_name?.trim() || "",
+      ])
+      if (rms.length === 0) return NextResponse.json({ error: "Material not found" }, { status: 404 })
+      rmId = rms[0].id
+    }
     const today = new Date().toISOString().slice(0, 10)
 
     const conn = await pool.getConnection()
@@ -227,7 +283,7 @@ export async function rmAddRates(body: any, userId: number, ctx: object): Promis
     try {
       for (const v of vendorList) {
         const vendorId = v.vendor_id ? Number(v.vendor_id) : null
-        const [existingRows] = await conn.execute(rawMaterials.checkVendorRate, [rmId, vendorId])
+        const [existingRows] = await conn.execute(rawMaterials.checkVendorRate, [rmId, vendorId, v.moq ? Number(v.moq) : null])
         const existing = (existingRows as any[])[0]
         if (existing) {
           await applyVendorRateApproval(conn, userId, "RM_VRM", existing, v, today, rawMaterials.setVendorRateStatus)

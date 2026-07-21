@@ -18,6 +18,19 @@ function toPmMfgRateParams(pmId: number, m: any, today: string): any[] {
   ]
 }
 
+// Active PM materials for the cost-master "Add Rates" wizard's material
+// picker — users pick an EXISTING material here; creating a new one only
+// happens on the Material Master page.
+export async function pmGetMaterials(ctx: object): Promise<NextResponse> {
+  try {
+    const rows = await query<any>(packingMaterials.selectActiveFull)
+    return NextResponse.json({ materials: rows })
+  } catch (err: any) {
+    logger.error({ ...ctx, error: err.message, message: "PM get-materials error" })
+    return NextResponse.json({ error: "Database error" }, { status: 500 })
+  }
+}
+
 export async function pmCreate(body: any, userId: number, ctx: object): Promise<NextResponse> {
   if (!body.name?.trim()) {
     logger.warn({ ...ctx, message: "PM create rejected: missing name" })
@@ -128,16 +141,16 @@ export async function pmCheckDuplicate(body: any, ctx: object): Promise<NextResp
 }
 
 export async function pmCheckVendor(body: any, ctx: object): Promise<NextResponse> {
-  const { name, type, vendor_id } = body
+  const { name, type, vendor_id, moq } = body
   const logCtx = { ...ctx, action: "check-vendor" }
-  if (!name?.trim() || !vendor_id) {
-    logger.warn({ ...logCtx, message: "check-vendor rejected: missing name or vendor_id" })
-    return NextResponse.json({ error: "name and vendor_id are required" }, { status: 400 })
+  if (!name?.trim() || !vendor_id || !moq) {
+    logger.warn({ ...logCtx, message: "check-vendor rejected: missing name, vendor_id or moq" })
+    return NextResponse.json({ error: "name, vendor_id and moq are required" }, { status: 400 })
   }
   try {
     const pms = await query<{ id: number }>(packingMaterials.checkDuplicate, [name.trim(), type?.trim() || ""])
     if (pms.length === 0) return NextResponse.json({ exists: false })
-    const rates = await query<any>(packingMaterials.checkVendorRate, [pms[0].id, Number(vendor_id)])
+    const rates = await query<any>(packingMaterials.checkVendorRate, [pms[0].id, Number(vendor_id), Number(moq)])
     if (rates.length === 0) return NextResponse.json({ exists: false })
     const r = rates[0]
     logger.info({ ...logCtx, message: "check-vendor: existing rate found", pmId: pms[0].id, vendor_id: Number(vendor_id) })
@@ -184,7 +197,7 @@ export async function pmCreateFull(body: any, userId: number, ctx: object): Prom
 
     for (const v of vendorList) {
       const vendorId = v.vendor_id ? Number(v.vendor_id) : null
-      const [existingRows] = await conn.execute(packingMaterials.checkVendorRate, [pmId, vendorId])
+      const [existingRows] = await conn.execute(packingMaterials.checkVendorRate, [pmId, vendorId, v.moq ? Number(v.moq) : null])
       const existing = (existingRows as any[])[0]
       if (existing) {
         await conn.execute(packingMaterials.archiveVendorRate, [
@@ -279,7 +292,7 @@ export async function pmAddRates(body: any, userId: number, ctx: object): Promis
     try {
       for (const v of vendorList) {
         const vendorId = v.vendor_id ? Number(v.vendor_id) : null
-        const [existingRows] = await conn.execute(packingMaterials.checkVendorRate, [pmId, vendorId])
+        const [existingRows] = await conn.execute(packingMaterials.checkVendorRate, [pmId, vendorId, v.moq ? Number(v.moq) : null])
         const existing = (existingRows as any[])[0]
         if (existing) {
           await applyVendorRateApproval(conn, userId, "PM_VRM", existing, v, today, packingMaterials.setVendorRateStatus)

@@ -29,17 +29,20 @@ const rateStatusBadge = (row: AnyRow) => {
   return <Badge variant={s === "active" ? "success" : "secondary"} className="capitalize">{s ?? "—"}</Badge>
 }
 
-const MFG_COLUMNS: ColumnDef[] = [
+function buildMfgColumns(manufacturers: Mfg[]): ColumnDef[] {
+  const nameByMfgId = new Map(manufacturers.map((m) => [m.mfg_id, m.name]))
+  return [
   { key: "pm_code",        label: "PM Code",        sortAs: "text", className: "font-mono text-xs font-medium" },
   { key: "name",           label: "Name",           sortAs: "text", className: "font-medium text-wrap" },
   { key: "type",           label: "Type",           sortAs: "text" },
-  { key: "mfg_code",       label: "MFG Code",       sortAs: "text" },
+  { key: "mfg_code",       label: "Manufacturer",   sortAs: "text", render: (r) => nameByMfgId.get(r.mfg_id as number) ?? (r.mfg_code as string | null) ?? "—" },
   { key: "mfg_id",         label: "MFG ID",         sortAs: "num"  },
   { key: "curr_rate",      label: "Current Rate",   sortAs: "num",  render: (r) => r.curr_rate != null ? Number(r.curr_rate).toFixed(2) : "—" },
   { key: "uom",            label: "UOM",            sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
   { key: "status",         label: "Status",         sortAs: "text", render: rateStatusBadge },
   { key: "effective_from", label: "Effective From", sortAs: "date", render: (r) => fmtDate(r.effective_from) },
-]
+  ]
+}
 
 export default function ManufacturerPackingMaterialsClient({
   rows,
@@ -79,7 +82,7 @@ export default function ManufacturerPackingMaterialsClient({
     <>
       <PmRateTable
         rows={rows as unknown as AnyRow[]}
-        columns={MFG_COLUMNS}
+        columns={buildMfgColumns(manufacturers)}
         vendors={vendors}
         manufacturers={manufacturers}
         total={total}

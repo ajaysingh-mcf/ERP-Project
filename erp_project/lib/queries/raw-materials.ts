@@ -20,6 +20,15 @@ export const rawMaterials = {
     ORDER BY name
   `,
 
+  /** Active raw materials with every field the cost-master "Add Rates" wizard
+   *  needs to display once a material is picked (make/type/inci_name too). */
+  selectActiveFull: `
+    SELECT id, rm_code, name, make, type, uom, hsn_code, inci_name
+    FROM master_rm
+    WHERE status = 'active'
+    ORDER BY name
+  `,
+
   /**
    * Get all raw materials grouped by manufacturer
    * Used in RawMaterialsPage manufacturer view
@@ -118,9 +127,11 @@ export const rawMaterials = {
       r.hsn_code, r.inci_name, r.make, r.name, r.rm_code, r.status, r.type,
       rmv.rm_id, rmv.id AS vrm_id, rmv.status AS vrm_status,
       rmv.curr_rate, rmv.effective_from, rmv.effective_to,
-      rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id
+      rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id,
+      rmv.mfg_id, mm.name AS mfg_name, mm.code AS mfg_code
     FROM rm_vrm_dynamic AS rmv
     INNER JOIN master_rm AS r ON r.id = rmv.rm_id
+    LEFT JOIN master_mfgs AS mm ON mm.id = rmv.mfg_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
       AND (? IS NULL OR r.make = ?)
@@ -143,9 +154,11 @@ export const rawMaterials = {
       r.hsn_code, r.inci_name, r.make, r.name, r.rm_code, r.status, r.type,
       rmv.rm_id, rmv.id AS vrm_id, rmv.status AS vrm_status,
       rmv.curr_rate, rmv.effective_from, rmv.effective_to,
-      rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id
+      rmv.moq, rmv.uom, rmv.vendor_code, rmv.vendor_id,
+      rmv.mfg_id, mm.name AS mfg_name, mm.code AS mfg_code
     FROM rm_vrm_dynamic AS rmv
     INNER JOIN master_rm AS r ON r.id = rmv.rm_id
+    LEFT JOIN master_mfgs AS mm ON mm.id = rmv.mfg_id
     WHERE (? IS NULL OR r.rm_code LIKE ? OR r.name LIKE ?)
       AND (? IS NULL OR r.status = ?)
       AND (? IS NULL OR r.make = ?)
@@ -194,6 +207,19 @@ export const rawMaterials = {
     SELECT DISTINCT inci_name FROM master_rm
     WHERE inci_name IS NOT NULL AND inci_name != ''
     ORDER BY inci_name ASC
+  `,
+
+  /**
+   * Distinct makes already used for the same name + type combination —
+   * fuzzy-matched client-side (Fuse.js) against a newly typed make to catch
+   * typos ("addni" vs "Adani"). Scoped to name+type so unrelated materials
+   * that legitimately share a make don't cross-pollute suggestions.
+   * Parameters: [name, type]
+   */
+  selectMakesByNameType: `
+    SELECT DISTINCT make FROM master_rm
+    WHERE LOWER(name) = LOWER(?) AND LOWER(IFNULL(type,'')) = LOWER(IFNULL(?,''))
+      AND make IS NOT NULL AND make != ''
   `,
 
   /**
@@ -324,12 +350,14 @@ export const rawMaterials = {
   `,
 
   /**
-   * Insert a vendor rate record for a raw material
-   * Parameters: [rm_id, vendor_id, vendor_code, curr_rate, moq, uom, effective_from, effective_to]
+   * Insert a vendor rate record for a raw material. `mfg_id` is an optional,
+   * informational tag — "this vendor supplies this material to that
+   * manufacturer" — it does not create a separate rm_mrm_fixed row.
+   * Parameters: [rm_id, vendor_id, vendor_code, curr_rate, moq, uom, effective_from, effective_to, status, mfg_id]
    */
   insertVendorRate: `
-    INSERT INTO rm_vrm_dynamic (rm_id, vendor_id, vendor_code, curr_rate, moq, uom, effective_from, effective_to, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO rm_vrm_dynamic (rm_id, vendor_id, vendor_code, curr_rate, moq, uom, effective_from, effective_to, status, mfg_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   /**
@@ -363,12 +391,14 @@ export const rawMaterials = {
   `,
 
   /**
-   * Check if a vendor rate already exists for this rm + vendor combination.
-   * Parameters: [rm_id, vendor_id]
+   * Check if a vendor rate already exists for this rm + vendor + MOQ combination.
+   * MOQ is part of the key so the same vendor can hold multiple rate rows —
+   * one per MOQ slab.
+   * Parameters: [rm_id, vendor_id, moq]
    */
   checkVendorRate: `
-    SELECT id, vendor_id, curr_rate, moq, uom, effective_from, effective_to, status
-    FROM rm_vrm_dynamic WHERE rm_id = ? AND vendor_id = ? LIMIT 1
+    SELECT id, vendor_id, curr_rate, moq, uom, effective_from, effective_to, status, mfg_id
+    FROM rm_vrm_dynamic WHERE rm_id = ? AND vendor_id = ? AND moq = ? LIMIT 1
   `,
 
   /**
@@ -386,7 +416,7 @@ export const rawMaterials = {
    */
   updateVendorRate: `
     UPDATE rm_vrm_dynamic
-    SET curr_rate = ?, moq = ?, uom = ?, effective_from = ?, effective_to = NULL, updated_on = NOW()
+    SET curr_rate = ?, moq = ?, uom = ?, effective_from = ?, effective_to = NULL, updated_on = NOW(), mfg_id = ?
     WHERE id = ?
   `,
 
@@ -453,7 +483,7 @@ export const rawMaterials = {
    *  Parameters: [id]
    */
   selectVendorRateById: `
-    SELECT id, rm_id, vendor_id, curr_rate, moq, uom, effective_from, effective_to, status
+    SELECT id, rm_id, vendor_id, curr_rate, moq, uom, effective_from, effective_to, status, mfg_id
     FROM rm_vrm_dynamic WHERE id = ? LIMIT 1
   `,
 

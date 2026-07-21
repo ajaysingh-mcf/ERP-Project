@@ -291,15 +291,15 @@ export function CsvImportDialog({
 
           <div className="space-y-4">
             <div className="rounded-lg border border-dashed border-border p-5 text-center space-y-2">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-3sm text-muted-foreground">
                 Required columns:{" "}
-                <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">
+                <code className="text-3sm bg-muted px-1.5 py-0.5 rounded font-mono">
                   {requiredKeys.join(", ") || "—"}
                 </code>
                 {optionalKeys.length > 0 && (
                   <>
                     {" · "}Optional:{" "}
-                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">
+                    <code className="text-3sm bg-muted px-1.5 py-0.5 rounded font-mono">
                       {optionalKeys.join(", ")}
                     </code>
                   </>

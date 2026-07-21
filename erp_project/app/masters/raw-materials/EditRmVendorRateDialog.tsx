@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { CostImpactAlert } from "@/components/masters/CostImpactAlert"
-import type { RM } from "@/types/masters"
+import type { RM, Mfg } from "@/types/masters"
 
 type RejectionInfo = {
   raised_by: number
@@ -19,10 +19,12 @@ type RejectionInfo = {
 
 export function EditRmVendorRateDialog({
   row,
+  manufacturers,
   onSuccess,
   onClose,
 }: {
   row: RM | null
+  manufacturers: Mfg[]
   onSuccess: () => void
   onClose: () => void
 }) {
@@ -32,6 +34,7 @@ export function EditRmVendorRateDialog({
     uom: "",
     effective_from: "",
     effective_to: "",
+    mfg_id: "" as string,
   })
   const [saving, setSaving] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -48,6 +51,7 @@ export function EditRmVendorRateDialog({
         uom: row.uom ?? "",
         effective_from: toDateStr(row.effective_from),
         effective_to: toDateStr(row.effective_to),
+        mfg_id: row.mfg_id ? String(row.mfg_id) : "",
       })
       setSubmitted(false)
       setError(null)
@@ -109,6 +113,7 @@ export function EditRmVendorRateDialog({
             rate_uom: form.uom,
             effective_from: form.effective_from,
             effective_to: form.effective_to || null,
+            mfg_id: form.mfg_id ? Number(form.mfg_id) : null,
           }],
         }),
       })
@@ -190,6 +195,20 @@ export function EditRmVendorRateDialog({
             <div className="grid gap-1">
               <Label>Effective To</Label>
               <Input type="date" value={form.effective_to} onChange={(e) => set("effective_to", e.target.value)} disabled={!canEdit} />
+            </div>
+            <div className="grid gap-1">
+              <Label>Manufacturer</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                value={form.mfg_id}
+                onChange={(e) => set("mfg_id", e.target.value)}
+                disabled={!canEdit}
+              >
+                <option value="">None</option>
+                {manufacturers.map((m) => (
+                  <option key={m.mfg_id} value={m.mfg_id}>{m.name} ({m.code})</option>
+                ))}
+              </select>
             </div>
           </div>
 

@@ -61,6 +61,7 @@ export const rmCreateFullSchema = z.object({
 
 export const rmAddRatesSchema = z.object({
   action: z.literal("add-rates"),
+  rm_id: numericish.optional(),
   name: z.string().optional(),
   make: z.string().optional(),
   inci_name: z.string().optional(),
@@ -78,8 +79,24 @@ export const rmBulkFromS3Schema = z.object({
   key: z.string().optional(),
 }).passthrough()
 
+export const rmCheckMakeFuzzySchema = z.object({
+  action: z.literal("check-make-fuzzy"),
+  name: z.string().optional(),
+  type: z.string().optional(),
+  make: z.string().optional(),
+}).passthrough()
+
+export const rmCheckDuplicatesBulkSchema = z.object({
+  action: z.literal("check_duplicates"),
+  rows: looseArray.optional(),
+}).passthrough()
+
 export const rmGetMakesSchema = z.object({
   action: z.literal("get-makes"),
+}).passthrough()
+
+export const rmGetMaterialsSchema = z.object({
+  action: z.literal("get-materials"),
 }).passthrough()
 
 export const rmGetInciNamesSchema = z.object({
@@ -101,7 +118,10 @@ export const rmActionSchema = z.discriminatedUnion("action", [
   rmAddRatesSchema,
   rmBulkSchema,
   rmBulkFromS3Schema,
+  rmCheckMakeFuzzySchema,
+  rmCheckDuplicatesBulkSchema,
   rmGetMakesSchema,
+  rmGetMaterialsSchema,
   rmGetInciNamesSchema,
   rmMaterialImpactSchema,
 ])

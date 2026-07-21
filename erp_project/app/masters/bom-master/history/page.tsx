@@ -61,9 +61,9 @@ export default async function BOMHistoryPage({
   return (
     <div className="p-6">
       <div className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight">BOM History</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Recipe History</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Archived formulations — every BOM that has been revised at least once
+          Archived formulations — every recipe that has been revised at least once
         </p>
       </div>
       <BomHistoryClient

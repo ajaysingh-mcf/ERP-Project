@@ -39,7 +39,7 @@ export const POST = withGateway({
       const conn = await pool.getConnection()
       await conn.beginTransaction()
       try {
-        const rmCode = await generateMaterialCode(conn, rawMaterials.countTotal, "RM")
+        const rmCode = await generateMaterialCode(conn, rawMaterials.countTotal, "RM", name, make)
         const [rmResult] = await conn.execute(rawMaterials.insert, [
           rmCode,
           name,

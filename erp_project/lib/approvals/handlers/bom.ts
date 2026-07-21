@@ -250,13 +250,10 @@ export const bomBulkHandler: ModuleHandler = {
         }
 
         // Auto-generate bom_code when not supplied — same convention as the
-        // wizard's "suggest the next version's bom_code" (selectBomsBySkuId),
-        // with a real incrementing count instead of a hardcoded "-V2".
+        // wizard's "suggest the next version's bom_code" (selectBomsBySkuId).
         const providedCode = groupRows[0].bom_code?.trim()
         const [existingBoms] = await conn.execute(bomSql.selectBomsBySkuId, [sku.id])
-        const bomCode = providedCode || (
-          (existingBoms as any[]).length === 0 ? `${skuCode}-BOM` : `${skuCode}-V${(existingBoms as any[]).length + 1}`
-        )
+        const bomCode = providedCode || `${skuCode}-BOM-V${(existingBoms as any[]).length + 1}`
 
         const [headerResult] = await conn.execute(bomSql.insertBomHeader, [bomCode, sku.id, approverId, STATUS.ACTIVE])
         const bomId = (headerResult as any).insertId

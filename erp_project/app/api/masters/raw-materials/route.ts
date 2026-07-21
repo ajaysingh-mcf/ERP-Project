@@ -8,6 +8,7 @@ import { rmActionSchema } from "@/lib/validation/raw-materials"
 import {
   rmCreate, rmCheckDuplicate, rmCheckVendor,
   rmCreateFull, rmAddRates, rmBulk, rmS3Bulk,
+  rmCheckMakeFuzzy, rmCheckDuplicatesBulk, rmGetMaterials,
 } from "@/app/api/masters/raw-materials/rm-handler"
 
 export const POST = withGateway({
@@ -25,6 +26,9 @@ export const POST = withGateway({
       case "add-rates":    return rmAddRates(body, userId, ctx)
       case "bulk":         return rmBulk(body, userId, ctx)
       case "bulk_from_s3": return rmS3Bulk(body, userId, ctx)
+      case "check-make-fuzzy":  return rmCheckMakeFuzzy(body, ctx)
+      case "check_duplicates":  return rmCheckDuplicatesBulk(body, ctx)
+      case "get-materials":     return rmGetMaterials(ctx)
 
       case "get-makes": {
         const rows = await getRmDistinctMakes()

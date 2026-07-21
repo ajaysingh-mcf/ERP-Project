@@ -18,6 +18,15 @@ export const packingMaterials = {
     ORDER BY name
   `,
 
+  /** Active packing materials with every field the cost-master "Add Rates"
+   *  wizard needs to display once a material is picked. */
+  selectActiveFull: `
+    SELECT id, pm_code, name, type, uom, hsn_code
+    FROM master_pm
+    WHERE status = 'active'
+    ORDER BY name
+  `,
+
    /** Get all Packing material along with vendor details and prices. */
   selectAllByVendor: `
     SELECT
@@ -303,10 +312,15 @@ export const packingMaterials = {
   /** Total PM count — used to auto-generate the next pm_code (PM<serial>). */
   countTotal: `SELECT COUNT(*) AS total FROM master_pm`,
 
-  /** Check if a vendor rate exists for this pm + vendor. Parameters: [pm_id, vendor_id] */
+  /**
+   * Check if a vendor rate exists for this pm + vendor + MOQ combination.
+   * MOQ is part of the key so the same vendor can hold multiple rate rows —
+   * one per MOQ slab.
+   * Parameters: [pm_id, vendor_id, moq]
+   */
   checkVendorRate: `
     SELECT id, vendor_id, curr_rate, moq, uom, status, effective_from, effective_to
-    FROM pm_vrm_dynamic WHERE pm_id = ? AND vendor_id = ? LIMIT 1
+    FROM pm_vrm_dynamic WHERE pm_id = ? AND vendor_id = ? AND moq = ? LIMIT 1
   `,
 
   /** Archive an old pm_vrm row to vrm_history. Parameters: [pm_id, vendor_id, curr_rate, moq, uom, effective_from, effective_to, status] */

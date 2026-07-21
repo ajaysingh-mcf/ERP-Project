@@ -106,6 +106,11 @@ export type RM = {
   vrm_id: number | null
   /** Status of the rm_vrm_dynamic rate row — for approval badges. */
   vrm_status: string | null
+  /** Optional manufacturer tag on the vendor rate row — informational only,
+   *  does not create a separate rm_mrm_fixed row. */
+  mfg_id: number | null
+  mfg_name: string | null
+  mfg_code: string | null
 }
 
 /** Raw Material rate row as seen through the MANUFACTURER rate master (`rm_mrm`).

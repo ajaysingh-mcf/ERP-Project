@@ -28,20 +28,24 @@ const vrmStatusBadge = (row: AnyRow) => {
   return <Badge variant={s === "active" ? "success" : "secondary"} className="capitalize">{s ?? "—"}</Badge>
 }
 
-const VENDOR_COLUMNS: ColumnDef[] = [
+function buildVendorColumns(vendors: Vendor[]): ColumnDef[] {
+  const nameByVendorId = new Map(vendors.map((v) => [v.vendor_id, v.name]))
+  return [
   { key: "rm_code",        label: "RM Code",        sortAs: "text", className: "font-mono text-xs font-medium" },
   { key: "name",           label: "Name",           sortAs: "text", className: "font-medium" },
   { key: "inci_name",      label: "INCI Name",      sortAs: "text" },
   { key: "make",           label: "Make",           sortAs: "text" },
   { key: "type",           label: "Type",           sortAs: "text" },
   { key: "curr_rate",      label: "Current Rate",   sortAs: "num",  render: (r) => r.curr_rate != null ? Number(r.curr_rate).toFixed(2) : "—" },
-  { key: "vendor_code",    label: "Vendor Code",    sortAs: "text" },
+  { key: "vendor_code",    label: "Vendor",         sortAs: "text", render: (r) => nameByVendorId.get(r.vendor_id as number) ?? (r.vendor_code as string | null) ?? "—" },
+  { key: "mfg_name",       label: "Manufacturer",   sortAs: "text", render: (r) => (r.mfg_name as string | null) ?? "—" },
   { key: "vrm_status",     label: "Status",         sortAs: "text", render: vrmStatusBadge },
   { key: "moq",            label: "MOQ",            sortAs: "num",  render: (r) => r.moq != null ? String(Math.round(Number(r.moq))) : "—" },
   { key: "uom",            label: "UOM",            sortAs: "text", className: "uppercase text-xs text-muted-foreground" },
   { key: "effective_from", label: "Effective From", sortAs: "date", render: (r) => fmtDate(r.effective_from) },
   { key: "effective_to",   label: "Effective To",   sortAs: "date", render: (r) => fmtDate(r.effective_to) },
-]
+  ]
+}
 
 export default function VendorRawMaterialsClient({
   rows,
@@ -85,7 +89,7 @@ export default function VendorRawMaterialsClient({
     <>
       <RmRateTable
         rows={rows as unknown as AnyRow[]}
-        columns={VENDOR_COLUMNS}
+        columns={buildVendorColumns(vendors)}
         vendors={vendors}
         manufacturers={manufacturers}
         total={total}
@@ -147,6 +151,7 @@ export default function VendorRawMaterialsClient({
       />
       <EditRmVendorRateDialog
         row={editRow}
+        manufacturers={manufacturers}
         onSuccess={() => { setEditRow(null); window.location.reload() }}
         onClose={() => setEditRow(null)}
       />

@@ -18,6 +18,15 @@ export const manufacturers = {
     INNER JOIN details_mfg AS mfgd ON mfgd.mfg_id = mfg.id
     ORDER BY mfg.code ASC
   `,
+
+  /** Resolve a manufacturer by its business code — used by rate-bulk CSV
+   *  imports. Parameters: [code] */
+  selectByCode: `
+    SELECT mfg.id, mfg.code, mfg.name, mfgd.status
+    FROM master_mfgs mfg
+    LEFT JOIN details_mfg mfgd ON mfgd.mfg_id = mfg.id
+    WHERE mfg.code = ? LIMIT 1
+  `,
   // ============ PAGINATED SELECT QUERIES ============
 
   /**

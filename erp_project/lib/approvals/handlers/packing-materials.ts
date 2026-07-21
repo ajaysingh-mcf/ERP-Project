@@ -2,6 +2,8 @@
 // PM_MAT (base record), PM_BULK (bulk CSV upload) ─────────────────────────────
 
 import { packingMaterials as pmSql } from "@/lib/queries/packing-materials"
+import { vendors as vendorSql } from "@/lib/queries/vendors"
+import { manufacturers as mfgSql } from "@/lib/queries/manufacturers"
 import { parseS3Import } from "@/lib/import-s3"
 import { recordProcessedEvent, recordFailedEvent, makeEventId } from "@/lib/events"
 import { STATUS } from "@/lib/constants"
@@ -110,6 +112,100 @@ export const pmBulkHandler: ModuleHandler = {
       recordProcessedEvent("PM_BULK", eventId, { s3Key, inserted, skipped })
     } catch (err: any) {
       recordFailedEvent("PM_BULK", eventId, { s3Key }, err.message)
+      throw err
+    }
+  },
+}
+
+// Bulk PM × Vendor rate upload — one CSV row = one pm_vrm_dynamic row.
+// pm_vrm_dynamic has no mfg_id column (unlike rm_vrm_dynamic), so there's no
+// manufacturer tag here.
+export const pmVrmBulkHandler: ModuleHandler = {
+  async setStatus() {
+    // No entity exists before approval — nothing to roll back on reject.
+  },
+  async applyAndArchive(conn, _entityId, items) {
+    const s3Key = s3KeyOf(items, "PM_VRM_BULK")
+    const rows = await parseS3Import(s3Key)
+    if (rows.length === 0) throw new Error("PM_VRM_BULK: file has no data rows")
+
+    const eventId = makeEventId("PM_VRM_BULK", "apply")
+    let inserted = 0, skipped = 0
+    try {
+      for (const row of rows) {
+        const pmCode = row.pm_code?.trim()
+        const vendorCode = row.vendor_code?.trim()
+        const currRate = Number(row.curr_rate)
+        const moq = Number(row.moq)
+        if (!pmCode || !vendorCode || !Number.isFinite(currRate) || currRate <= 0
+          || !Number.isFinite(moq) || moq <= 0 || !row.effective_from?.trim()) {
+          skipped++; continue
+        }
+
+        const [pmRows] = await conn.execute(pmSql.selectByCode, [pmCode])
+        const pm = (pmRows as any[])[0]
+        if (!pm) { skipped++; continue }
+
+        const [vRows] = await conn.execute(vendorSql.selectByCode, [vendorCode])
+        const vendor = (vRows as any[])[0]
+        if (!vendor) { skipped++; continue }
+
+        await conn.execute(pmSql.insertVendorRate, [
+          pm.id, vendor.id, vendorCode,
+          roundToTwoDecimals(currRate), roundToWholeNumber(moq),
+          row.uom?.trim() || null, STATUS.ACTIVE,
+          row.effective_from.trim(), row.effective_to?.trim() || null,
+        ])
+        inserted++
+      }
+      recordProcessedEvent("PM_VRM_BULK", eventId, { s3Key, inserted, skipped })
+    } catch (err: any) {
+      recordFailedEvent("PM_VRM_BULK", eventId, { s3Key }, err.message)
+      throw err
+    }
+  },
+}
+
+// Bulk PM × Manufacturer rate upload — one CSV row = one pm_mrm_fixed row.
+// pm_mrm_fixed has no approved-vendor column (unlike rm_mrm_fixed).
+export const pmRateBulkHandler: ModuleHandler = {
+  async setStatus() {
+    // No entity exists before approval — nothing to roll back on reject.
+  },
+  async applyAndArchive(conn, _entityId, items) {
+    const s3Key = s3KeyOf(items, "PM_RATE_BULK")
+    const rows = await parseS3Import(s3Key)
+    if (rows.length === 0) throw new Error("PM_RATE_BULK: file has no data rows")
+
+    const eventId = makeEventId("PM_RATE_BULK", "apply")
+    let inserted = 0, skipped = 0
+    try {
+      for (const row of rows) {
+        const pmCode = row.pm_code?.trim()
+        const mfgCode = row.mfg_code?.trim()
+        const currRate = Number(row.curr_rate)
+        if (!pmCode || !mfgCode || !Number.isFinite(currRate) || currRate <= 0 || !row.effective_from?.trim()) {
+          skipped++; continue
+        }
+
+        const [pmRows] = await conn.execute(pmSql.selectByCode, [pmCode])
+        const pm = (pmRows as any[])[0]
+        if (!pm) { skipped++; continue }
+
+        const [mRows] = await conn.execute(mfgSql.selectByCode, [mfgCode])
+        const mfg = (mRows as any[])[0]
+        if (!mfg) { skipped++; continue }
+
+        await conn.execute(pmSql.insertMfgRate, [
+          pm.id, mfg.id, mfgCode,
+          roundToTwoDecimals(currRate), row.uom?.trim() || null,
+          STATUS.ACTIVE, row.effective_from.trim(),
+        ])
+        inserted++
+      }
+      recordProcessedEvent("PM_RATE_BULK", eventId, { s3Key, inserted, skipped })
+    } catch (err: any) {
+      recordFailedEvent("PM_RATE_BULK", eventId, { s3Key }, err.message)
       throw err
     }
   },

@@ -24,6 +24,15 @@ export const vendors = {
     JOIN master_vendors v ON vd.vendor_id = v.id
   `,
 
+  /** Resolve a vendor by its business code — used by rate-bulk CSV imports.
+   *  Parameters: [code] */
+  selectByCode: `
+    SELECT v.id, v.code, v.name, v.type, vd.status
+    FROM master_vendors v
+    LEFT JOIN details_vendor vd ON vd.vendor_id = v.id
+    WHERE v.code = ? LIMIT 1
+  `,
+
   // ============ PAGINATED SELECT QUERIES ============
 
   /**

@@ -33,7 +33,7 @@ const NAV: NavItem[] = [
       {label: "Material Master",     href:"/masters/material-master"},
       { label: "RM Cost Master",     href: "/masters/raw-materials" },
       { label: "PM Cost Master", href: "/masters/packing-materials" },
-      {label: "Bom Master" , href: "/masters/bom-master"},
+      {label: "Recipe Master" , href: "/masters/bom-master"},
     ],
   },
   {
